@@ -40,13 +40,30 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PDFCompareLocal-windows
+          name: PDFCompareLocal-windows-build-${{ github.run_number }}
           path: dist/PDFCompareLocal.exe
           if-no-files-found: error
 
-      - name: Publish to GitHub Release
+      - name: Publish build prerelease (master)
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build #${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: dist/PDFCompareLocal.exe
+          fail_on_unmatched_files: true
+          body: |
+            Automated CI build.
+            - Build number: ${{ github.run_number }}
+            - Commit: ${{ github.sha }}
+            - Branch: ${{ github.ref_name }}
+
+      - name: Publish version release (tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: Release ${{ github.ref_name }}
           files: dist/PDFCompareLocal.exe
           fail_on_unmatched_files: true
