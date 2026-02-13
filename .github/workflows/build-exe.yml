@@ -60,6 +60,24 @@ jobs:
             - Commit: ${{ github.sha }}
             - Branch: ${{ github.ref_name }}
 
+      - name: Publish rolling latest release (master)
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest EXE
+          target_commitish: ${{ github.sha }}
+          prerelease: false
+          make_latest: true
+          files: dist/PDFCompareLocal.exe
+          fail_on_unmatched_files: true
+          body: |
+            Latest automatic build from `master`.
+            - Build number: ${{ github.run_number }}
+            - Commit: ${{ github.sha }}
+            - Direct download:
+              https://github.com/${{ github.repository }}/releases/latest/download/PDFCompareLocal.exe
+
       - name: Publish version release (tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

@@ -4,6 +4,10 @@
 
 Local desktop tool for comparing two multi-page PDFs (drawings/specs) with HTML report output and an interactive slider view.
 
+## Скачать / Download
+- Последний EXE:  
+  `https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal.exe`
+
 ## Возможности / Features
 - Постраничный маппинг между ревизиями (учет вставленных/удаленных листов).
 - Визуальный diff с учетом допуска толщины линий.
