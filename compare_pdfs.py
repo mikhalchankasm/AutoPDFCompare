@@ -869,7 +869,12 @@ def generate_html_report(
 
     matrix_rows: list[str] = []
     matrix_rows_data: list[dict] = []
-    status_ui = {"MATCH": "СОВПАДАЕТ", "ADDED": "НОВЫЙ", "REMOVED": "УДАЛЕН"}
+    status_ui = {
+        "CHANGED": "ИЗМЕНЕН",
+        "UNCHANGED": "БЕЗ ИЗМЕНЕНИЙ",
+        "ADDED": "НОВЫЙ",
+        "REMOVED": "УДАЛЕН",
+    }
     level_ui = {
         "MAJOR": "КРУПНЫЕ",
         "MODERATE": "СРЕДНИЕ",
@@ -895,19 +900,22 @@ def generate_html_report(
             level_tag = ""
             removed_cnt += 1
         else:
-            status_tag = "MATCH"
             diff_val = None if p.get("diff_metric") is None else float(p["diff_metric"])
             if diff_val is None or diff_val < 0.15:
                 level_tag = "UNCHANGED"
+                status_tag = "UNCHANGED"
                 unchanged_cnt += 1
             elif diff_val < 1.0:
                 level_tag = "MINOR"
+                status_tag = "CHANGED"
                 changed_cnt += 1
             elif diff_val < 5.0:
                 level_tag = "MODERATE"
+                status_tag = "CHANGED"
                 changed_cnt += 1
             else:
                 level_tag = "MAJOR"
+                status_tag = "CHANGED"
                 changed_cnt += 1
 
         a_idx = "—" if p["a_index"] is None else f"A{p['a_index']}"
@@ -936,7 +944,12 @@ def generate_html_report(
         else:
             preview_html = "<div class='pv-pill'>ПРЕВЬЮ</div>"
 
-        status_badge_cls = {"MATCH": "st-match", "ADDED": "st-added", "REMOVED": "st-removed"}.get(status_tag, "st-match")
+        status_badge_cls = {
+            "CHANGED": "st-changed",
+            "UNCHANGED": "st-unchanged",
+            "ADDED": "st-added",
+            "REMOVED": "st-removed",
+        }.get(status_tag, "st-changed")
         level_badge_cls = {
             "MAJOR": "lv-major",
             "MODERATE": "lv-moderate",
