@@ -8,3 +8,10 @@ runs/
 TestDocs/
 
 dist/*
+
+# Temporary spec / prompt docs (keep local, do not publish)
+CLAUDE.md
+NANOBANA_UI_PROMPTS.md
+REPORT_DESIGN_UI.md
+REPORT_RULES.md
+UI_REDESIGN_BRIEF.md
