@@ -194,6 +194,22 @@ def pair_similarity(a: PageInfo, b: PageInfo) -> float:
     return float(max(0.0, min(1.0, base)))
 
 
+def build_similarity_matrices(
+    pages_a: Sequence[PageInfo], pages_b: Sequence[PageInfo]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Precompute compatibility and similarity once for all mapping strategies."""
+    n, m = len(pages_a), len(pages_b)
+    sims = np.zeros((n, m), dtype=np.float64)
+    compatible = np.zeros((n, m), dtype=bool)
+    for i in range(n):
+        for j in range(m):
+            ok = size_compatible(pages_a[i], pages_b[j])
+            compatible[i, j] = ok
+            if ok:
+                sims[i, j] = pair_similarity(pages_a[i], pages_b[j])
+    return sims, compatible
+
+
 def linear_sum_assignment(cost: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     c = np.asarray(cost, dtype=np.float64)
     if c.ndim != 2:
@@ -261,19 +277,24 @@ def linear_sum_assignment(cost: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return row_ind[order], col_ind[order]
 
 
-def align_pages_hungarian(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInfo]) -> List[MatchPair]:
+def align_pages_hungarian(
+    pages_a: Sequence[PageInfo],
+    pages_b: Sequence[PageInfo],
+    sims: np.ndarray | None = None,
+    compatible: np.ndarray | None = None,
+) -> List[MatchPair]:
     n, m = len(pages_a), len(pages_b)
+    if sims is None or compatible is None:
+        sims, compatible = build_similarity_matrices(pages_a, pages_b)
     k = max(n, m)
     unmatched_cost = 0.35
     incompatible_cost = 1.20
     match_threshold = 0.55
     cost = np.full((k, k), unmatched_cost, dtype=np.float64)
-    sims = np.zeros((n, m), dtype=np.float64)
     for i in range(n):
         for j in range(m):
-            if size_compatible(pages_a[i], pages_b[j]):
-                sim = pair_similarity(pages_a[i], pages_b[j])
-                sims[i, j] = sim
+            if compatible[i, j]:
+                sim = float(sims[i, j])
                 cost[i, j] = 1.0 - sim
             else:
                 cost[i, j] = incompatible_cost
@@ -286,7 +307,7 @@ def align_pages_hungarian(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInf
     for i, j in zip(rows, cols):
         if i < n and j < m:
             sim = float(sims[i, j])
-            if sim >= match_threshold and size_compatible(pages_a[i], pages_b[j]):
+            if sim >= match_threshold and bool(compatible[i, j]):
                 matched_by_a[int(i)] = (int(j), sim)
             else:
                 removed.add(int(i))
@@ -311,7 +332,12 @@ def align_pages_hungarian(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInf
     return out
 
 
-def align_pages_monotonic(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInfo]) -> List[MatchPair]:
+def align_pages_monotonic(
+    pages_a: Sequence[PageInfo],
+    pages_b: Sequence[PageInfo],
+    sims: np.ndarray | None = None,
+    compatible: np.ndarray | None = None,
+) -> List[MatchPair]:
     """
     Sequence-preserving page mapping.
     Guarantees non-crossing links: page order in A and B remains monotonic.
@@ -321,14 +347,8 @@ def align_pages_monotonic(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInf
     mismatch_penalty = 0.45
     match_threshold = 0.58
 
-    sims = np.zeros((n, m), dtype=np.float64)
-    compatible = np.zeros((n, m), dtype=bool)
-    for i in range(n):
-        for j in range(m):
-            ok = size_compatible(pages_a[i], pages_b[j])
-            compatible[i, j] = ok
-            if ok:
-                sims[i, j] = pair_similarity(pages_a[i], pages_b[j])
+    if sims is None or compatible is None:
+        sims, compatible = build_similarity_matrices(pages_a, pages_b)
 
     dp = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
     act = np.zeros((n + 1, m + 1), dtype=np.int8)  # 1=match, 2=remove, 3=add
@@ -404,20 +424,53 @@ def alignment_quality(pairs: Sequence[MatchPair], n_a: int, n_b: int) -> float:
     gap_count = sum(1 for p in pairs if p.status in {"added", "removed"})
     gap_ratio = gap_count / max(1, n_a + n_b)
     b_seq = [int(p.b_idx) for p in matched]
-    inv = 0
-    total = 0
-    for i in range(len(b_seq)):
-        for j in range(i + 1, len(b_seq)):
-            total += 1
-            if b_seq[i] > b_seq[j]:
-                inv += 1
+    inv = count_inversions(b_seq)
+    total = (len(b_seq) * (len(b_seq) - 1)) // 2
     cross_ratio = (inv / total) if total else 0.0
     return sim_avg - 0.38 * gap_ratio - 0.10 * cross_ratio
 
 
+def count_inversions(seq: Sequence[int]) -> int:
+    """O(n log n) inversion count via merge sort."""
+    arr = [int(x) for x in seq]
+    n = len(arr)
+    if n < 2:
+        return 0
+    tmp = [0] * n
+
+    def sort_count(lo: int, hi: int) -> int:
+        if hi - lo <= 1:
+            return 0
+        mid = (lo + hi) // 2
+        inv = sort_count(lo, mid) + sort_count(mid, hi)
+        i, j, k = lo, mid, lo
+        while i < mid and j < hi:
+            if arr[i] <= arr[j]:
+                tmp[k] = arr[i]
+                i += 1
+            else:
+                tmp[k] = arr[j]
+                j += 1
+                inv += mid - i
+            k += 1
+        while i < mid:
+            tmp[k] = arr[i]
+            i += 1
+            k += 1
+        while j < hi:
+            tmp[k] = arr[j]
+            j += 1
+            k += 1
+        arr[lo:hi] = tmp[lo:hi]
+        return inv
+
+    return sort_count(0, n)
+
+
 def align_pages_v1(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInfo]) -> List[MatchPair]:
-    global_map = align_pages_hungarian(pages_a, pages_b)
-    mono_map = align_pages_monotonic(pages_a, pages_b)
+    sims, compatible = build_similarity_matrices(pages_a, pages_b)
+    global_map = align_pages_hungarian(pages_a, pages_b, sims=sims, compatible=compatible)
+    mono_map = align_pages_monotonic(pages_a, pages_b, sims=sims, compatible=compatible)
     q_global = alignment_quality(global_map, len(pages_a), len(pages_b))
     q_mono = alignment_quality(mono_map, len(pages_a), len(pages_b))
     # Use monotonic only when its quality is close enough or better.
@@ -1904,146 +1957,152 @@ def compare_pdfs(
     pages_dir = run_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
 
-    emit(1, f"Чтение страниц старого документа: {file_a.name}")
-    pages_a = build_page_info(
-        file_a,
-        progress_cb=lambda done, total, label: emit(1 + 17 * (done / max(1, total)), f"{label}: {done}/{total}"),
-        label="старый",
-    )
-    emit(18, f"Чтение страниц нового документа: {file_b.name}")
-    pages_b = build_page_info(
-        file_b,
-        progress_cb=lambda done, total, label: emit(18 + 17 * (done / max(1, total)), f"{label}: {done}/{total}"),
-        label="новый",
-    )
-    emit(36, "Сопоставление листов (v1: глобальное + проверка последовательности)")
-    pairs = align_pages_v1(pages_a, pages_b)
-
-    details: List[dict] = []
-
-    total_pairs = max(1, len(pairs))
-    with fitz.open(file_a) as doc_a, fitz.open(file_b) as doc_b:
-        for idx, p in enumerate(pairs, start=1):
-            a_page = None if p.a_idx is None else p.a_idx + 1
-            b_page = None if p.b_idx is None else p.b_idx + 1
-            pair_name = f"{idx:03d}__A_{a_page or 'NA'}__B_{b_page or 'NA'}"
-            pair_dir = pages_dir / pair_name
-            pair_dir.mkdir(parents=True, exist_ok=True)
-
-            entry = {
-                "seq": idx,
-                "a_page": a_page,
-                "b_page": b_page,
-                "pair_dir": pair_name,
-                "status": p.status,
-                "score": float(p.score),
-                "diff_percent": None,
-                "change_level": None,
-                "bboxes_count": None,
-                "ecc_failed": False,
-            }
-
-            if p.status == "matched" and p.a_idx is not None and p.b_idx is not None:
-                a_img = render_page(doc_a, p.a_idx, high_dpi)
-                b_img = render_page(doc_b, p.b_idx, high_dpi)
-                harmonized = harmonize_canvas(a_img, b_img)
-                if harmonized is None:
-                    entry["status"] = "size_mismatch"
-                    entry["change_level"] = "size_mismatch"
-                    imwrite_compat(pair_dir / "a.png", a_img)
-                    imwrite_compat(pair_dir / "b.png", b_img)
-                    details.append(entry)
-                    continue
-
-                a_h, b_h = harmonized
-                b_aligned, ecc_ok = align_ecc(a_h, b_h)
-                entry["ecc_failed"] = not ecc_ok
-                mask, overlay, bboxes, diff_percent = compute_diff(a_h, b_aligned, stroke_tol_px=stroke_tol_px)
-                level = classify(diff_percent)
-
-                imwrite_compat(pair_dir / "a.png", a_h)
-                # Keep report visuals consistent: b.png must be the aligned image used for diff.
-                imwrite_compat(pair_dir / "b.png", b_aligned)
-                imwrite_compat(pair_dir / "b_raw.png", b_h)
-                imwrite_compat(pair_dir / "b_aligned.png", b_aligned)
-                imwrite_compat(pair_dir / "mask.png", mask)
-                imwrite_compat(pair_dir / "overlay.png", overlay)
-                # Separate bbox layer for slider mode (transparent PNG).
-                bbox_layer = np.zeros((a_h.shape[0], a_h.shape[1], 4), dtype=np.uint8)
-                for x, y, w, h in bboxes:
-                    cv2.rectangle(bbox_layer, (x, y), (x + w, y + h), (120, 235, 255, 70), -1)
-                    cv2.rectangle(bbox_layer, (x, y), (x + w, y + h), (0, 180, 255, 135), 1)
-                imwrite_compat(pair_dir / "bbox_overlay.png", bbox_layer)
-                (pair_dir / "bboxes.json").write_text(
-                    json.dumps([{"x": x, "y": y, "w": w, "h": h} for x, y, w, h in bboxes], ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-
-                entry["diff_percent"] = float(diff_percent)
-                entry["change_level"] = level
-                entry["bboxes_count"] = len(bboxes)
-                del a_img, b_img, harmonized, a_h, b_h, b_aligned, mask, overlay, bbox_layer
-            else:
-                # Keep quick preview for unmatched pages.
-                if p.a_idx is not None:
-                    a_full = render_page(doc_a, p.a_idx, high_dpi)
-                    a_prev = render_page(doc_a, p.a_idx, 120)
-                    imwrite_compat(pair_dir / "a.png", a_full)
-                    imwrite_compat(pair_dir / "a_preview.png", a_prev)
-                    del a_full, a_prev
-                if p.b_idx is not None:
-                    b_full = render_page(doc_b, p.b_idx, high_dpi)
-                    b_prev = render_page(doc_b, p.b_idx, 120)
-                    imwrite_compat(pair_dir / "b.png", b_full)
-                    imwrite_compat(pair_dir / "b_preview.png", b_prev)
-                    del b_full, b_prev
-
-            details.append(entry)
-            if idx % 8 == 0:
-                gc.collect()
-            emit(38 + 48 * (idx / total_pairs), f"Сравнение листов {idx}/{total_pairs}")
-
-    emit(87, "Подготовка сводки и CSV")
-    (run_dir / "summary.json").write_text(
-        json.dumps(
-            {
-                "file_a": str(file_a),
-                "file_b": str(file_b),
-                "created_at": datetime.now().isoformat(),
-                "pairs": details,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    with (run_dir / "page_map.csv").open("w", newline="", encoding="utf-8") as f:
-        csv_fields = ["seq", "a_page", "b_page", "status", "score", "diff_percent", "change_level", "bboxes_count", "ecc_failed"]
-        w = csv.DictWriter(
-            f,
-            fieldnames=csv_fields,
+    try:
+        emit(1, f"Чтение страниц старого документа: {file_a.name}")
+        pages_a = build_page_info(
+            file_a,
+            progress_cb=lambda done, total, label: emit(1 + 17 * (done / max(1, total)), f"{label}: {done}/{total}"),
+            label="старый",
         )
-        w.writeheader()
-        for row in details:
-            w.writerow({k: row.get(k) for k in csv_fields})
+        emit(18, f"Чтение страниц нового документа: {file_b.name}")
+        pages_b = build_page_info(
+            file_b,
+            progress_cb=lambda done, total, label: emit(18 + 17 * (done / max(1, total)), f"{label}: {done}/{total}"),
+            label="новый",
+        )
+        emit(36, "Сопоставление листов (v1: глобальное + проверка последовательности)")
+        pairs = align_pages_v1(pages_a, pages_b)
 
-    write_summary_md(run_dir / "summary.md", file_a, file_b, pairs, details, lang=report_lang)
-    write_engineer_report_md(run_dir / "engineer_report.md", file_a, file_b, details, lang=report_lang)
-    emit(90, "Генерация HTML отчета")
-    zip_path = generate_html_report(
-        run_dir,
-        file_a,
-        file_b,
-        details,
-        high_dpi=high_dpi,
-        stroke_tol_px=stroke_tol_px,
-        report_lang=report_lang,
-        progress_cb=lambda p, msg: emit(90 + 9 * (p / 100.0), msg),
-    )
-    (run_dir / "report_zip.txt").write_text(str(zip_path), encoding="utf-8")
-    emit(100, "Готово")
-    return run_dir
+        details: List[dict] = []
+
+        total_pairs = max(1, len(pairs))
+        with fitz.open(file_a) as doc_a, fitz.open(file_b) as doc_b:
+            for idx, p in enumerate(pairs, start=1):
+                a_page = None if p.a_idx is None else p.a_idx + 1
+                b_page = None if p.b_idx is None else p.b_idx + 1
+                pair_name = f"{idx:03d}__A_{a_page or 'NA'}__B_{b_page or 'NA'}"
+                pair_dir = pages_dir / pair_name
+                pair_dir.mkdir(parents=True, exist_ok=True)
+
+                entry = {
+                    "seq": idx,
+                    "a_page": a_page,
+                    "b_page": b_page,
+                    "pair_dir": pair_name,
+                    "status": p.status,
+                    "score": float(p.score),
+                    "diff_percent": None,
+                    "change_level": None,
+                    "bboxes_count": None,
+                    "ecc_failed": False,
+                }
+
+                if p.status == "matched" and p.a_idx is not None and p.b_idx is not None:
+                    a_img = render_page(doc_a, p.a_idx, high_dpi)
+                    b_img = render_page(doc_b, p.b_idx, high_dpi)
+                    harmonized = harmonize_canvas(a_img, b_img)
+                    if harmonized is None:
+                        entry["status"] = "size_mismatch"
+                        entry["change_level"] = "size_mismatch"
+                        imwrite_compat(pair_dir / "a.png", a_img)
+                        imwrite_compat(pair_dir / "b.png", b_img)
+                        details.append(entry)
+                        continue
+
+                    a_h, b_h = harmonized
+                    b_aligned, ecc_ok = align_ecc(a_h, b_h)
+                    entry["ecc_failed"] = not ecc_ok
+                    mask, overlay, bboxes, diff_percent = compute_diff(a_h, b_aligned, stroke_tol_px=stroke_tol_px)
+                    level = classify(diff_percent)
+
+                    imwrite_compat(pair_dir / "a.png", a_h)
+                    # Keep report visuals consistent: b.png must be the aligned image used for diff.
+                    imwrite_compat(pair_dir / "b.png", b_aligned)
+                    imwrite_compat(pair_dir / "b_raw.png", b_h)
+                    imwrite_compat(pair_dir / "b_aligned.png", b_aligned)
+                    imwrite_compat(pair_dir / "mask.png", mask)
+                    imwrite_compat(pair_dir / "overlay.png", overlay)
+                    # Separate bbox layer for slider mode (transparent PNG).
+                    bbox_layer = np.zeros((a_h.shape[0], a_h.shape[1], 4), dtype=np.uint8)
+                    for x, y, w, h in bboxes:
+                        cv2.rectangle(bbox_layer, (x, y), (x + w, y + h), (120, 235, 255, 70), -1)
+                        cv2.rectangle(bbox_layer, (x, y), (x + w, y + h), (0, 180, 255, 135), 1)
+                    imwrite_compat(pair_dir / "bbox_overlay.png", bbox_layer)
+                    (pair_dir / "bboxes.json").write_text(
+                        json.dumps([{"x": x, "y": y, "w": w, "h": h} for x, y, w, h in bboxes], ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+
+                    entry["diff_percent"] = float(diff_percent)
+                    entry["change_level"] = level
+                    entry["bboxes_count"] = len(bboxes)
+                    del a_img, b_img, harmonized, a_h, b_h, b_aligned, mask, overlay, bbox_layer
+                else:
+                    # Keep quick preview for unmatched pages.
+                    if p.a_idx is not None:
+                        a_full = render_page(doc_a, p.a_idx, high_dpi)
+                        a_prev = render_page(doc_a, p.a_idx, 120)
+                        imwrite_compat(pair_dir / "a.png", a_full)
+                        imwrite_compat(pair_dir / "a_preview.png", a_prev)
+                        del a_full, a_prev
+                    if p.b_idx is not None:
+                        b_full = render_page(doc_b, p.b_idx, high_dpi)
+                        b_prev = render_page(doc_b, p.b_idx, 120)
+                        imwrite_compat(pair_dir / "b.png", b_full)
+                        imwrite_compat(pair_dir / "b_preview.png", b_prev)
+                        del b_full, b_prev
+
+                details.append(entry)
+                if idx % 8 == 0:
+                    gc.collect()
+                emit(38 + 48 * (idx / total_pairs), f"Сравнение листов {idx}/{total_pairs}")
+
+        emit(87, "Подготовка сводки и CSV")
+        (run_dir / "summary.json").write_text(
+            json.dumps(
+                {
+                    "file_a": str(file_a),
+                    "file_b": str(file_b),
+                    "created_at": datetime.now().isoformat(),
+                    "pairs": details,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        with (run_dir / "page_map.csv").open("w", newline="", encoding="utf-8") as f:
+            csv_fields = ["seq", "a_page", "b_page", "status", "score", "diff_percent", "change_level", "bboxes_count", "ecc_failed"]
+            w = csv.DictWriter(
+                f,
+                fieldnames=csv_fields,
+            )
+            w.writeheader()
+            for row in details:
+                w.writerow({k: row.get(k) for k in csv_fields})
+
+        write_summary_md(run_dir / "summary.md", file_a, file_b, pairs, details, lang=report_lang)
+        write_engineer_report_md(run_dir / "engineer_report.md", file_a, file_b, details, lang=report_lang)
+        emit(90, "Генерация HTML отчета")
+        zip_path = generate_html_report(
+            run_dir,
+            file_a,
+            file_b,
+            details,
+            high_dpi=high_dpi,
+            stroke_tol_px=stroke_tol_px,
+            report_lang=report_lang,
+            progress_cb=lambda p, msg: emit(90 + 9 * (p / 100.0), msg),
+        )
+        (run_dir / "report_zip.txt").write_text(str(zip_path), encoding="utf-8")
+        emit(100, "Готово")
+        return run_dir
+    except Exception as exc:
+        # Cancellation is cooperative and may happen mid-run; drop partial artifacts.
+        if str(exc) == "__CANCELLED__":
+            shutil.rmtree(run_dir, ignore_errors=True)
+        raise
 
 
 def pick_two_pdfs(folder: Path) -> Tuple[Path, Path]:
