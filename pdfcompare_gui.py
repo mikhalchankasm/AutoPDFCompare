@@ -15,6 +15,174 @@ from typing import Any, Callable, Iterable
 from compare_pdfs import compare_pdfs
 
 
+I18N: dict[str, dict[str, str]] = {
+    "ru": {
+        "window_title": "PDFCompare Local",
+        "app_title": "PDFCompare Local",
+        "app_subtitle": "Локальное сравнение PDF · без облака",
+        "tab_compare": "Сравнение",
+        "tab_history": "История",
+        "drop_primary": "Перетащите 2 файла PDF сюда",
+        "drop_secondary": "или используйте кнопки ниже",
+        "path_old": "● Старый PDF",
+        "path_new": "● Новый PDF",
+        "path_out": "Папка вывода",
+        "btn_select": "Выбрать...",
+        "opts_collapsed": "Параметры ▾",
+        "opts_expanded": "Параметры ▴",
+        "opts_group": "Параметры сравнения",
+        "opts_dpi": "Разрешение (DPI):",
+        "opts_dpi_hint": "Выше = точнее, но медленнее",
+        "opts_stroke": "Допуск штриха (px):",
+        "opts_stroke_hint": "Игнорирует различия тоньше указанного размера",
+        "btn_run": "Сравнить (Enter)",
+        "btn_clear": "Очистить",
+        "btn_from_history": "Из истории",
+        "btn_open_report": "Открыть отчёт",
+        "btn_open_folder": "Открыть папку",
+        "hist_restore": "Восстановить",
+        "hist_snapshot": "Сохранить снимок",
+        "hist_open_folder": "Открыть папку",
+        "hist_refresh": "Обновить",
+        "hist_col_time": "Дата/время",
+        "hist_col_result": "Результат",
+        "hist_col_old": "Старый PDF",
+        "hist_col_new": "Новый PDF",
+        "hist_col_out": "Папка вывода",
+        "hist_col_run": "Папка запуска",
+        "hist_hint": "Двойной клик по строке восстанавливает файлы, папку вывода и параметры.",
+        "badge_old": "Старый",
+        "badge_new": "Новый",
+        "badge_not_selected": "не выбран",
+        "status_initial": "Перетащите 2 PDF-файла и нажмите Enter для запуска.",
+        "status_no_saved": "Сохраненных данных пока нет.",
+        "status_restored_startup": "Предыдущие параметры восстановлены из локальной истории.",
+        "status_restored": "Восстановлены последние сохраненные параметры.",
+        "status_select_history_first": "Сначала выберите строку в истории.",
+        "status_history_restored": "Данные из истории восстановлены.",
+        "status_history_missing_files": "Внимание: один или оба PDF-файла не найдены.",
+        "status_history_no_run": "Для выбранной строки нет папки запуска.",
+        "status_snapshot_saved": "Текущие параметры сохранены в историю.",
+        "status_drag_unavailable": "Перетаскивание недоступно ({error}). Используйте кнопки «Выбрать...».",
+        "status_drop_no_pdf": "В перетаскиваемых элементах нет PDF-файлов.",
+        "status_drop_loaded_two": "Загружены 2 PDF-файла. Нажмите Enter для запуска.",
+        "status_drop_set_old": "Выбран старый PDF. Добавьте новый PDF или нажмите «Выбрать...».",
+        "status_drop_set_new": "Выбран новый PDF. Нажмите Enter для запуска.",
+        "status_drop_replaced_new": "Новый PDF заменен. Нажмите Enter для запуска.",
+        "dlg_pick_old": "Выберите старый PDF",
+        "dlg_pick_new": "Выберите новый PDF",
+        "dlg_pick_out": "Выберите папку вывода",
+        "status_cleared": "Поля очищены.",
+        "err_file_missing_title": "Файл не найден",
+        "err_old_missing": "Выберите корректный старый PDF-файл.",
+        "err_new_missing": "Выберите корректный новый PDF-файл.",
+        "err_invalid_input_title": "Некорректный ввод",
+        "err_same_files": "Старый и новый PDF-файлы должны отличаться.",
+        "status_run_cancel_no_out": "Запуск отменен: не выбрана папка вывода.",
+        "err_invalid_option_title": "Некорректный параметр",
+        "err_invalid_option_parse": "DPI должен быть целым числом, допуск штриха - числом.",
+        "err_invalid_option_dpi": "DPI должен быть не меньше 72.",
+        "err_invalid_option_stroke": "Допуск штриха должен быть не меньше 0.",
+        "status_running": "Сравнение запущено... Это может занять несколько минут.",
+        "btn_running": "Сравнение... {pct:.0f}%",
+        "status_done": "Готово. Отчет: {path}",
+        "dlg_done_title": "Готово",
+        "dlg_done_body": "Сравнение завершено.\n\nПапка запуска:\n{run_dir}",
+        "status_error": "Ошибка: {error}",
+        "dlg_error_title": "Ошибка",
+        "err_folder_missing_title": "Папка не найдена",
+        "err_not_found": "Не найдено:\n{path}",
+        "hist_result_done": "Готово",
+        "hist_result_error": "Ошибка",
+        "hist_result_snapshot": "Снимок",
+        "lang_ru": "Русский",
+        "lang_en": "English",
+    },
+    "en": {
+        "window_title": "PDFCompare Local",
+        "app_title": "PDFCompare Local",
+        "app_subtitle": "Local PDF comparison · no cloud",
+        "tab_compare": "Compare",
+        "tab_history": "History",
+        "drop_primary": "Drop 2 PDF files here",
+        "drop_secondary": "or use the buttons below",
+        "path_old": "● Old PDF",
+        "path_new": "● New PDF",
+        "path_out": "Output folder",
+        "btn_select": "Select...",
+        "opts_collapsed": "Options ▾",
+        "opts_expanded": "Options ▴",
+        "opts_group": "Comparison options",
+        "opts_dpi": "Resolution (DPI):",
+        "opts_dpi_hint": "Higher = more precise but slower",
+        "opts_stroke": "Stroke tolerance (px):",
+        "opts_stroke_hint": "Ignores differences thinner than this threshold",
+        "btn_run": "Compare (Enter)",
+        "btn_clear": "Clear",
+        "btn_from_history": "From history",
+        "btn_open_report": "Open report",
+        "btn_open_folder": "Open folder",
+        "hist_restore": "Restore",
+        "hist_snapshot": "Save snapshot",
+        "hist_open_folder": "Open folder",
+        "hist_refresh": "Refresh",
+        "hist_col_time": "Date/time",
+        "hist_col_result": "Result",
+        "hist_col_old": "Old PDF",
+        "hist_col_new": "New PDF",
+        "hist_col_out": "Output folder",
+        "hist_col_run": "Run folder",
+        "hist_hint": "Double-click a row to restore files, output folder, and options.",
+        "badge_old": "Old",
+        "badge_new": "New",
+        "badge_not_selected": "not selected",
+        "status_initial": "Drop 2 PDF files and press Enter to start.",
+        "status_no_saved": "No saved values yet.",
+        "status_restored_startup": "Previous settings restored from local history.",
+        "status_restored": "Last saved settings restored.",
+        "status_select_history_first": "Select a history row first.",
+        "status_history_restored": "History row restored.",
+        "status_history_missing_files": "Warning: one or both PDF files are missing.",
+        "status_history_no_run": "Selected row has no run folder.",
+        "status_snapshot_saved": "Current settings saved to history.",
+        "status_drag_unavailable": "Drag-and-drop unavailable ({error}). Use Select buttons.",
+        "status_drop_no_pdf": "Dropped items contain no PDF files.",
+        "status_drop_loaded_two": "Loaded 2 PDFs. Press Enter to start.",
+        "status_drop_set_old": "Old PDF set. Add new PDF or click Select...",
+        "status_drop_set_new": "New PDF set. Press Enter to start.",
+        "status_drop_replaced_new": "New PDF replaced. Press Enter to start.",
+        "dlg_pick_old": "Select old PDF",
+        "dlg_pick_new": "Select new PDF",
+        "dlg_pick_out": "Select output folder",
+        "status_cleared": "Inputs cleared.",
+        "err_file_missing_title": "Missing file",
+        "err_old_missing": "Select a valid old PDF file.",
+        "err_new_missing": "Select a valid new PDF file.",
+        "err_invalid_input_title": "Invalid input",
+        "err_same_files": "Old and new PDF files must be different.",
+        "status_run_cancel_no_out": "Run canceled: output folder not selected.",
+        "err_invalid_option_title": "Invalid option",
+        "err_invalid_option_parse": "DPI must be integer and stroke tolerance must be numeric.",
+        "err_invalid_option_dpi": "DPI must be >= 72.",
+        "err_invalid_option_stroke": "Stroke tolerance must be >= 0.",
+        "status_running": "Comparison started... This may take a few minutes.",
+        "btn_running": "Comparing... {pct:.0f}%",
+        "status_done": "Done. Report: {path}",
+        "dlg_done_title": "Done",
+        "dlg_done_body": "Comparison complete.\n\nRun folder:\n{run_dir}",
+        "status_error": "Error: {error}",
+        "dlg_error_title": "Error",
+        "err_folder_missing_title": "Missing folder",
+        "err_not_found": "Not found:\n{path}",
+        "hist_result_done": "Done",
+        "hist_result_error": "Error",
+        "hist_result_snapshot": "Snapshot",
+        "lang_ru": "Russian",
+        "lang_en": "English",
+    },
+}
+
+
 class WindowsDropHook:
     """Enable Explorer drag-and-drop into a Tk window on Windows."""
 
@@ -24,7 +192,7 @@ class WindowsDropHook:
 
     def __init__(self, widget: tk.Misc, on_drop: Callable[[list[Path]], None]) -> None:
         if os.name != "nt":
-            raise RuntimeError("Перетаскивание поддерживается только в Windows.")
+            raise RuntimeError("Windows-only feature")
 
         self.widget = widget
         self.on_drop = on_drop
@@ -111,7 +279,8 @@ class WindowsDropHook:
 class PDFCompareApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("PDFCompare Local")
+        self.lang = tk.StringVar(value="ru")
+        self.root.title(I18N["ru"]["window_title"])
         self.root.geometry("900x580")
         self.root.minsize(800, 500)
 
@@ -120,7 +289,7 @@ class PDFCompareApp:
         self.out_dir = tk.StringVar()
         self.dpi = tk.StringVar(value="250")
         self.stroke_tol = tk.StringVar(value="2.0")
-        self.status = tk.StringVar(value="Перетащите 2 PDF-файла и нажмите Enter для запуска.")
+        self.status = tk.StringVar(value="")
         self.progress_pct = tk.StringVar(value="0%")
         self.drop_badges_var = tk.StringVar(value="")
         self.options_expanded = False
@@ -136,6 +305,28 @@ class PDFCompareApp:
         self.options_body: ttk.Frame | None = None
         self.options_toggle_btn: ttk.Button | None = None
         self.drop_canvas: tk.Canvas | None = None
+        self.lang_combo: ttk.Combobox | None = None
+        self.subtitle_label: ttk.Label | None = None
+        self.tabs: ttk.Notebook | None = None
+        self.compare_tab: ttk.Frame | None = None
+        self.history_tab: ttk.Frame | None = None
+        self.old_label: ttk.Label | None = None
+        self.new_label: ttk.Label | None = None
+        self.out_label: ttk.Label | None = None
+        self.old_pick_btn: ttk.Button | None = None
+        self.new_pick_btn: ttk.Button | None = None
+        self.out_pick_btn: ttk.Button | None = None
+        self.options_dpi_label: ttk.Label | None = None
+        self.options_dpi_hint_label: ttk.Label | None = None
+        self.options_stroke_label: ttk.Label | None = None
+        self.options_stroke_hint_label: ttk.Label | None = None
+        self.clear_btn: ttk.Button | None = None
+        self.from_history_btn: ttk.Button | None = None
+        self.hist_restore_btn: ttk.Button | None = None
+        self.hist_snapshot_btn: ttk.Button | None = None
+        self.hist_open_btn: ttk.Button | None = None
+        self.hist_refresh_btn: ttk.Button | None = None
+        self.history_hint_label: ttk.Label | None = None
 
         self.state_dir = Path.home() / ".pdfcompare_local"
         self.state_path = self.state_dir / "state.json"
@@ -153,6 +344,97 @@ class PDFCompareApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(150, self._poll_worker_events)
 
+    def _tr(self, key: str, **kwargs: object) -> str:
+        lang = self.lang.get() if self.lang.get() in I18N else "ru"
+        template = I18N.get(lang, I18N["ru"]).get(key, I18N["ru"].get(key, key))
+        return template.format(**kwargs)
+
+    def _set_status(self, key: str, **kwargs: object) -> None:
+        self.status.set(self._tr(key, **kwargs))
+
+    def _lang_label_to_code(self, label: str) -> str:
+        if label in {I18N["en"]["lang_en"], I18N["ru"]["lang_en"], "English"}:
+            return "en"
+        return "ru"
+
+    def _sync_lang_combo(self) -> None:
+        if self.lang_combo is None:
+            return
+        values = (self._tr("lang_ru"), self._tr("lang_en"))
+        self.lang_combo.configure(values=values)
+        current = values[0] if self.lang.get() != "en" else values[1]
+        self.lang_combo.set(current)
+
+    def _on_language_change(self, _event: tk.Event | None = None) -> None:
+        if self.lang_combo is None:
+            return
+        self.lang.set(self._lang_label_to_code(self.lang_combo.get()))
+        self._apply_locale()
+        self._save_state()
+
+    def _apply_locale(self) -> None:
+        self.root.title(self._tr("window_title"))
+        if self.subtitle_label is not None:
+            self.subtitle_label.configure(text=self._tr("app_subtitle"))
+        if self.tabs is not None:
+            self.tabs.tab(0, text=self._tr("tab_compare"))
+            self.tabs.tab(1, text=self._tr("tab_history"))
+        if self.old_label is not None:
+            self.old_label.configure(text=self._tr("path_old"))
+        if self.new_label is not None:
+            self.new_label.configure(text=self._tr("path_new"))
+        if self.out_label is not None:
+            self.out_label.configure(text=self._tr("path_out"))
+        if self.old_pick_btn is not None:
+            self.old_pick_btn.configure(text=self._tr("btn_select"))
+        if self.new_pick_btn is not None:
+            self.new_pick_btn.configure(text=self._tr("btn_select"))
+        if self.out_pick_btn is not None:
+            self.out_pick_btn.configure(text=self._tr("btn_select"))
+        if self.options_toggle_btn is not None:
+            self.options_toggle_btn.configure(text=self._tr("opts_expanded" if self.options_expanded else "opts_collapsed"))
+        if self.options_body is not None:
+            self.options_body.configure(text=self._tr("opts_group"))
+        if self.options_dpi_label is not None:
+            self.options_dpi_label.configure(text=self._tr("opts_dpi"))
+        if self.options_dpi_hint_label is not None:
+            self.options_dpi_hint_label.configure(text=self._tr("opts_dpi_hint"))
+        if self.options_stroke_label is not None:
+            self.options_stroke_label.configure(text=self._tr("opts_stroke"))
+        if self.options_stroke_hint_label is not None:
+            self.options_stroke_hint_label.configure(text=self._tr("opts_stroke_hint"))
+        if self.run_btn is not None and not self.running:
+            self.run_btn.configure(text=self._tr("btn_run"))
+        if self.clear_btn is not None:
+            self.clear_btn.configure(text=self._tr("btn_clear"))
+        if self.from_history_btn is not None:
+            self.from_history_btn.configure(text=self._tr("btn_from_history"))
+        if self.open_report_btn is not None:
+            self.open_report_btn.configure(text=self._tr("btn_open_report"))
+        if self.open_run_btn is not None:
+            self.open_run_btn.configure(text=self._tr("btn_open_folder"))
+        if self.hist_restore_btn is not None:
+            self.hist_restore_btn.configure(text=self._tr("hist_restore"))
+        if self.hist_snapshot_btn is not None:
+            self.hist_snapshot_btn.configure(text=self._tr("hist_snapshot"))
+        if self.hist_open_btn is not None:
+            self.hist_open_btn.configure(text=self._tr("hist_open_folder"))
+        if self.hist_refresh_btn is not None:
+            self.hist_refresh_btn.configure(text=self._tr("hist_refresh"))
+        if self.history_tree is not None:
+            self.history_tree.heading("ts", text=self._tr("hist_col_time"))
+            self.history_tree.heading("result", text=self._tr("hist_col_result"))
+            self.history_tree.heading("old", text=self._tr("hist_col_old"))
+            self.history_tree.heading("new", text=self._tr("hist_col_new"))
+            self.history_tree.heading("out", text=self._tr("hist_col_out"))
+            self.history_tree.heading("run", text=self._tr("hist_col_run"))
+        if self.history_hint_label is not None:
+            self.history_hint_label.configure(text=self._tr("hist_hint"))
+        self._sync_lang_combo()
+        self._draw_drop_zone()
+        self._refresh_drop_badges()
+        self._refresh_history_table()
+
     def _build_ui(self) -> None:
         style = ttk.Style(self.root)
         style.configure("Header.TLabel", font=("Segoe UI", 18, "bold"))
@@ -168,105 +450,120 @@ class PDFCompareApp:
         top.pack(fill=tk.X)
         top_left = ttk.Frame(top)
         top_left.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(top_left, text="PDFCompare Local", style="Header.TLabel").pack(anchor="w")
-        ttk.Label(
+        ttk.Label(top_left, text=self._tr("app_title"), style="Header.TLabel").pack(anchor="w")
+        self.subtitle_label = ttk.Label(
             top_left,
-            text="Локальное сравнение PDF · без облака",
+            text=self._tr("app_subtitle"),
             style="SubHeader.TLabel",
             foreground="#5f6d86",
-        ).pack(anchor="w", pady=(1, 8))
-        ttk.Button(top, text="⚙", style="Small.TButton", state=tk.DISABLED).pack(side=tk.RIGHT, padx=(8, 0))
+        )
+        self.subtitle_label.pack(anchor="w", pady=(1, 8))
 
-        tabs = ttk.Notebook(outer)
-        tabs.pack(fill=tk.BOTH, expand=True)
-        compare_tab = ttk.Frame(tabs, padding=8)
-        history_tab = ttk.Frame(tabs, padding=8)
-        tabs.add(compare_tab, text="Сравнение")
-        tabs.add(history_tab, text="История")
+        right_top = ttk.Frame(top)
+        right_top.pack(side=tk.RIGHT)
+        self.lang_combo = ttk.Combobox(right_top, state="readonly", width=10)
+        self.lang_combo.bind("<<ComboboxSelected>>", self._on_language_change)
+        self.lang_combo.pack(side=tk.RIGHT)
+        ttk.Button(right_top, text="⚙", style="Small.TButton", state=tk.DISABLED).pack(side=tk.RIGHT, padx=(8, 6))
 
-        self.drop_canvas = tk.Canvas(compare_tab, height=145, bg="#F0F4F8", highlightthickness=0)
+        self.tabs = ttk.Notebook(outer)
+        self.tabs.pack(fill=tk.BOTH, expand=True)
+        self.compare_tab = ttk.Frame(self.tabs, padding=8)
+        self.history_tab = ttk.Frame(self.tabs, padding=8)
+        self.tabs.add(self.compare_tab, text=self._tr("tab_compare"))
+        self.tabs.add(self.history_tab, text=self._tr("tab_history"))
+
+        self.drop_canvas = tk.Canvas(self.compare_tab, height=145, bg="#F0F4F8", highlightthickness=0)
         self.drop_canvas.pack(fill=tk.X, pady=(0, 8))
         self.drop_canvas.bind("<Configure>", lambda _e: self._draw_drop_zone())
         self._draw_drop_zone()
 
-        ttk.Label(compare_tab, textvariable=self.drop_badges_var, style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(self.compare_tab, textvariable=self.drop_badges_var, style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
 
-        self._path_row(compare_tab, "● Старый PDF", self.old_pdf, self._pick_old_pdf)
-        self._path_row(compare_tab, "● Новый PDF", self.new_pdf, self._pick_new_pdf)
-        self._path_row(compare_tab, "Папка вывода", self.out_dir, self._pick_out_dir)
+        self.old_label, self.old_pick_btn = self._path_row(self.compare_tab, self.old_pdf, self._pick_old_pdf)
+        self.new_label, self.new_pick_btn = self._path_row(self.compare_tab, self.new_pdf, self._pick_new_pdf)
+        self.out_label, self.out_pick_btn = self._path_row(self.compare_tab, self.out_dir, self._pick_out_dir)
 
-        options_wrap = ttk.Frame(compare_tab)
+        options_wrap = ttk.Frame(self.compare_tab)
         options_wrap.pack(fill=tk.X, pady=(6, 6))
         self.options_toggle_btn = ttk.Button(
-            options_wrap, text="Параметры ▾", style="Small.TButton", command=self._toggle_options
+            options_wrap, text=self._tr("opts_collapsed"), style="Small.TButton", command=self._toggle_options
         )
         self.options_toggle_btn.pack(anchor="center", pady=(0, 4))
 
-        self.options_body = ttk.LabelFrame(options_wrap, text="Параметры сравнения", padding=10)
+        self.options_body = ttk.LabelFrame(options_wrap, text=self._tr("opts_group"), padding=10)
         self.options_body.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(self.options_body, text="Разрешение (DPI):").grid(row=0, column=0, sticky="w")
+        self.options_dpi_label = ttk.Label(self.options_body, text=self._tr("opts_dpi"))
+        self.options_dpi_label.grid(row=0, column=0, sticky="w")
         ttk.Spinbox(self.options_body, from_=120, to=600, textvariable=self.dpi, width=8).grid(
             row=0, column=1, sticky="w", padx=(6, 16)
         )
-        ttk.Label(self.options_body, text="Выше = точнее, но медленнее", style="Hint.TLabel").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(2, 8)
-        )
-        ttk.Label(self.options_body, text="Допуск штриха (px):").grid(row=0, column=2, sticky="w")
-        ttk.Entry(self.options_body, textvariable=self.stroke_tol, width=8).grid(
-            row=0, column=3, sticky="w", padx=(6, 0)
-        )
-        ttk.Label(
-            self.options_body,
-            text="Игнорирует различия тоньше указанного размера",
-            style="Hint.TLabel",
-        ).grid(row=1, column=2, columnspan=2, sticky="w", pady=(2, 8))
+        self.options_dpi_hint_label = ttk.Label(self.options_body, text=self._tr("opts_dpi_hint"), style="Hint.TLabel")
+        self.options_dpi_hint_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 8))
+        self.options_stroke_label = ttk.Label(self.options_body, text=self._tr("opts_stroke"))
+        self.options_stroke_label.grid(row=0, column=2, sticky="w")
+        ttk.Entry(self.options_body, textvariable=self.stroke_tol, width=8).grid(row=0, column=3, sticky="w", padx=(6, 0))
+        self.options_stroke_hint_label = ttk.Label(self.options_body, text=self._tr("opts_stroke_hint"), style="Hint.TLabel")
+        self.options_stroke_hint_label.grid(row=1, column=2, columnspan=2, sticky="w", pady=(2, 8))
         self.options_body.columnconfigure(4, weight=1)
         self.options_body.pack_forget()
 
-        actions = ttk.Frame(compare_tab)
+        actions = ttk.Frame(self.compare_tab)
         actions.pack(fill=tk.X, pady=(2, 2))
-        self.run_btn = ttk.Button(actions, text="Сравнить (Enter)", style="Primary.TButton", command=self.start_compare)
+        self.run_btn = ttk.Button(actions, text=self._tr("btn_run"), style="Primary.TButton", command=self.start_compare)
         self.run_btn.pack(fill=tk.X, ipady=7)
 
-        secondary = ttk.Frame(compare_tab)
+        secondary = ttk.Frame(self.compare_tab)
         secondary.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(secondary, text="Очистить", style="Small.TButton", command=self._clear_inputs).pack(side=tk.LEFT)
-        ttk.Button(secondary, text="Из истории", style="Small.TButton", command=self._restore_last_inputs).pack(side=tk.LEFT, padx=8)
+        self.clear_btn = ttk.Button(secondary, text=self._tr("btn_clear"), style="Small.TButton", command=self._clear_inputs)
+        self.clear_btn.pack(side=tk.LEFT)
+        self.from_history_btn = ttk.Button(
+            secondary, text=self._tr("btn_from_history"), style="Small.TButton", command=self._restore_last_inputs
+        )
+        self.from_history_btn.pack(side=tk.LEFT, padx=8)
         self.open_report_btn = ttk.Button(
-            secondary, text="Открыть отчёт", style="Small.TButton", command=self._open_report, state=tk.DISABLED
+            secondary, text=self._tr("btn_open_report"), style="Small.TButton", command=self._open_report, state=tk.DISABLED
         )
         self.open_report_btn.pack(side=tk.RIGHT)
         self.open_run_btn = ttk.Button(
-            secondary, text="Открыть папку", style="Small.TButton", command=self._open_run_folder, state=tk.DISABLED
+            secondary, text=self._tr("btn_open_folder"), style="Small.TButton", command=self._open_run_folder, state=tk.DISABLED
         )
         self.open_run_btn.pack(side=tk.RIGHT, padx=(0, 8))
 
-        progress_row = ttk.Frame(compare_tab)
+        progress_row = ttk.Frame(self.compare_tab)
         progress_row.pack(fill=tk.X, pady=(10, 5))
         self.progress = ttk.Progressbar(progress_row, mode="determinate", maximum=100)
         self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Label(progress_row, textvariable=self.progress_pct, width=6, anchor="e").pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Label(compare_tab, textvariable=self.status, style="Hint.TLabel", wraplength=860).pack(anchor="w")
+        ttk.Label(self.compare_tab, textvariable=self.status, style="Hint.TLabel", wraplength=860).pack(anchor="w")
 
-        hist_tools = ttk.Frame(history_tab)
+        hist_tools = ttk.Frame(self.history_tab)
         hist_tools.pack(fill=tk.X, pady=(0, 8))
-        ttk.Button(hist_tools, text="Восстановить", style="Small.TButton", command=self._restore_selected_history).pack(side=tk.LEFT)
-        ttk.Button(hist_tools, text="Сохранить снимок", style="Small.TButton", command=self._save_snapshot_to_history).pack(
-            side=tk.LEFT, padx=8
+        self.hist_restore_btn = ttk.Button(
+            hist_tools, text=self._tr("hist_restore"), style="Small.TButton", command=self._restore_selected_history
         )
-        ttk.Button(hist_tools, text="Открыть папку", style="Small.TButton", command=self._open_selected_history_run).pack(
-            side=tk.LEFT, padx=8
+        self.hist_restore_btn.pack(side=tk.LEFT)
+        self.hist_snapshot_btn = ttk.Button(
+            hist_tools, text=self._tr("hist_snapshot"), style="Small.TButton", command=self._save_snapshot_to_history
         )
-        ttk.Button(hist_tools, text="Обновить", style="Small.TButton", command=self._refresh_history_table).pack(side=tk.LEFT)
+        self.hist_snapshot_btn.pack(side=tk.LEFT, padx=8)
+        self.hist_open_btn = ttk.Button(
+            hist_tools, text=self._tr("hist_open_folder"), style="Small.TButton", command=self._open_selected_history_run
+        )
+        self.hist_open_btn.pack(side=tk.LEFT, padx=8)
+        self.hist_refresh_btn = ttk.Button(
+            hist_tools, text=self._tr("hist_refresh"), style="Small.TButton", command=self._refresh_history_table
+        )
+        self.hist_refresh_btn.pack(side=tk.LEFT)
 
         cols = ("ts", "result", "old", "new", "out", "run")
-        self.history_tree = ttk.Treeview(history_tab, columns=cols, show="headings", selectmode="browse")
-        self.history_tree.heading("ts", text="Дата/время")
-        self.history_tree.heading("result", text="Результат")
-        self.history_tree.heading("old", text="Старый PDF")
-        self.history_tree.heading("new", text="Новый PDF")
-        self.history_tree.heading("out", text="Папка вывода")
-        self.history_tree.heading("run", text="Папка запуска")
+        self.history_tree = ttk.Treeview(self.history_tab, columns=cols, show="headings", selectmode="browse")
+        self.history_tree.heading("ts", text=self._tr("hist_col_time"))
+        self.history_tree.heading("result", text=self._tr("hist_col_result"))
+        self.history_tree.heading("old", text=self._tr("hist_col_old"))
+        self.history_tree.heading("new", text=self._tr("hist_col_new"))
+        self.history_tree.heading("out", text=self._tr("hist_col_out"))
+        self.history_tree.heading("run", text=self._tr("hist_col_run"))
         self.history_tree.column("ts", width=150, anchor="w")
         self.history_tree.column("result", width=90, anchor="center")
         self.history_tree.column("old", width=190, anchor="w")
@@ -276,33 +573,37 @@ class PDFCompareApp:
         self.history_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
         self.history_tree.bind("<Double-1>", self._on_history_double_click)
 
-        hist_scroll = ttk.Scrollbar(history_tab, orient=tk.VERTICAL, command=self.history_tree.yview)
+        hist_scroll = ttk.Scrollbar(self.history_tab, orient=tk.VERTICAL, command=self.history_tree.yview)
         hist_scroll.pack(fill=tk.Y, side=tk.RIGHT)
         self.history_tree.configure(yscrollcommand=hist_scroll.set)
 
-        ttk.Label(
-            history_tab,
-            text="Двойной клик по строке восстанавливает файлы, папку вывода и параметры.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", pady=(8, 0))
+        self.history_hint_label = ttk.Label(self.history_tab, text=self._tr("hist_hint"), style="Hint.TLabel")
+        self.history_hint_label.pack(anchor="w", pady=(8, 0))
 
-    def _path_row(self, parent: ttk.Frame, title: str, var: tk.StringVar, pick_cmd: Callable[[], None]) -> None:
+        self._sync_lang_combo()
+        self._apply_locale()
+
+    def _path_row(
+        self, parent: ttk.Frame, var: tk.StringVar, pick_cmd: Callable[[], None]
+    ) -> tuple[ttk.Label, ttk.Button]:
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=4)
-        ttk.Label(row, text=title, width=20).pack(side=tk.LEFT)
+        label = ttk.Label(row, text="", width=20)
+        label.pack(side=tk.LEFT)
         entry = ttk.Entry(row, textvariable=var)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(row, text="Выбрать...", style="Small.TButton", command=pick_cmd).pack(side=tk.LEFT, padx=(8, 0))
+        btn = ttk.Button(row, text=self._tr("btn_select"), style="Small.TButton", command=pick_cmd)
+        btn.pack(side=tk.LEFT, padx=(8, 0))
+        return label, btn
 
     def _toggle_options(self) -> None:
         self.options_expanded = not self.options_expanded
         if self.options_body is not None and self.options_toggle_btn is not None:
             if self.options_expanded:
                 self.options_body.pack(fill=tk.X, pady=(0, 10))
-                self.options_toggle_btn.configure(text="Параметры ▴")
             else:
                 self.options_body.pack_forget()
-                self.options_toggle_btn.configure(text="Параметры ▾")
+            self.options_toggle_btn.configure(text=self._tr("opts_expanded" if self.options_expanded else "opts_collapsed"))
 
     def _draw_drop_zone(self) -> None:
         if self.drop_canvas is None:
@@ -317,14 +618,14 @@ class PDFCompareApp:
         c.create_text(
             w / 2,
             h / 2 + 14,
-            text="Перетащите 2 файла PDF сюда",
+            text=self._tr("drop_primary"),
             font=("Segoe UI", 15, "bold"),
             fill="#293648",
         )
         c.create_text(
             w / 2,
             h / 2 + 40,
-            text="или используйте кнопки ниже",
+            text=self._tr("drop_secondary"),
             font=("Segoe UI", 10),
             fill="#5f6f87",
         )
@@ -339,7 +640,10 @@ class PDFCompareApp:
         old_name = short_name(self.old_pdf.get().strip())
         new_name = short_name(self.new_pdf.get().strip())
         if old_name or new_name:
-            self.drop_badges_var.set(f"Старый: {old_name or 'не выбран'}   |   Новый: {new_name or 'не выбран'}")
+            self.drop_badges_var.set(
+                f"{self._tr('badge_old')}: {old_name or self._tr('badge_not_selected')}   |   "
+                f"{self._tr('badge_new')}: {new_name or self._tr('badge_not_selected')}"
+            )
         else:
             self.drop_badges_var.set("")
 
@@ -406,6 +710,9 @@ class PDFCompareApp:
             if isinstance(data, dict):
                 last_inputs = data.get("last_inputs")
                 history = data.get("history")
+                lang = str(data.get("language") or "").strip().lower()
+                if lang in I18N:
+                    self.lang.set(lang)
                 if isinstance(last_inputs, dict):
                     self.last_inputs = last_inputs
                 if isinstance(history, list):
@@ -417,6 +724,7 @@ class PDFCompareApp:
     def _save_state(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         payload = {
+            "language": self.lang.get(),
             "last_inputs": self._capture_inputs(),
             "history": self.history_records[-300:],
         }
@@ -425,13 +733,13 @@ class PDFCompareApp:
     def _restore_last_inputs(self, startup: bool = False) -> None:
         if not self.last_inputs:
             if not startup:
-                self.status.set("Сохраненных данных пока нет.")
+                self._set_status("status_no_saved")
             return
         self._apply_inputs(self.last_inputs)
         if startup:
-            self.status.set("Предыдущие параметры восстановлены из локальной истории.")
+            self._set_status("status_restored_startup")
         else:
-            self.status.set("Восстановлены последние сохраненные параметры.")
+            self._set_status("status_restored")
 
     def _refresh_history_table(self) -> None:
         self._history_by_iid.clear()
@@ -443,13 +751,13 @@ class PDFCompareApp:
             iid = str(rec_idx)
             result = str(rec.get("result") or "").upper()
             if result == "DONE":
-                result = "Готово"
+                result = self._tr("hist_result_done")
             elif result == "ERROR":
-                result = "Ошибка"
+                result = self._tr("hist_result_error")
             elif result == "SNAPSHOT":
-                result = "Снимок"
+                result = self._tr("hist_result_snapshot")
             else:
-                result = "Готово" if result == "OK" else result
+                result = self._tr("hist_result_done") if result == "OK" else result
             old_name = Path(str(rec.get("old_pdf") or "")).name
             new_name = Path(str(rec.get("new_pdf") or "")).name
             out_name = Path(str(rec.get("out_dir") or "")).name
@@ -477,32 +785,32 @@ class PDFCompareApp:
     def _restore_selected_history(self) -> None:
         rec = self._get_selected_history()
         if not rec:
-            self.status.set("Сначала выберите строку в истории.")
+            self._set_status("status_select_history_first")
             return
         data = dict(rec)
         data["last_run_dir"] = rec.get("run_dir", "")
         self._apply_inputs(data)
         old_ok = Path(self.old_pdf.get()).exists() if self.old_pdf.get() else False
         new_ok = Path(self.new_pdf.get()).exists() if self.new_pdf.get() else False
-        msg = "Данные из истории восстановлены."
+        msg = self._tr("status_history_restored")
         if not old_ok or not new_ok:
-            msg += " Внимание: один или оба PDF-файла не найдены."
+            msg += f" {self._tr('status_history_missing_files')}"
         self.status.set(msg)
 
     def _open_selected_history_run(self) -> None:
         rec = self._get_selected_history()
         if not rec:
-            self.status.set("Сначала выберите строку в истории.")
+            self._set_status("status_select_history_first")
             return
         run_dir = str(rec.get("run_dir") or "").strip()
         if not run_dir:
-            self.status.set("Для выбранной строки нет папки запуска.")
+            self._set_status("status_history_no_run")
             return
         p = Path(run_dir)
         if p.exists():
             os.startfile(str(p))
         else:
-            messagebox.showerror("Папка не найдена", f"Не найдено:\n{p}")
+            messagebox.showerror(self._tr("err_folder_missing_title"), self._tr("err_not_found", path=p))
 
     def _on_history_double_click(self, event: tk.Event) -> None:
         self._restore_selected_history()
@@ -521,7 +829,7 @@ class PDFCompareApp:
                 "run_dir": "",
             }
         )
-        self.status.set("Текущие параметры сохранены в историю.")
+        self._set_status("status_snapshot_saved")
 
     def _add_history_record(self, rec: dict[str, Any]) -> None:
         self.history_records.append(rec)
@@ -534,50 +842,50 @@ class PDFCompareApp:
         self.root.update_idletasks()
         try:
             self._drop_hook = WindowsDropHook(self.root, self._handle_dropped_files)
-            self.status.set("Перетащите 2 PDF-файла и нажмите Enter для запуска.")
+            self._set_status("status_initial")
         except Exception as exc:
             self._drop_hook = None
-            self.status.set(f"Перетаскивание недоступно ({exc}). Используйте кнопки «Выбрать...».")
+            self._set_status("status_drag_unavailable", error=str(exc))
 
     def _handle_dropped_files(self, paths: Iterable[Path]) -> None:
         pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
         if not pdfs:
-            self.status.set("В перетаскиваемых элементах нет PDF-файлов.")
+            self._set_status("status_drop_no_pdf")
             return
 
         if len(pdfs) >= 2:
             self.old_pdf.set(str(pdfs[0]))
             self.new_pdf.set(str(pdfs[1]))
-            self.status.set("Загружены 2 PDF-файла. Нажмите Enter для запуска.")
+            self._set_status("status_drop_loaded_two")
             self._save_state()
             return
 
         one = str(pdfs[0])
         if not self.old_pdf.get():
             self.old_pdf.set(one)
-            self.status.set("Выбран старый PDF. Добавьте новый PDF или нажмите «Выбрать...».")
+            self._set_status("status_drop_set_old")
         elif not self.new_pdf.get():
             self.new_pdf.set(one)
-            self.status.set("Выбран новый PDF. Нажмите Enter для запуска.")
+            self._set_status("status_drop_set_new")
         else:
             self.new_pdf.set(one)
-            self.status.set("Новый PDF заменен. Нажмите Enter для запуска.")
+            self._set_status("status_drop_replaced_new")
         self._save_state()
 
     def _pick_old_pdf(self) -> None:
-        p = filedialog.askopenfilename(title="Выберите старый PDF", filetypes=[("PDF", "*.pdf")])
+        p = filedialog.askopenfilename(title=self._tr("dlg_pick_old"), filetypes=[("PDF", "*.pdf")])
         if p:
             self.old_pdf.set(p)
             self._save_state()
 
     def _pick_new_pdf(self) -> None:
-        p = filedialog.askopenfilename(title="Выберите новый PDF", filetypes=[("PDF", "*.pdf")])
+        p = filedialog.askopenfilename(title=self._tr("dlg_pick_new"), filetypes=[("PDF", "*.pdf")])
         if p:
             self.new_pdf.set(p)
             self._save_state()
 
     def _pick_out_dir(self) -> None:
-        p = filedialog.askdirectory(title="Выберите папку вывода")
+        p = filedialog.askdirectory(title=self._tr("dlg_pick_out"))
         if p:
             self.out_dir.set(p)
             self._save_state()
@@ -593,7 +901,7 @@ class PDFCompareApp:
         self.last_run_dir = None
         self.open_report_btn.configure(state=tk.DISABLED)
         self.open_run_btn.configure(state=tk.DISABLED)
-        self.status.set("Поля очищены.")
+        self._set_status("status_cleared")
         self._save_state()
 
     def _on_enter(self, event: tk.Event) -> None:
@@ -607,20 +915,20 @@ class PDFCompareApp:
         old = Path(self.old_pdf.get().strip()) if self.old_pdf.get().strip() else None
         new = Path(self.new_pdf.get().strip()) if self.new_pdf.get().strip() else None
         if not old or not old.exists():
-            messagebox.showerror("Файл не найден", "Выберите корректный старый PDF-файл.")
+            messagebox.showerror(self._tr("err_file_missing_title"), self._tr("err_old_missing"))
             return
         if not new or not new.exists():
-            messagebox.showerror("Файл не найден", "Выберите корректный новый PDF-файл.")
+            messagebox.showerror(self._tr("err_file_missing_title"), self._tr("err_new_missing"))
             return
         if old.resolve() == new.resolve():
-            messagebox.showerror("Некорректный ввод", "Старый и новый PDF-файлы должны отличаться.")
+            messagebox.showerror(self._tr("err_invalid_input_title"), self._tr("err_same_files"))
             return
 
         out = self.out_dir.get().strip()
         if not out:
-            selected = filedialog.askdirectory(title="Выберите папку вывода")
+            selected = filedialog.askdirectory(title=self._tr("dlg_pick_out"))
             if not selected:
-                self.status.set("Запуск отменен: не выбрана папка вывода.")
+                self._set_status("status_run_cancel_no_out")
                 return
             self.out_dir.set(selected)
             out = selected
@@ -631,20 +939,20 @@ class PDFCompareApp:
             dpi = int(self.dpi.get().strip())
             stroke_tol = float(self.stroke_tol.get().strip())
         except ValueError:
-            messagebox.showerror("Некорректный параметр", "DPI должен быть целым числом, допуск штриха - числом.")
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_parse"))
             return
 
         if dpi < 72:
-            messagebox.showerror("Некорректный параметр", "DPI должен быть не меньше 72.")
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
             return
         if stroke_tol < 0:
-            messagebox.showerror("Некорректный параметр", "Допуск штриха должен быть не меньше 0.")
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_stroke"))
             return
 
         self.last_inputs = self._capture_inputs()
         self._save_state()
         self._set_running(True)
-        self.status.set("Сравнение запущено... Это может занять несколько минут.")
+        self._set_status("status_running")
         t = threading.Thread(
             target=self._run_worker,
             args=(old, new, out_path, dpi, stroke_tol),
@@ -680,7 +988,7 @@ class PDFCompareApp:
                     self.progress.configure(value=pct)
                     self.progress_pct.set(f"{pct:.0f}%")
                     if self.run_btn is not None:
-                        self.run_btn.configure(text=f"Сравнение... {pct:.0f}%")
+                        self.run_btn.configure(text=self._tr("btn_running", pct=pct))
                     self.status.set(f"{msg} ({pct:.0f}%)")
                 elif kind == "done":
                     run_dir: Path = event[1]
@@ -691,7 +999,7 @@ class PDFCompareApp:
                     self.progress_pct.set("100%")
                     self.open_report_btn.configure(state=tk.NORMAL)
                     self.open_run_btn.configure(state=tk.NORMAL)
-                    self.status.set(f"Готово. Отчет: {run_dir / 'report_bundle' / 'index.html'}")
+                    self._set_status("status_done", path=run_dir / "report_bundle" / "index.html")
                     self._add_history_record(
                         {
                             "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -704,13 +1012,13 @@ class PDFCompareApp:
                             "run_dir": str(run_dir),
                         }
                     )
-                    messagebox.showinfo("Готово", f"Сравнение завершено.\n\nПапка запуска:\n{run_dir}")
+                    messagebox.showinfo(self._tr("dlg_done_title"), self._tr("dlg_done_body", run_dir=run_dir))
                 elif kind == "error":
                     self._set_running(False)
                     err = event[1]
                     tb = event[2]
                     old, new, out_dir, dpi, stroke_tol = event[3], event[4], event[5], event[6], event[7]
-                    self.status.set(f"Ошибка: {err}")
+                    self._set_status("status_error", error=err)
                     self._add_history_record(
                         {
                             "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -724,7 +1032,7 @@ class PDFCompareApp:
                             "error": err,
                         }
                     )
-                    messagebox.showerror("Ошибка", f"{err}\n\n{tb}")
+                    messagebox.showerror(self._tr("dlg_error_title"), f"{err}\n\n{tb}")
         except queue.Empty:
             pass
         finally:
@@ -736,11 +1044,11 @@ class PDFCompareApp:
             self.progress.configure(value=0.0)
             self.progress_pct.set("0%")
             self.run_btn.configure(state=tk.DISABLED)
-            self.run_btn.configure(text="Сравнение... 0%")
+            self.run_btn.configure(text=self._tr("btn_running", pct=0))
             self.open_report_btn.configure(state=tk.DISABLED)
             self.open_run_btn.configure(state=tk.DISABLED)
         else:
-            self.run_btn.configure(text="Сравнить (Enter)")
+            self.run_btn.configure(text=self._tr("btn_run"))
             self._update_run_availability()
 
     def _open_report(self) -> None:
@@ -750,7 +1058,7 @@ class PDFCompareApp:
         if report_html.exists():
             os.startfile(str(report_html))
         else:
-            messagebox.showerror("Файл не найден", f"Не найдено:\n{report_html}")
+            messagebox.showerror(self._tr("err_file_missing_title"), self._tr("err_not_found", path=report_html))
 
     def _open_run_folder(self) -> None:
         if not self.last_run_dir:
@@ -758,7 +1066,7 @@ class PDFCompareApp:
         if self.last_run_dir.exists():
             os.startfile(str(self.last_run_dir))
         else:
-            messagebox.showerror("Папка не найдена", f"Не найдено:\n{self.last_run_dir}")
+            messagebox.showerror(self._tr("err_folder_missing_title"), self._tr("err_not_found", path=self.last_run_dir))
 
     def _on_close(self) -> None:
         self._save_state()
