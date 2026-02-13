@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import threading
+import time
 import traceback
 import tkinter as tk
 from datetime import datetime
@@ -985,13 +986,13 @@ class PDFCompareApp:
         self._set_status("status_running")
         t = threading.Thread(
             target=self._run_worker,
-            args=(old, new, out_path, dpi, stroke_tol),
+            args=(old, new, out_path, dpi, stroke_tol, self.lang.get()),
             daemon=True,
         )
         self.worker_thread = t
         t.start()
 
-    def _run_worker(self, old: Path, new: Path, out_path: Path, dpi: int, stroke_tol: float) -> None:
+    def _run_worker(self, old: Path, new: Path, out_path: Path, dpi: int, stroke_tol: float, report_lang: str) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
                 if self.cancel_requested.is_set():
@@ -1004,6 +1005,7 @@ class PDFCompareApp:
                 out_path,
                 high_dpi=dpi,
                 stroke_tol_px=stroke_tol,
+                report_lang=report_lang,
                 progress_cb=report_progress,
             )
             if self.cancel_requested.is_set():
@@ -1134,6 +1136,21 @@ class PDFCompareApp:
     def _on_close(self) -> None:
         if self.running:
             self.cancel_requested.set()
+            self._set_status("status_cancel_requested")
+            deadline = time.monotonic() + 3.0
+            while True:
+                worker = self.worker_thread
+                if worker is None:
+                    break
+                worker.join(timeout=0.05)
+                if not worker.is_alive():
+                    break
+                if time.monotonic() >= deadline:
+                    break
+                try:
+                    self.root.update_idletasks()
+                except Exception:
+                    break
         self._save_state()
         if self._drop_hook is not None:
             try:

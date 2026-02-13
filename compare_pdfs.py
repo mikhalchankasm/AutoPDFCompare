@@ -7,6 +7,7 @@ import html
 import json
 import re
 import shutil
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -538,6 +539,7 @@ def write_summary_md(
     file_b: Path,
     pairs: Sequence[MatchPair],
     details: Sequence[dict],
+    lang: str = "ru",
 ) -> None:
     matched = sum(1 for p in pairs if p.status == "matched")
     added = sum(1 for p in pairs if p.status == "added")
@@ -545,22 +547,41 @@ def write_summary_md(
     unchanged = sum(1 for d in details if d["status"] == "matched" and d["change_level"] == "unchanged")
     changed = matched - unchanged
 
-    lines = [
-        "# Отчет сравнения PDF",
-        "",
-        f"- Документ A: `{file_a.name}`",
-        f"- Документ B: `{file_b.name}`",
-        f"- Сопоставленных листов: **{matched}**",
-        f"- Листов с изменениями: **{changed}**",
-        f"- Листов без изменений: **{unchanged}**",
-        f"- Добавлено листов в B: **{added}**",
-        f"- Удалено листов из A: **{removed}**",
-        "",
-        "## Карта соответствия листов",
-        "",
-        "| Лист A | Лист B | статус | оценка | разница % | уровень |",
-        "|---:|---:|---|---:|---:|---|",
-    ]
+    en = str(lang).lower().startswith("en")
+    if en:
+        lines = [
+            "# PDF Compare Report",
+            "",
+            f"- Document A: `{file_a.name}`",
+            f"- Document B: `{file_b.name}`",
+            f"- Matched pages: **{matched}**",
+            f"- Changed pages: **{changed}**",
+            f"- Unchanged pages: **{unchanged}**",
+            f"- Added in B: **{added}**",
+            f"- Removed from A: **{removed}**",
+            "",
+            "## Page mapping",
+            "",
+            "| A page | B page | status | score | diff % | level |",
+            "|---:|---:|---|---:|---:|---|",
+        ]
+    else:
+        lines = [
+            "# Отчет сравнения PDF",
+            "",
+            f"- Документ A: `{file_a.name}`",
+            f"- Документ B: `{file_b.name}`",
+            f"- Сопоставленных листов: **{matched}**",
+            f"- Листов с изменениями: **{changed}**",
+            f"- Листов без изменений: **{unchanged}**",
+            f"- Добавлено листов в B: **{added}**",
+            f"- Удалено листов из A: **{removed}**",
+            "",
+            "## Карта соответствия листов",
+            "",
+            "| Лист A | Лист B | статус | оценка | разница % | уровень |",
+            "|---:|---:|---|---:|---:|---|",
+        ]
     for d in details:
         a = "-" if d["a_page"] is None else str(d["a_page"])
         b = "-" if d["b_page"] is None else str(d["b_page"])
@@ -571,7 +592,8 @@ def write_summary_md(
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_engineer_report_md(out_path: Path, file_a: Path, file_b: Path, details: Sequence[dict]) -> None:
+def write_engineer_report_md(out_path: Path, file_a: Path, file_b: Path, details: Sequence[dict], lang: str = "ru") -> None:
+    en = str(lang).lower().startswith("en")
     matched = [d for d in details if d["status"] == "matched"]
     added = [d for d in details if d["status"] == "added"]
     removed = [d for d in details if d["status"] == "removed"]
@@ -582,79 +604,103 @@ def write_engineer_report_md(out_path: Path, file_a: Path, file_b: Path, details
     moderate = [d for d in matched if d["change_level"] == "moderate"]
     major = [d for d in matched if d["change_level"] == "major"]
 
-    lines = [
-        "# Инженерный отчёт сравнения PDF",
-        "",
-        f"- Базовый документ (A): `{file_a.name}`",
-        f"- Новый документ (B): `{file_b.name}`",
-        "",
-        "## Краткий итог",
-        "",
-        f"- Сопоставлено листов: **{len(matched)}**",
-        f"- Добавлено листов в B: **{len(added)}**",
-        f"- Удалено листов из A: **{len(removed)}**",
-        f"- Без изменений: **{len(unchanged)}**",
-        f"- Небольшие изменения: **{len(minor)}**",
-        f"- Заметные изменения: **{len(moderate)}**",
-        f"- Сильные изменения: **{len(major)}**",
-    ]
+    if en:
+        lines = [
+            "# Engineering PDF Compare Report",
+            "",
+            f"- Base document (A): `{file_a.name}`",
+            f"- New document (B): `{file_b.name}`",
+            "",
+            "## Summary",
+            "",
+            f"- Matched sheets: **{len(matched)}**",
+            f"- Added in B: **{len(added)}**",
+            f"- Removed from A: **{len(removed)}**",
+            f"- Unchanged: **{len(unchanged)}**",
+            f"- Minor changes: **{len(minor)}**",
+            f"- Moderate changes: **{len(moderate)}**",
+            f"- Major changes: **{len(major)}**",
+        ]
+    else:
+        lines = [
+            "# Инженерный отчёт сравнения PDF",
+            "",
+            f"- Базовый документ (A): `{file_a.name}`",
+            f"- Новый документ (B): `{file_b.name}`",
+            "",
+            "## Краткий итог",
+            "",
+            f"- Сопоставлено листов: **{len(matched)}**",
+            f"- Добавлено листов в B: **{len(added)}**",
+            f"- Удалено листов из A: **{len(removed)}**",
+            f"- Без изменений: **{len(unchanged)}**",
+            f"- Небольшие изменения: **{len(minor)}**",
+            f"- Заметные изменения: **{len(moderate)}**",
+            f"- Сильные изменения: **{len(major)}**",
+        ]
 
     if size_mismatch:
-        lines.append(f"- Несовместимый формат листа: **{len(size_mismatch)}**")
+        lines.append(
+            f"- {'Incompatible sheet format' if en else 'Несовместимый формат листа'}: **{len(size_mismatch)}**"
+        )
 
     lines.extend(
         [
             "",
-            "## Добавленные листы",
+            "## Added sheets" if en else "## Добавленные листы",
             "",
         ]
     )
     if added:
         for d in added:
-            lines.append(f"- B{d['b_page']}: новый лист в ревизии")
+            lines.append(f"- B{d['b_page']}: {'new sheet in revision' if en else 'новый лист в ревизии'}")
     else:
-        lines.append("- Нет")
+        lines.append("- None" if en else "- Нет")
 
     lines.extend(
         [
             "",
-            "## Удалённые листы",
+            "## Removed sheets" if en else "## Удалённые листы",
             "",
         ]
     )
     if removed:
         for d in removed:
-            lines.append(f"- A{d['a_page']}: лист отсутствует в новой ревизии")
+            lines.append(f"- A{d['a_page']}: {'sheet missing in new revision' if en else 'лист отсутствует в новой ревизии'}")
     else:
-        lines.append("- Нет")
+        lines.append("- None" if en else "- Нет")
 
     def emit_changes(title: str, rows: Sequence[dict]) -> None:
         lines.extend(["", f"## {title}", ""])
         if not rows:
-            lines.append("- Нет")
+            lines.append("- None" if en else "- Нет")
             return
         for d in sorted(rows, key=lambda x: (x.get("diff_percent") or 0.0), reverse=True):
             lines.append(
-                f"- A{d['a_page']} -> B{d['b_page']}: разница={d['diff_percent']:.3f}%"
+                f"- A{d['a_page']} -> B{d['b_page']}: {'diff' if en else 'разница'}={d['diff_percent']:.3f}%"
                 f", bbox={d['bboxes_count']}"
             )
 
-    emit_changes("Без изменений", unchanged)
-    emit_changes("Небольшие изменения", minor)
-    emit_changes("Заметные изменения", moderate)
-    emit_changes("Сильные изменения", major)
+    emit_changes("Unchanged" if en else "Без изменений", unchanged)
+    emit_changes("Minor changes" if en else "Небольшие изменения", minor)
+    emit_changes("Moderate changes" if en else "Заметные изменения", moderate)
+    emit_changes("Major changes" if en else "Сильные изменения", major)
 
     if size_mismatch:
-        lines.extend(["", "## Несовместимый формат листа", ""])
+        lines.extend(["", "## Incompatible sheet format" if en else "## Несовместимый формат листа", ""])
         for d in size_mismatch:
-            lines.append(f"- A{d['a_page']} -> B{d['b_page']}: размеры листов не совпадают")
+            lines.append(
+                f"- A{d['a_page']} -> B{d['b_page']}: {'sheet sizes do not match' if en else 'размеры листов не совпадают'}"
+            )
 
     lines.extend(
         [
             "",
-            "## Примечание",
+            "## Note" if en else "## Примечание",
             "",
-            "- Для каждой сопоставленной пары есть папка `pages/<seq>__A_<n>__B_<m>/` c `overlay.png`, `mask.png`, `bboxes.json`.",
+            "- Each mapped pair has a folder `pages/<seq>__A_<n>__B_<m>/` with `overlay.png`, `mask.png`, `bboxes.json`."
+            if en
+            else "- Для каждой сопоставленной пары есть папка `pages/<seq>__A_<n>__B_<m>/` c `overlay.png`, `mask.png`, `bboxes.json`.",
         ]
     )
 
@@ -698,6 +744,44 @@ def copy_thumb(src: Path | None, dst: Path, max_w: int = 420) -> None:
     imwrite_compat(dst, img)
 
 
+def build_compact_report_zip(run_dir: Path, zip_base: Path) -> Path:
+    """Create shareable zip with report_bundle + only files required for HTML navigation."""
+    zip_path = Path(str(zip_base) + ".zip")
+    pages_allow = {
+        "a.png",
+        "a_preview.png",
+        "b.png",
+        "b_preview.png",
+        "overlay.png",
+        "bbox_overlay.png",
+        "bboxes.json",
+    }
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        report_bundle = run_dir / "report_bundle"
+        if report_bundle.exists():
+            for fp in report_bundle.rglob("*"):
+                if fp.is_file():
+                    zf.write(fp, arcname=str(fp.relative_to(run_dir)).replace("\\", "/"))
+
+        pages_dir = run_dir / "pages"
+        if pages_dir.exists():
+            for pair_dir in pages_dir.iterdir():
+                if not pair_dir.is_dir():
+                    continue
+                for fp in pair_dir.iterdir():
+                    if fp.is_file() and fp.name in pages_allow:
+                        zf.write(fp, arcname=str(fp.relative_to(run_dir)).replace("\\", "/"))
+
+        # Keep lightweight run-level summaries.
+        for name in ("summary.json", "summary.md", "engineer_report.md", "page_map.csv"):
+            fp = run_dir / name
+            if fp.exists() and fp.is_file():
+                zf.write(fp, arcname=name)
+
+    return zip_path
+
+
 def generate_html_report(
     run_dir: Path,
     file_a: Path,
@@ -705,13 +789,204 @@ def generate_html_report(
     details: Sequence[dict],
     high_dpi: int,
     stroke_tol_px: float,
+    report_lang: str = "ru",
     progress_cb: Callable[[float, str], None] | None = None,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
-    emit(2, "Подготовка папки отчета...")
+    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
+    t = {
+        "ru": {
+            "progress_prepare_bundle": "Подготовка папки отчета...",
+            "progress_prepare_pages": "Подготовка страниц отчета {idx}/{total}",
+            "progress_generate_view": "Генерация HTML вида {idx}/{total}",
+            "progress_pack_zip": "Упаковка report.zip...",
+            "status_new_sheet": "новый лист",
+            "status_changed_short": "Есть изменения",
+            "status_unchanged_short": "без изменений",
+            "note_new_only": "Лист присутствует только в новом документе.",
+            "note_removed_in_b": "Лист отсутствует в новом документе (удален относительно A).",
+            "note_no_significant": "Существенные изменения не обнаружены.",
+            "note_visual_changes": "Обнаружены изменения визуального содержимого: разница={d:.3f}%.",
+            "note_ecc_failed": "ECC-выравнивание не сошлось, сравнение выполнено без выравнивания.",
+            "nav_sheet_word": "лист",
+            "conf_exact": "точное",
+            "conf_probable": "вероятное",
+            "conf_none": "нет",
+            "status_col_changed": "ИЗМЕНЕН",
+            "status_col_unchanged": "БЕЗ ИЗМЕНЕНИЙ",
+            "status_col_added": "НОВЫЙ",
+            "status_col_removed": "УДАЛЕН",
+            "level_major": "КРУПНЫЕ",
+            "level_moderate": "СРЕДНИЕ",
+            "level_minor": "МАЛЫЕ",
+            "level_unchanged": "БЕЗ ИЗМЕНЕНИЙ",
+            "pv_old": "СТАР",
+            "pv_new": "НОВ",
+            "pv_diff": "ДИФ",
+            "pv_new_pill": "НОВЫЙ",
+            "pv_removed_pill": "УДАЛЕН",
+            "pv_preview_pill": "ПРЕВЬЮ",
+            "title_matrix": "Сводка сравнения PDF - матрица изменений",
+            "subtitle_docs": "Документ A: {a} ({ac} листов) → Документ B: {b} ({bc} листов)",
+            "chip_all": "Все",
+            "chip_changed": "Есть изменения",
+            "chip_added": "Новый лист",
+            "chip_removed": "Удален",
+            "chip_major": "Крупные",
+            "chip_moderate": "Средние",
+            "chip_minor": "Малые",
+            "search_sheet": "Поиск листа...",
+            "th_seq_b": "Порядок (B)",
+            "th_a_page": "Лист A",
+            "th_b_page": "Лист B",
+            "th_status": "Статус",
+            "th_level": "Уровень изменений",
+            "th_diff": "Разница %",
+            "th_boxes": "Δ зоны",
+            "th_preview": "Превью",
+            "th_open": "Открыть",
+            "empty_filter": "Нет листов по выбранному фильтру.",
+            "summary_title": "Сводка",
+            "summary_changed": "Есть изменения:",
+            "summary_added": "Новые листы:",
+            "summary_removed": "Удалено листов:",
+            "summary_unchanged": "Без изменений:",
+            "legend_title": "Легенда",
+            "legend_major_desc": "существенные изменения",
+            "legend_moderate_desc": "заметные изменения",
+            "legend_minor_desc": "небольшие изменения",
+            "legend_added_desc": "лист добавлен в B",
+            "legend_removed_desc": "удален / отсутствует",
+            "foot_open_row": "Нажмите строку для детального просмотра СТАРЫЙ / НОВЫЙ / РАЗНИЦА",
+            "open_sheet_title": "Открыть лист",
+            "nav_title": "Навигация по листам",
+            "back_summary": "← К сводке",
+            "summary_preview_title": "Превью сводки",
+            "search_hint": "Поиск (например, 5)",
+            "old_document": "Старый документ",
+            "new_document": "Новый документ",
+            "moved_label": "перемещен",
+            "conf_label": "уверенность",
+            "diff_label": "разница",
+            "open_old_win": "Открыть <span class=\"tag tag-old\">СТАРЫЙ</span> в приложении Windows",
+            "open_new_win": "Открыть <span class=\"tag tag-new\">НОВЫЙ</span> в приложении Windows",
+            "open_diff_win": "Открыть <span class=\"tag tag-diff\">РАЗНИЦА</span> в приложении Windows",
+            "slider_mode": "↔ Режим сравнения (слайдер)",
+            "cap_old": "СТАРЫЙ",
+            "cap_new": "НОВЫЙ",
+            "cap_diff": "РАЗНИЦА",
+            "no_data": "нет данных",
+            "prev_page": "← предыдущий",
+            "next_page": "следующий →",
+            "slider_title_page": "Слайдер сравнения лист {b}",
+            "slider_mode_title": "Режим сравнения (слайдер)",
+            "slider_subtitle": "{a_name} лист {a_idx} ↔ {b_name} лист {b_idx}",
+            "back_to_sheet": "Назад к листу",
+            "fit_to_window": "Вписать в окно",
+            "slider_old": "СТАРЫЙ",
+            "slider_new": "НОВЫЙ",
+            "slider_zoom": "Масштаб",
+            "slider_help": "Режим 1:1 по умолчанию. ЛКМ по чертежу — двигать разделитель, ПКМ+перетаскивание — панорамирование, Ctrl+колесо — масштаб внутри этого окна.",
+        },
+        "en": {
+            "progress_prepare_bundle": "Preparing report bundle...",
+            "progress_prepare_pages": "Preparing report pages {idx}/{total}",
+            "progress_generate_view": "Generating HTML view {idx}/{total}",
+            "progress_pack_zip": "Packing report.zip...",
+            "status_new_sheet": "new sheet",
+            "status_changed_short": "Changed",
+            "status_unchanged_short": "unchanged",
+            "note_new_only": "Sheet exists only in the new document.",
+            "note_removed_in_b": "Sheet is missing in the new document (removed vs A).",
+            "note_no_significant": "No significant changes detected.",
+            "note_visual_changes": "Visual content changes detected: diff={d:.3f}%.",
+            "note_ecc_failed": "ECC alignment failed; comparison was performed without alignment.",
+            "nav_sheet_word": "sheet",
+            "conf_exact": "exact",
+            "conf_probable": "probable",
+            "conf_none": "none",
+            "status_col_changed": "CHANGED",
+            "status_col_unchanged": "UNCHANGED",
+            "status_col_added": "ADDED",
+            "status_col_removed": "REMOVED",
+            "level_major": "MAJOR",
+            "level_moderate": "MODERATE",
+            "level_minor": "MINOR",
+            "level_unchanged": "UNCHANGED",
+            "pv_old": "OLD",
+            "pv_new": "NEW",
+            "pv_diff": "DIFF",
+            "pv_new_pill": "ADDED",
+            "pv_removed_pill": "REMOVED",
+            "pv_preview_pill": "PREVIEW",
+            "title_matrix": "PDF Compare Summary - Change Matrix",
+            "subtitle_docs": "Doc A: {a} ({ac} sheets) → Doc B: {b} ({bc} sheets)",
+            "chip_all": "All",
+            "chip_changed": "Changed",
+            "chip_added": "Added",
+            "chip_removed": "Removed",
+            "chip_major": "Major",
+            "chip_moderate": "Moderate",
+            "chip_minor": "Minor",
+            "search_sheet": "Search sheet...",
+            "th_seq_b": "Seq (B)",
+            "th_a_page": "A page",
+            "th_b_page": "B page",
+            "th_status": "Status",
+            "th_level": "Change level",
+            "th_diff": "Diff %",
+            "th_boxes": "Δ boxes",
+            "th_preview": "Preview",
+            "th_open": "Open",
+            "empty_filter": "No pages match current filter.",
+            "summary_title": "Summary",
+            "summary_changed": "Changed:",
+            "summary_added": "Added:",
+            "summary_removed": "Removed:",
+            "summary_unchanged": "Unchanged:",
+            "legend_title": "Legend",
+            "legend_major_desc": "significant change",
+            "legend_moderate_desc": "visible change",
+            "legend_minor_desc": "small change",
+            "legend_added_desc": "new sheet in B",
+            "legend_removed_desc": "removed / missing",
+            "foot_open_row": "Click a row to open OLD / NEW / DIFF detailed view",
+            "open_sheet_title": "Open sheet",
+            "nav_title": "Sheet Navigation",
+            "back_summary": "← Back to Summary",
+            "summary_preview_title": "Summary preview",
+            "search_hint": "Search (e.g., 5)",
+            "old_document": "Old document",
+            "new_document": "New document",
+            "moved_label": "moved",
+            "conf_label": "confidence",
+            "diff_label": "diff",
+            "open_old_win": "Open <span class=\"tag tag-old\">OLD</span> in Windows viewer",
+            "open_new_win": "Open <span class=\"tag tag-new\">NEW</span> in Windows viewer",
+            "open_diff_win": "Open <span class=\"tag tag-diff\">DIFF</span> in Windows viewer",
+            "slider_mode": "↔ Compare mode (slider)",
+            "cap_old": "OLD",
+            "cap_new": "NEW",
+            "cap_diff": "DIFF",
+            "no_data": "n/a",
+            "prev_page": "← previous",
+            "next_page": "next →",
+            "slider_title_page": "Slider compare page {b}",
+            "slider_mode_title": "Compare mode (slider)",
+            "slider_subtitle": "{a_name} page {a_idx} ↔ {b_name} page {b_idx}",
+            "back_to_sheet": "Back to page",
+            "fit_to_window": "Fit to window",
+            "slider_old": "OLD",
+            "slider_new": "NEW",
+            "slider_zoom": "Zoom",
+            "slider_help": "1:1 mode by default. Left-click on drawing to move split, right-drag to pan, Ctrl+wheel to zoom inside this view.",
+        },
+    }[lang]
+
+    emit(2, t["progress_prepare_bundle"])
     bundle_dir = run_dir / "report_bundle"
     if bundle_dir.exists():
         shutil.rmtree(bundle_dir)
@@ -763,27 +1038,27 @@ def generate_html_report(
         status, conf, content_status, moved = status_and_confidence(row)
         if row["status"] == "added":
             status_simple = "NEW"
-            status_ru = "новый лист"
-            note = "Лист присутствует только в новом документе."
+            status_ru = t["status_new_sheet"]
+            note = t["note_new_only"]
         elif row["status"] == "removed":
             status_simple = "CHANGED"
-            status_ru = "Есть изменения"
-            note = "Лист отсутствует в новом документе (удален относительно A)."
+            status_ru = t["status_changed_short"]
+            note = t["note_removed_in_b"]
         elif content_status == "UNCHANGED":
             status_simple = "UNCHANGED"
-            status_ru = "без изменений"
-            note = "Существенные изменения не обнаружены."
+            status_ru = t["status_unchanged_short"]
+            note = t["note_no_significant"]
         else:
             status_simple = "CHANGED"
-            status_ru = "Есть изменения"
+            status_ru = t["status_changed_short"]
             d = row.get("diff_percent") or 0.0
-            note = f"Обнаружены изменения визуального содержимого: разница={d:.3f}%."
+            note = t["note_visual_changes"].format(d=d)
         if row.get("ecc_failed"):
-            note = f"{note} ECC-выравнивание не сошлось, сравнение выполнено без выравнивания."
+            note = f"{note} {t['note_ecc_failed']}"
 
         a_label = "-" if a_page is None else str(a_page)
         b_label = "-" if b_page is None else str(b_page)
-        nav_label = f"({file_a.name} лист {a_label}) - ({file_b.name} лист {b_label})"
+        nav_label = f"({file_a.name} {t['nav_sheet_word']} {a_label}) - ({file_b.name} {t['nav_sheet_word']} {b_label})"
         pages_records.append(
             {
                 "seq": seq,
@@ -812,7 +1087,7 @@ def generate_html_report(
                 },
             }
         )
-        emit(6 + 58 * (row_idx / total_details), f"Подготовка страниц отчета {row_idx}/{total_details}")
+        emit(6 + 58 * (row_idx / total_details), t["progress_prepare_pages"].format(idx=row_idx, total=total_details))
 
     pages_records.sort(key=lambda x: (x["b_index"] is None, x["b_index"] or 0, x["seq"]))
     for idx, p in enumerate(pages_records):
@@ -848,6 +1123,7 @@ def generate_html_report(
             "stroke_tolerance_px": stroke_tol_px,
             "threshold_unchanged_percent": 0.15,
             "align_mode": "ECC_AFFINE",
+            "report_lang": lang,
         },
         "summary": {"counts": counts},
         "pages": pages_records,
@@ -878,16 +1154,16 @@ def generate_html_report(
     matrix_rows: list[str] = []
     matrix_rows_data: list[dict] = []
     status_ui = {
-        "CHANGED": "ИЗМЕНЕН",
-        "UNCHANGED": "БЕЗ ИЗМЕНЕНИЙ",
-        "ADDED": "НОВЫЙ",
-        "REMOVED": "УДАЛЕН",
+        "CHANGED": t["status_col_changed"],
+        "UNCHANGED": t["status_col_unchanged"],
+        "ADDED": t["status_col_added"],
+        "REMOVED": t["status_col_removed"],
     }
     level_ui = {
-        "MAJOR": "КРУПНЫЕ",
-        "MODERATE": "СРЕДНИЕ",
-        "MINOR": "МАЛЫЕ",
-        "UNCHANGED": "БЕЗ ИЗМЕНЕНИЙ",
+        "MAJOR": t["level_major"],
+        "MODERATE": t["level_moderate"],
+        "MINOR": t["level_minor"],
+        "UNCHANGED": t["level_unchanged"],
         "": "",
     }
     diff_values = [float(p["diff_metric"]) for p in pages_records if p.get("diff_metric") is not None]
@@ -940,17 +1216,17 @@ def generate_html_report(
         if thumb_old or thumb_new or thumb_diff:
             preview_html = (
                 "<div class='pv'>"
-                f"<div><small>СТАР</small>{f'<img loading=\"lazy\" src=\"{html.escape(thumb_old)}\" alt=\"старый\"/>' if thumb_old else '<div class=\"ph\">—</div>'}</div>"
-                f"<div><small>НОВ</small>{f'<img loading=\"lazy\" src=\"{html.escape(thumb_new)}\" alt=\"новый\"/>' if thumb_new else '<div class=\"ph\">—</div>'}</div>"
-                f"<div><small>ДИФ</small>{f'<img loading=\"lazy\" src=\"{html.escape(thumb_diff)}\" alt=\"разница\"/>' if thumb_diff else '<div class=\"ph\">—</div>'}</div>"
+                f"<div><small>{html.escape(t['pv_old'])}</small>{f'<img loading=\"lazy\" src=\"{html.escape(thumb_old)}\" alt=\"old\"/>' if thumb_old else '<div class=\"ph\">—</div>'}</div>"
+                f"<div><small>{html.escape(t['pv_new'])}</small>{f'<img loading=\"lazy\" src=\"{html.escape(thumb_new)}\" alt=\"new\"/>' if thumb_new else '<div class=\"ph\">—</div>'}</div>"
+                f"<div><small>{html.escape(t['pv_diff'])}</small>{f'<img loading=\"lazy\" src=\"{html.escape(thumb_diff)}\" alt=\"diff\"/>' if thumb_diff else '<div class=\"ph\">—</div>'}</div>"
                 "</div>"
             )
         elif status_tag == "ADDED":
-            preview_html = "<div class='pv-pill'>НОВЫЙ</div>"
+            preview_html = f"<div class='pv-pill'>{html.escape(t['pv_new_pill'])}</div>"
         elif status_tag == "REMOVED":
-            preview_html = "<div class='pv-pill'>УДАЛЕН</div>"
+            preview_html = f"<div class='pv-pill'>{html.escape(t['pv_removed_pill'])}</div>"
         else:
-            preview_html = "<div class='pv-pill'>ПРЕВЬЮ</div>"
+            preview_html = f"<div class='pv-pill'>{html.escape(t['pv_preview_pill'])}</div>"
 
         status_badge_cls = {
             "CHANGED": "st-changed",
@@ -984,16 +1260,16 @@ def generate_html_report(
             f"<td style='{heat_style(diff_val, level_tag, max_diff_value)}'>{html.escape(diff_txt)}</td>"
             f"<td>{html.escape(boxes_txt)}</td>"
             f"<td>{preview_html}</td>"
-            f"<td><a class='open-link' href='{html.escape(href)}' title='Открыть лист'>&#8599;</a></td>"
+            f"<td><a class='open-link' href='{html.escape(href)}' title='{html.escape(t['open_sheet_title'])}'>&#8599;</a></td>"
             "</tr>"
         )
 
     summary_html = f"""<!doctype html>
-<html lang="ru">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Сводка сравнения PDF - матрица изменений</title>
+  <title>{html.escape(t["title_matrix"])}</title>
   <style>
     :root {{
       --bg:#f2f4f8; --panel:#ffffff; --ink:#1f2126; --muted:#5c6272; --line:#d6dbe5; --shadow:0 8px 24px rgba(0,0,0,.07);
@@ -1055,19 +1331,19 @@ def generate_html_report(
 </head>
 <body>
   <div class="wrap">
-    <h1>Сводка сравнения PDF - матрица изменений</h1>
-    <div class="sub">Документ A: {html.escape(file_a.stem)} ({page_count_a} листов) &rarr; Документ B: {html.escape(file_b.stem)} ({page_count_b} листов)</div>
+    <h1>{html.escape(t["title_matrix"])}</h1>
+    <div class="sub">{html.escape(t["subtitle_docs"].format(a=file_a.stem, ac=page_count_a, b=file_b.stem, bc=page_count_b))}</div>
     <div class="topbar">
       <div class="chips">
-        <button class="chip active" data-kind="all">Все</button>
-        <button class="chip" data-kind="status" data-value="CHANGED">Есть изменения</button>
-        <button class="chip" data-kind="status" data-value="ADDED">Новый лист</button>
-        <button class="chip" data-kind="status" data-value="REMOVED">Удален</button>
-        <button class="chip" data-kind="level" data-value="MAJOR">Крупные</button>
-        <button class="chip" data-kind="level" data-value="MODERATE">Средние</button>
-        <button class="chip" data-kind="level" data-value="MINOR">Малые</button>
+        <button class="chip active" data-kind="all">{html.escape(t["chip_all"])}</button>
+        <button class="chip" data-kind="status" data-value="CHANGED">{html.escape(t["chip_changed"])}</button>
+        <button class="chip" data-kind="status" data-value="ADDED">{html.escape(t["chip_added"])}</button>
+        <button class="chip" data-kind="status" data-value="REMOVED">{html.escape(t["chip_removed"])}</button>
+        <button class="chip" data-kind="level" data-value="MAJOR">{html.escape(t["chip_major"])}</button>
+        <button class="chip" data-kind="level" data-value="MODERATE">{html.escape(t["chip_moderate"])}</button>
+        <button class="chip" data-kind="level" data-value="MINOR">{html.escape(t["chip_minor"])}</button>
       </div>
-      <input id="sheetSearch" class="search" placeholder="Поиск листа..."/>
+      <input id="sheetSearch" class="search" placeholder="{html.escape(t["search_sheet"])}"/>
     </div>
 
     <div class="layout">
@@ -1075,44 +1351,44 @@ def generate_html_report(
         <table>
           <thead>
             <tr>
-              <th>Порядок (B)</th>
-              <th>Лист A</th>
-              <th>Лист B</th>
-              <th>Статус</th>
-              <th>Уровень изменений</th>
-              <th>Разница %</th>
-              <th>&#916; зоны</th>
-              <th>Превью</th>
-              <th>Открыть</th>
+              <th>{html.escape(t["th_seq_b"])}</th>
+              <th>{html.escape(t["th_a_page"])}</th>
+              <th>{html.escape(t["th_b_page"])}</th>
+              <th>{html.escape(t["th_status"])}</th>
+              <th>{html.escape(t["th_level"])}</th>
+              <th>{html.escape(t["th_diff"])}</th>
+              <th>{html.escape(t["th_boxes"])}</th>
+              <th>{html.escape(t["th_preview"])}</th>
+              <th>{html.escape(t["th_open"])}</th>
             </tr>
           </thead>
           <tbody id="mxBody">
             {''.join(matrix_rows)}
           </tbody>
         </table>
-        <div id="emptyMsg" class="empty" style="display:none;">Нет листов по выбранному фильтру.</div>
+        <div id="emptyMsg" class="empty" style="display:none;">{html.escape(t["empty_filter"])}</div>
       </div>
 
       <div class="aside">
         <div class="box">
-          <h3>Сводка</h3>
-          <div class="kv"><span>Есть изменения:</span><b>{changed_cnt}</b></div>
-          <div class="kv"><span>Новые листы:</span><b>{added_cnt}</b></div>
-          <div class="kv"><span>Удалено листов:</span><b>{removed_cnt}</b></div>
-          <div class="kv"><span>Без изменений:</span><b>{unchanged_cnt}</b></div>
+          <h3>{html.escape(t["summary_title"])}</h3>
+          <div class="kv"><span>{html.escape(t["summary_changed"])}</span><b>{changed_cnt}</b></div>
+          <div class="kv"><span>{html.escape(t["summary_added"])}</span><b>{added_cnt}</b></div>
+          <div class="kv"><span>{html.escape(t["summary_removed"])}</span><b>{removed_cnt}</b></div>
+          <div class="kv"><span>{html.escape(t["summary_unchanged"])}</span><b>{unchanged_cnt}</b></div>
         </div>
         <div class="box">
-          <h3>Легенда</h3>
-          <div class="lg"><span class="legend-dot lv-major">Крупные</span><span>существенные изменения</span></div>
-          <div class="lg"><span class="legend-dot lv-moderate">Средние</span><span>заметные изменения</span></div>
-          <div class="lg"><span class="legend-dot lv-minor">Малые</span><span>небольшие изменения</span></div>
-          <div class="lg"><span class="legend-dot st-added">Новый</span><span>лист добавлен в B</span></div>
-          <div class="lg"><span class="legend-dot st-removed">Удален</span><span>удален / отсутствует</span></div>
+          <h3>{html.escape(t["legend_title"])}</h3>
+          <div class="lg"><span class="legend-dot lv-major">{html.escape(t["chip_major"])}</span><span>{html.escape(t["legend_major_desc"])}</span></div>
+          <div class="lg"><span class="legend-dot lv-moderate">{html.escape(t["chip_moderate"])}</span><span>{html.escape(t["legend_moderate_desc"])}</span></div>
+          <div class="lg"><span class="legend-dot lv-minor">{html.escape(t["chip_minor"])}</span><span>{html.escape(t["legend_minor_desc"])}</span></div>
+          <div class="lg"><span class="legend-dot st-added">{html.escape(t["status_col_added"])}</span><span>{html.escape(t["legend_added_desc"])}</span></div>
+          <div class="lg"><span class="legend-dot st-removed">{html.escape(t["status_col_removed"])}</span><span>{html.escape(t["legend_removed_desc"])}</span></div>
         </div>
       </div>
     </div>
 
-    <div class="foot">Нажмите строку для детального просмотра СТАРЫЙ / НОВЫЙ / РАЗНИЦА | <a href="report.json">report.json</a></div>
+    <div class="foot">{html.escape(t["foot_open_row"])} | <a href="report.json">report.json</a></div>
   </div>
 
   <script>
@@ -1218,8 +1494,8 @@ def generate_html_report(
         a_idx = "-" if p["a_index"] is None else str(p["a_index"])
         b_idx = "-" if p["b_index"] is None else str(p["b_index"])
         diff_txt = "-" if p["diff_metric"] is None else f'{p["diff_metric"]:.3f}%'
-        moved_text = "да" if p["moved"] else "нет"
-        conf_text = {"EXACT": "точное", "PROBABLE": "вероятное", "NONE": "нет"}.get(
+        moved_text = ("yes" if p["moved"] else "no") if lang == "en" else ("да" if p["moved"] else "нет")
+        conf_text = {"EXACT": t["conf_exact"], "PROBABLE": t["conf_probable"], "NONE": t["conf_none"]}.get(
             str(p["match_confidence"]),
             str(p["match_confidence"]).lower(),
         )
@@ -1244,11 +1520,11 @@ def generate_html_report(
                 bboxes_data = []
 
         detail_html = f"""<!doctype html>
-<html lang="ru">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Лист {html.escape(b_idx)} / {html.escape(a_idx)}</title>
+  <title>{html.escape(t["nav_sheet_word"])} {html.escape(b_idx)} / {html.escape(a_idx)}</title>
   <style>
     :root {{ --bg:#f3f6fb; --panel:#fff; --ink:#1d2433; --muted:#5f6b84; --line:#d7deea; --ok:#1f8c4f; --warn:#cc3d17; --add:#0569d0; --yellow:#ffe06a; }}
     body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; color:var(--ink); background:var(--bg); }}
@@ -1303,43 +1579,43 @@ def generate_html_report(
 <body>
   <div class="app">
     <aside class="side">
-      <h3 style="margin:0">Навигация по листам</h3>
+      <h3 style="margin:0">{html.escape(t["nav_title"])}</h3>
       <div class="summary-tools">
-        <a class="back-summary" href="../index.html">← К сводке</a>
+        <a class="back-summary" href="../index.html">{html.escape(t["back_summary"])}</a>
         <a class="summary-preview" href="../index.html">
-          <div class="sp-title">Превью сводки</div>
-          <div class="sp-row"><span>Без изменений</span><b>{counts['unchanged']}</b></div>
-          <div class="sp-row"><span>Есть изменения</span><b>{counts['changed']}</b></div>
-          <div class="sp-row"><span>Новые листы</span><b>{counts['new']}</b></div>
+          <div class="sp-title">{html.escape(t["summary_preview_title"])}</div>
+          <div class="sp-row"><span>{html.escape(t["summary_unchanged"])}</span><b>{counts['unchanged']}</b></div>
+          <div class="sp-row"><span>{html.escape(t["summary_changed"])}</span><b>{counts['changed']}</b></div>
+          <div class="sp-row"><span>{html.escape(t["summary_added"])}</span><b>{counts['new']}</b></div>
         </a>
       </div>
-      <input id="search" class="search" placeholder="Поиск (например, 5)"/>
+      <input id="search" class="search" placeholder="{html.escape(t["search_hint"])}"/>
       <div id="navList" class="nav-list">{nav_html}</div>
     </aside>
     <main class="main">
       <div class="panel">
         <div class="head">
-          <div class="box"><div class="doc-title">Старый документ</div><div class="doc-sub">{html.escape(file_a.name)} | лист {html.escape(a_idx)}</div></div>
-          <div class="box"><div class="doc-title">Новый документ</div><div class="doc-sub">{html.escape(file_b.name)} | лист {html.escape(b_idx)}</div></div>
+          <div class="box"><div class="doc-title">{html.escape(t["old_document"])}</div><div class="doc-sub">{html.escape(file_a.name)} | {html.escape(t["nav_sheet_word"])} {html.escape(a_idx)}</div></div>
+          <div class="box"><div class="doc-title">{html.escape(t["new_document"])}</div><div class="doc-sub">{html.escape(file_b.name)} | {html.escape(t["nav_sheet_word"])} {html.escape(b_idx)}</div></div>
         </div>
-        <h2 style="margin:0 0 6px 0">{html.escape(p['status_ru'])} <span class="muted">| перемещен: {moved_text} | уверенность: {html.escape(conf_text)}</span></h2>
-        <div class="muted">разница: {html.escape(diff_txt)} | {html.escape(p['notes'])}</div>
+        <h2 style="margin:0 0 6px 0">{html.escape(p['status_ru'])} <span class="muted">| {html.escape(t["moved_label"])}: {moved_text} | {html.escape(t["conf_label"])}: {html.escape(conf_text)}</span></h2>
+        <div class="muted">{html.escape(t["diff_label"])}: {html.escape(diff_txt)} | {html.escape(p['notes'])}</div>
         <div class="actions">
-          {f'<button type="button" class="btn open-ext btn-old" data-src="{html.escape(old_src)}">Открыть <span class="tag tag-old">СТАРЫЙ</span> в приложении Windows</button>' if old_src else ''}
-          {f'<button type="button" class="btn open-ext btn-new" data-src="{html.escape(new_src)}">Открыть <span class="tag tag-new">НОВЫЙ</span> в приложении Windows</button>' if new_src else ''}
-          {f'<button type="button" class="btn open-ext btn-diff" data-src="{html.escape(diff_src)}">Открыть <span class="tag tag-diff">РАЗНИЦА</span> в приложении Windows</button>' if diff_src else ''}
-          {f'<a class="btn btn-compare" href="{html.escape(slider_file)}">&#8646; Режим сравнения (слайдер)</a>' if slider_file else ''}
+          {f'<button type="button" class="btn open-ext btn-old" data-src="{html.escape(old_src)}">{t["open_old_win"]}</button>' if old_src else ''}
+          {f'<button type="button" class="btn open-ext btn-new" data-src="{html.escape(new_src)}">{t["open_new_win"]}</button>' if new_src else ''}
+          {f'<button type="button" class="btn open-ext btn-diff" data-src="{html.escape(diff_src)}">{t["open_diff_win"]}</button>' if diff_src else ''}
+          {f'<a class="btn btn-compare" href="{html.escape(slider_file)}">{html.escape(t["slider_mode"])}</a>' if slider_file else ''}
         </div>
         <div class="cmp">
           <div class="left-stack">
-            <figure>{f'<img loading="lazy" src="{html.escape(old_src)}" alt="старый лист"/>' if old_src else '<div class="noimg">нет данных</div>'}<figcaption>СТАРЫЙ</figcaption></figure>
-            <figure>{f'<img loading="lazy" src="{html.escape(new_src)}" alt="новый лист"/>' if new_src else '<div class="noimg">нет данных</div>'}<figcaption>НОВЫЙ</figcaption></figure>
+            <figure>{f'<img loading="lazy" src="{html.escape(old_src)}" alt="old sheet"/>' if old_src else f'<div class="noimg">{html.escape(t["no_data"])}</div>'}<figcaption>{html.escape(t["cap_old"])}</figcaption></figure>
+            <figure>{f'<img loading="lazy" src="{html.escape(new_src)}" alt="new sheet"/>' if new_src else f'<div class="noimg">{html.escape(t["no_data"])}</div>'}<figcaption>{html.escape(t["cap_new"])}</figcaption></figure>
           </div>
-          <figure class="diff-figure">{f'<img loading="lazy" src="{html.escape(diff_src)}" alt="разница"/>' if diff_src else '<div class="noimg diff">нет данных</div>'}<figcaption>РАЗНИЦА</figcaption></figure>
+          <figure class="diff-figure">{f'<img loading="lazy" src="{html.escape(diff_src)}" alt="diff"/>' if diff_src else f'<div class="noimg diff">{html.escape(t["no_data"])}</div>'}<figcaption>{html.escape(t["cap_diff"])}</figcaption></figure>
         </div>
         <div class="topnav">
-          {f'<a class="btn" href="{html.escape(prev_link)}">← предыдущий</a>' if prev_link else ''}
-          {f'<a class="btn" href="{html.escape(next_link)}">следующий →</a>' if next_link else ''}
+          {f'<a class="btn" href="{html.escape(prev_link)}">{html.escape(t["prev_page"])}</a>' if prev_link else ''}
+          {f'<a class="btn" href="{html.escape(next_link)}">{html.escape(t["next_page"])}</a>' if next_link else ''}
         </div>
       </div>
     </main>
@@ -1389,11 +1665,11 @@ def generate_html_report(
 
         if slider_file and old_src and new_src:
             slider_html = f"""<!doctype html>
-<html lang="ru">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Слайдер сравнения лист {html.escape(b_idx)}</title>
+  <title>{html.escape(t["slider_title_page"].format(b=b_idx))}</title>
   <style>
     html, body {{ width:100%; height:100%; }}
     body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; background:#f3f6fb; color:#1d2433; overflow:hidden; }}
@@ -1416,19 +1692,19 @@ def generate_html_report(
   <div class="wrap">
     <div class="panel">
       <div class="top">
-        <div><b>Режим сравнения (слайдер)</b><div class="muted">{html.escape(file_a.name)} лист {html.escape(a_idx)} ↔ {html.escape(file_b.name)} лист {html.escape(b_idx)}</div></div>
+        <div><b>{html.escape(t["slider_mode_title"])}</b><div class="muted">{html.escape(t["slider_subtitle"].format(a_name=file_a.name, a_idx=a_idx, b_name=file_b.name, b_idx=b_idx))}</div></div>
         <div>
-          <a class="btn" href="{html.escape(p['view_file'])}">Назад к листу</a>
-          <a class="btn" href="../index.html">К сводке</a>
-          <button class="btn" id="fitBtn" type="button">Вписать в окно</button>
+          <a class="btn" href="{html.escape(p['view_file'])}">{html.escape(t["back_to_sheet"])}</a>
+          <a class="btn" href="../index.html">{html.escape(t["back_summary"])}</a>
+          <button class="btn" id="fitBtn" type="button">{html.escape(t["fit_to_window"])}</button>
         </div>
       </div>
       <div class="stage" id="stage" tabindex="0"><canvas id="cmpCanvas"></canvas></div>
       <div class="slider-wrap">
-        <span>СТАРЫЙ</span><input id="split" type="range" min="0" max="100" step="0.1" value="50"/><span>НОВЫЙ</span>
-        <span>Масштаб</span><input id="zoom" class="small" type="range" min="1" max="300" value="100"/><span id="zoomVal">100%</span>
+        <span>{html.escape(t["slider_old"])}</span><input id="split" type="range" min="0" max="100" step="0.1" value="50"/><span>{html.escape(t["slider_new"])}</span>
+        <span>{html.escape(t["slider_zoom"])}</span><input id="zoom" class="small" type="range" min="1" max="300" value="100"/><span id="zoomVal">100%</span>
       </div>
-      <div class="muted">Режим 1:1 по умолчанию. ЛКМ по чертежу — двигать разделитель, ПКМ+перетаскивание — панорамирование, Ctrl+колесо — масштаб внутри этого окна.</div>
+      <div class="muted">{html.escape(t["slider_help"])}</div>
     </div>
   </div>
   <script>
@@ -1602,11 +1878,11 @@ def generate_html_report(
 </body>
 </html>"""
             (views_dir / slider_file).write_text(slider_html, encoding="utf-8")
-        emit(66 + 32 * (view_idx / total_views), f"Генерация HTML вида {view_idx}/{total_views}")
+        emit(66 + 32 * (view_idx / total_views), t["progress_generate_view"].format(idx=view_idx, total=total_views))
 
     zip_base = run_dir.parent / f"{run_dir.name}_report"
-    zip_path = Path(shutil.make_archive(str(zip_base), "zip", root_dir=run_dir))
-    emit(100, "Упаковка report.zip...")
+    zip_path = build_compact_report_zip(run_dir, zip_base)
+    emit(100, t["progress_pack_zip"])
     return zip_path
 
 
@@ -1616,6 +1892,7 @@ def compare_pdfs(
     out_dir: Path,
     high_dpi: int = 250,
     stroke_tol_px: float = 2.0,
+    report_lang: str = "ru",
     progress_cb: Callable[[float, str], None] | None = None,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
@@ -1751,8 +2028,8 @@ def compare_pdfs(
         for row in details:
             w.writerow({k: row.get(k) for k in csv_fields})
 
-    write_summary_md(run_dir / "summary.md", file_a, file_b, pairs, details)
-    write_engineer_report_md(run_dir / "engineer_report.md", file_a, file_b, details)
+    write_summary_md(run_dir / "summary.md", file_a, file_b, pairs, details, lang=report_lang)
+    write_engineer_report_md(run_dir / "engineer_report.md", file_a, file_b, details, lang=report_lang)
     emit(90, "Генерация HTML отчета")
     zip_path = generate_html_report(
         run_dir,
@@ -1761,6 +2038,7 @@ def compare_pdfs(
         details,
         high_dpi=high_dpi,
         stroke_tol_px=stroke_tol_px,
+        report_lang=report_lang,
         progress_cb=lambda p, msg: emit(90 + 9 * (p / 100.0), msg),
     )
     (run_dir / "report_zip.txt").write_text(str(zip_path), encoding="utf-8")
@@ -1783,6 +2061,7 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=Path("runs"), help="Output runs folder")
     parser.add_argument("--dpi", type=int, default=250, help="High DPI for final page diff rendering")
     parser.add_argument("--stroke-tol", type=float, default=2.0, help="Tolerance in pixels for line-thickness jitter")
+    parser.add_argument("--lang", type=str, default="ru", choices=["ru", "en"], help="Report language")
     args = parser.parse_args()
 
     if args.old and args.new:
@@ -1791,7 +2070,14 @@ def main() -> None:
     else:
         file_a, file_b = pick_two_pdfs(args.input_dir)
 
-    run_dir = compare_pdfs(file_a, file_b, args.out_dir, high_dpi=args.dpi, stroke_tol_px=args.stroke_tol)
+    run_dir = compare_pdfs(
+        file_a,
+        file_b,
+        args.out_dir,
+        high_dpi=args.dpi,
+        stroke_tol_px=args.stroke_tol,
+        report_lang=args.lang,
+    )
     print(f"Готово. Результаты: {run_dir}")
     print(f"Сводка: {run_dir / 'summary.md'}")
 
