@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import html
 import json
 import re
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Sequence, Tuple
+from uuid import uuid4
 
 import cv2
 import fitz
@@ -423,7 +425,7 @@ def align_pages_v1(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInfo]) -> 
     return global_map
 
 
-def align_ecc(base_bgr: np.ndarray, moving_bgr: np.ndarray) -> np.ndarray:
+def align_ecc(base_bgr: np.ndarray, moving_bgr: np.ndarray) -> Tuple[np.ndarray, bool]:
     base_gray = cv2.cvtColor(base_bgr, cv2.COLOR_BGR2GRAY)
     moving_gray = cv2.cvtColor(moving_bgr, cv2.COLOR_BGR2GRAY)
     warp = np.eye(2, 3, dtype=np.float32)
@@ -437,9 +439,9 @@ def align_ecc(base_bgr: np.ndarray, moving_bgr: np.ndarray) -> np.ndarray:
             flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
             borderMode=cv2.BORDER_REPLICATE,
         )
-        return aligned
+        return aligned, True
     except cv2.error:
-        return moving_bgr
+        return moving_bgr, False
 
 
 def harmonize_canvas(a_bgr: np.ndarray, b_bgr: np.ndarray, max_delta: int = 3) -> Tuple[np.ndarray, np.ndarray] | None:
@@ -506,12 +508,16 @@ def compute_diff(
     # old-only pixels -> pale blue (50%), new-only pixels -> bright red (30%)
     alpha_old = 0.50
     alpha_new = 0.30
-    add_color = np.zeros_like(overlay)
-    add_color[:, :] = (0, 0, 255)  # bright red in BGR
-    del_color = np.zeros_like(overlay)
-    del_color[:, :] = (255, 190, 120)  # pale blue in BGR
-    overlay = np.where(mask_del[:, :, None] > 0, (overlay * (1 - alpha_old) + del_color * alpha_old).astype(np.uint8), overlay)
-    overlay = np.where(mask_add[:, :, None] > 0, (overlay * (1 - alpha_new) + add_color * alpha_new).astype(np.uint8), overlay)
+    mask_del_idx = mask_del > 0
+    if np.any(mask_del_idx):
+        del_color = np.array((255.0, 190.0, 120.0), dtype=np.float32)
+        src = overlay[mask_del_idx].astype(np.float32)
+        overlay[mask_del_idx] = np.clip(src * (1.0 - alpha_old) + del_color * alpha_old, 0, 255).astype(np.uint8)
+    mask_add_idx = mask_add > 0
+    if np.any(mask_add_idx):
+        add_color = np.array((0.0, 0.0, 255.0), dtype=np.float32)
+        src = overlay[mask_add_idx].astype(np.float32)
+        overlay[mask_add_idx] = np.clip(src * (1.0 - alpha_new) + add_color * alpha_new, 0, 255).astype(np.uint8)
 
     return mask, overlay, bboxes, float(diff_percent)
 
@@ -711,9 +717,9 @@ def generate_html_report(
         shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    pages_src = run_dir / "pages"
-    pages_dst = bundle_dir / "pages"
-    shutil.copytree(pages_src, pages_dst)
+    pages_root = run_dir / "pages"
+    if not pages_root.exists():
+        raise RuntimeError(f"Не найдена папка страниц: {pages_root}")
     thumbs_dir = bundle_dir / "assets" / "thumbs"
     thumbs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -728,8 +734,8 @@ def generate_html_report(
         a_page = row.get("a_page")
         b_page = row.get("b_page")
         pair_name = row.get("pair_dir", f"{seq:03d}__A_{a_page or 'NA'}__B_{b_page or 'NA'}")
-        pair_rel = Path("pages") / pair_name
-        pair_abs = pages_dst / pair_name
+        pair_rel = Path("..") / "pages" / pair_name
+        pair_abs = pages_root / pair_name
 
         old_img = pair_rel / "a.png"
         new_img = pair_rel / "b.png"
@@ -772,6 +778,8 @@ def generate_html_report(
             status_ru = "Есть изменения"
             d = row.get("diff_percent") or 0.0
             note = f"Обнаружены изменения визуального содержимого: разница={d:.3f}%."
+        if row.get("ecc_failed"):
+            note = f"{note} ECC-выравнивание не сошлось, сравнение выполнено без выравнивания."
 
         a_label = "-" if a_page is None else str(a_page)
         b_label = "-" if b_page is None else str(b_page)
@@ -1011,7 +1019,8 @@ def generate_html_report(
     tbody tr:nth-child(even) td {{ background:#f3f5f9; }}
     tbody tr:hover td {{ background:#edf3ff !important; }}
     .badge {{ display:inline-block; min-width:86px; border-radius:999px; padding:5px 10px; font-weight:700; font-size:15px; }}
-    .st-match {{ background:#85bef2; color:#173a5f; }}
+    .st-changed {{ background:#f1a8a8; color:#612020; }}
+    .st-unchanged {{ background:#b7d5f3; color:#173a5f; }}
     .st-added {{ background:#bc8ff0; color:#3b1a63; }}
     .st-removed {{ background:#d8d8d8; color:#343434; }}
     .lv-major {{ background:#f49999; color:#632020; }}
@@ -1123,7 +1132,7 @@ def generate_html_report(
         const text = row.dataset.search || '';
         let ok = true;
         if (statusFilter === 'CHANGED') {{
-          ok = st === 'MATCH' && (lv === 'MINOR' || lv === 'MODERATE' || lv === 'MAJOR');
+          ok = st === 'CHANGED';
         }} else if (statusFilter === 'ADDED') {{
           ok = st === 'ADDED';
         }} else if (statusFilter === 'REMOVED') {{
@@ -1595,8 +1604,8 @@ def generate_html_report(
             (views_dir / slider_file).write_text(slider_html, encoding="utf-8")
         emit(66 + 32 * (view_idx / total_views), f"Генерация HTML вида {view_idx}/{total_views}")
 
-    zip_base = run_dir / "report"
-    zip_path = Path(shutil.make_archive(str(zip_base), "zip", root_dir=bundle_dir))
+    zip_base = run_dir.parent / f"{run_dir.name}_report"
+    zip_path = Path(shutil.make_archive(str(zip_base), "zip", root_dir=run_dir))
     emit(100, "Упаковка report.zip...")
     return zip_path
 
@@ -1613,8 +1622,8 @@ def compare_pdfs(
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = out_dir / f"run_{ts}"
+    run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid4().hex[:6]}"
+    run_dir = out_dir / f"run_{run_id}"
     pages_dir = run_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1654,6 +1663,7 @@ def compare_pdfs(
                 "diff_percent": None,
                 "change_level": None,
                 "bboxes_count": None,
+                "ecc_failed": False,
             }
 
             if p.status == "matched" and p.a_idx is not None and p.b_idx is not None:
@@ -1669,12 +1679,15 @@ def compare_pdfs(
                     continue
 
                 a_h, b_h = harmonized
-                b_aligned = align_ecc(a_h, b_h)
+                b_aligned, ecc_ok = align_ecc(a_h, b_h)
+                entry["ecc_failed"] = not ecc_ok
                 mask, overlay, bboxes, diff_percent = compute_diff(a_h, b_aligned, stroke_tol_px=stroke_tol_px)
                 level = classify(diff_percent)
 
                 imwrite_compat(pair_dir / "a.png", a_h)
-                imwrite_compat(pair_dir / "b.png", b_h)
+                # Keep report visuals consistent: b.png must be the aligned image used for diff.
+                imwrite_compat(pair_dir / "b.png", b_aligned)
+                imwrite_compat(pair_dir / "b_raw.png", b_h)
                 imwrite_compat(pair_dir / "b_aligned.png", b_aligned)
                 imwrite_compat(pair_dir / "mask.png", mask)
                 imwrite_compat(pair_dir / "overlay.png", overlay)
@@ -1692,6 +1705,7 @@ def compare_pdfs(
                 entry["diff_percent"] = float(diff_percent)
                 entry["change_level"] = level
                 entry["bboxes_count"] = len(bboxes)
+                del a_img, b_img, harmonized, a_h, b_h, b_aligned, mask, overlay, bbox_layer
             else:
                 # Keep quick preview for unmatched pages.
                 if p.a_idx is not None:
@@ -1699,13 +1713,17 @@ def compare_pdfs(
                     a_prev = render_page(doc_a, p.a_idx, 120)
                     imwrite_compat(pair_dir / "a.png", a_full)
                     imwrite_compat(pair_dir / "a_preview.png", a_prev)
+                    del a_full, a_prev
                 if p.b_idx is not None:
                     b_full = render_page(doc_b, p.b_idx, high_dpi)
                     b_prev = render_page(doc_b, p.b_idx, 120)
                     imwrite_compat(pair_dir / "b.png", b_full)
                     imwrite_compat(pair_dir / "b_preview.png", b_prev)
+                    del b_full, b_prev
 
             details.append(entry)
+            if idx % 8 == 0:
+                gc.collect()
             emit(38 + 48 * (idx / total_pairs), f"Сравнение листов {idx}/{total_pairs}")
 
     emit(87, "Подготовка сводки и CSV")
@@ -1724,7 +1742,7 @@ def compare_pdfs(
     )
 
     with (run_dir / "page_map.csv").open("w", newline="", encoding="utf-8") as f:
-        csv_fields = ["seq", "a_page", "b_page", "status", "score", "diff_percent", "change_level", "bboxes_count"]
+        csv_fields = ["seq", "a_page", "b_page", "status", "score", "diff_percent", "change_level", "bboxes_count", "ecc_failed"]
         w = csv.DictWriter(
             f,
             fieldnames=csv_fields,

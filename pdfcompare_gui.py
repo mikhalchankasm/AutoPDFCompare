@@ -36,6 +36,8 @@ I18N: dict[str, dict[str, str]] = {
         "opts_stroke": "Допуск штриха (px):",
         "opts_stroke_hint": "Игнорирует различия тоньше указанного размера",
         "btn_run": "Сравнить (Enter)",
+        "btn_cancel": "Отменить",
+        "btn_cancelling": "Отмена...",
         "btn_clear": "Очистить",
         "btn_from_history": "Из истории",
         "btn_open_report": "Открыть отчёт",
@@ -84,6 +86,8 @@ I18N: dict[str, dict[str, str]] = {
         "err_invalid_option_dpi": "DPI должен быть не меньше 72.",
         "err_invalid_option_stroke": "Допуск штриха должен быть не меньше 0.",
         "status_running": "Сравнение запущено... Это может занять несколько минут.",
+        "status_cancel_requested": "Запрошена отмена. Ожидайте завершения текущего шага...",
+        "status_cancelled": "Сравнение отменено пользователем.",
         "btn_running": "Сравнение... {pct:.0f}%",
         "status_done": "Готово. Отчет: {path}",
         "dlg_done_title": "Готово",
@@ -95,6 +99,7 @@ I18N: dict[str, dict[str, str]] = {
         "hist_result_done": "Готово",
         "hist_result_error": "Ошибка",
         "hist_result_snapshot": "Снимок",
+        "hist_result_cancelled": "Отменено",
         "lang_ru": "Русский",
         "lang_en": "English",
     },
@@ -118,6 +123,8 @@ I18N: dict[str, dict[str, str]] = {
         "opts_stroke": "Stroke tolerance (px):",
         "opts_stroke_hint": "Ignores differences thinner than this threshold",
         "btn_run": "Compare (Enter)",
+        "btn_cancel": "Cancel",
+        "btn_cancelling": "Cancelling...",
         "btn_clear": "Clear",
         "btn_from_history": "From history",
         "btn_open_report": "Open report",
@@ -166,6 +173,8 @@ I18N: dict[str, dict[str, str]] = {
         "err_invalid_option_dpi": "DPI must be >= 72.",
         "err_invalid_option_stroke": "Stroke tolerance must be >= 0.",
         "status_running": "Comparison started... This may take a few minutes.",
+        "status_cancel_requested": "Cancellation requested. Waiting for current step to finish...",
+        "status_cancelled": "Comparison cancelled by user.",
         "btn_running": "Comparing... {pct:.0f}%",
         "status_done": "Done. Report: {path}",
         "dlg_done_title": "Done",
@@ -177,6 +186,7 @@ I18N: dict[str, dict[str, str]] = {
         "hist_result_done": "Done",
         "hist_result_error": "Error",
         "hist_result_snapshot": "Snapshot",
+        "hist_result_cancelled": "Cancelled",
         "lang_ru": "Russian",
         "lang_en": "English",
     },
@@ -296,6 +306,8 @@ class PDFCompareApp:
 
         self.worker_events: queue.Queue[tuple] = queue.Queue()
         self.running = False
+        self.cancel_requested = threading.Event()
+        self.worker_thread: threading.Thread | None = None
         self.last_run_dir: Path | None = None
         self._drop_hook: WindowsDropHook | None = None
         self._history_by_iid: dict[str, dict[str, Any]] = {}
@@ -403,8 +415,11 @@ class PDFCompareApp:
             self.options_stroke_label.configure(text=self._tr("opts_stroke"))
         if self.options_stroke_hint_label is not None:
             self.options_stroke_hint_label.configure(text=self._tr("opts_stroke_hint"))
-        if self.run_btn is not None and not self.running:
-            self.run_btn.configure(text=self._tr("btn_run"))
+        if self.run_btn is not None:
+            if self.running:
+                self.run_btn.configure(text=self._tr("btn_cancelling" if self.cancel_requested.is_set() else "btn_cancel"))
+            else:
+                self.run_btn.configure(text=self._tr("btn_run"))
         if self.clear_btn is not None:
             self.clear_btn.configure(text=self._tr("btn_clear"))
         if self.from_history_btn is not None:
@@ -660,7 +675,7 @@ class PDFCompareApp:
         if self.run_btn is None:
             return
         if self.running:
-            self.run_btn.configure(state=tk.DISABLED)
+            self.run_btn.configure(state=tk.DISABLED if self.cancel_requested.is_set() else tk.NORMAL)
             return
         old = self.old_pdf.get().strip()
         new = self.new_pdf.get().strip()
@@ -728,7 +743,9 @@ class PDFCompareApp:
             "last_inputs": self._capture_inputs(),
             "history": self.history_records[-300:],
         }
-        self.state_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_path = self.state_path.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp_path, self.state_path)
 
     def _restore_last_inputs(self, startup: bool = False) -> None:
         if not self.last_inputs:
@@ -756,6 +773,8 @@ class PDFCompareApp:
                 result = self._tr("hist_result_error")
             elif result == "SNAPSHOT":
                 result = self._tr("hist_result_snapshot")
+            elif result == "CANCELLED":
+                result = self._tr("hist_result_cancelled")
             else:
                 result = self._tr("hist_result_done") if result == "OK" else result
             old_name = Path(str(rec.get("old_pdf") or "")).name
@@ -907,6 +926,16 @@ class PDFCompareApp:
     def _on_enter(self, event: tk.Event) -> None:
         if not self.running:
             self.start_compare()
+        else:
+            self._request_cancel()
+
+    def _request_cancel(self) -> None:
+        if not self.running:
+            return
+        self.cancel_requested.set()
+        if self.run_btn is not None:
+            self.run_btn.configure(state=tk.DISABLED, text=self._tr("btn_cancelling"))
+        self._set_status("status_cancel_requested")
 
     def start_compare(self) -> None:
         if self.running:
@@ -951,6 +980,7 @@ class PDFCompareApp:
 
         self.last_inputs = self._capture_inputs()
         self._save_state()
+        self.cancel_requested.clear()
         self._set_running(True)
         self._set_status("status_running")
         t = threading.Thread(
@@ -958,11 +988,14 @@ class PDFCompareApp:
             args=(old, new, out_path, dpi, stroke_tol),
             daemon=True,
         )
+        self.worker_thread = t
         t.start()
 
     def _run_worker(self, old: Path, new: Path, out_path: Path, dpi: int, stroke_tol: float) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
+                if self.cancel_requested.is_set():
+                    raise RuntimeError("__CANCELLED__")
                 self.worker_events.put(("progress", float(pct), str(msg)))
 
             run_dir = compare_pdfs(
@@ -973,22 +1006,30 @@ class PDFCompareApp:
                 stroke_tol_px=stroke_tol,
                 progress_cb=report_progress,
             )
+            if self.cancel_requested.is_set():
+                self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol))
+                return
             self.worker_events.put(("done", run_dir, old, new, out_path, dpi, stroke_tol))
         except Exception as exc:
+            if str(exc) == "__CANCELLED__":
+                self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol))
+                return
             self.worker_events.put(("error", str(exc), traceback.format_exc(), old, new, out_path, dpi, stroke_tol))
 
     def _poll_worker_events(self) -> None:
+        has_more = False
         try:
-            while True:
+            max_batch = 50
+            processed = 0
+            while processed < max_batch:
                 event = self.worker_events.get_nowait()
+                processed += 1
                 kind = event[0]
                 if kind == "progress":
                     pct = max(0.0, min(100.0, float(event[1])))
                     msg = str(event[2])
                     self.progress.configure(value=pct)
                     self.progress_pct.set(f"{pct:.0f}%")
-                    if self.run_btn is not None:
-                        self.run_btn.configure(text=self._tr("btn_running", pct=pct))
                     self.status.set(f"{msg} ({pct:.0f}%)")
                 elif kind == "done":
                     run_dir: Path = event[1]
@@ -1013,6 +1054,24 @@ class PDFCompareApp:
                         }
                     )
                     messagebox.showinfo(self._tr("dlg_done_title"), self._tr("dlg_done_body", run_dir=run_dir))
+                elif kind == "cancelled":
+                    old, new, out_dir, dpi, stroke_tol = event[1], event[2], event[3], event[4], event[5]
+                    self._set_running(False)
+                    self.progress.configure(value=0.0)
+                    self.progress_pct.set("0%")
+                    self._set_status("status_cancelled")
+                    self._add_history_record(
+                        {
+                            "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "result": "cancelled",
+                            "old_pdf": str(old),
+                            "new_pdf": str(new),
+                            "out_dir": str(out_dir),
+                            "dpi": str(dpi),
+                            "stroke_tol": str(stroke_tol),
+                            "run_dir": "",
+                        }
+                    )
                 elif kind == "error":
                     self._set_running(False)
                     err = event[1]
@@ -1033,21 +1092,25 @@ class PDFCompareApp:
                         }
                     )
                     messagebox.showerror(self._tr("dlg_error_title"), f"{err}\n\n{tb}")
+            has_more = not self.worker_events.empty()
         except queue.Empty:
             pass
         finally:
-            self.root.after(150, self._poll_worker_events)
+            self.root.after(20 if has_more else 150, self._poll_worker_events)
 
     def _set_running(self, running: bool) -> None:
         self.running = running
         if running:
             self.progress.configure(value=0.0)
             self.progress_pct.set("0%")
-            self.run_btn.configure(state=tk.DISABLED)
-            self.run_btn.configure(text=self._tr("btn_running", pct=0))
+            self.run_btn.configure(state=tk.NORMAL, command=self._request_cancel)
+            self.run_btn.configure(text=self._tr("btn_cancel"))
             self.open_report_btn.configure(state=tk.DISABLED)
             self.open_run_btn.configure(state=tk.DISABLED)
         else:
+            self.cancel_requested.clear()
+            self.worker_thread = None
+            self.run_btn.configure(command=self.start_compare)
             self.run_btn.configure(text=self._tr("btn_run"))
             self._update_run_availability()
 
@@ -1069,6 +1132,8 @@ class PDFCompareApp:
             messagebox.showerror(self._tr("err_folder_missing_title"), self._tr("err_not_found", path=self.last_run_dir))
 
     def _on_close(self) -> None:
+        if self.running:
+            self.cancel_requested.set()
         self._save_state()
         if self._drop_hook is not None:
             try:
