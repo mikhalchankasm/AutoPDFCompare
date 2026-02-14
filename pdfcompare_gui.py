@@ -389,8 +389,8 @@ class PDFCompareApp:
         style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"))
         style.configure("Small.TButton", font=("Segoe UI", 10))
         style.configure("Hint.TLabel", font=("Segoe UI", 9), foreground="#4b5872")
-        style.configure("Red.TLabel", foreground="#d32f2f")  # Red for old PDF
-        style.configure("Green.TLabel", foreground="#388e3c")  # Green for new PDF
+        style.configure("Red.TLabel", font=("Segoe UI", 10, "bold"), foreground="#d32f2f")  # Red bold for old PDF
+        style.configure("Green.TLabel", font=("Segoe UI", 10, "bold"), foreground="#388e3c")  # Green bold for new PDF
 
         outer = ttk.Frame(self.root, padding=14)
         outer.pack(fill=tk.BOTH, expand=True)
