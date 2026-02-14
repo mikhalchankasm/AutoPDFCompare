@@ -52,11 +52,24 @@ class MatchPair:
 def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
     page = doc[page_index]
     zoom = dpi / 72.0
-    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+    # Force a predictable pixel format for downstream OpenCV code:
+    # - consistent 3-channel output (BGR)
+    # - avoid crashes on grayscale PDFs (n == 1) or unexpected channel order.
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, colorspace=fitz.csRGB)
     arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+
+    if pix.n == 3:
+        # PyMuPDF returns RGB for csRGB; convert to OpenCV's BGR.
+        return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
     if pix.n == 4:
-        arr = cv2.cvtColor(arr, cv2.COLOR_BGRA2BGR)
-    return arr
+        # Shouldn't happen with alpha=False, but keep it robust.
+        return cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+    if pix.n == 1:
+        return cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+
+    # Fallback: take first 3 channels and treat them as RGB.
+    arr = arr[:, :, :3]
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 
 def page_tokens(text: str) -> set[str]:

@@ -730,15 +730,19 @@ class PDFCompareApp:
             self.history_records = []
 
     def _save_state(self) -> None:
-        self.state_dir.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "language": self.lang.get(),
-            "last_inputs": self._capture_inputs(),
-            "history": self.history_records[-300:],
-        }
-        tmp_path = self.state_path.with_suffix(".tmp")
-        tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp_path, self.state_path)
+        # State persistence is a UX feature; it must never crash the app.
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "language": self.lang.get(),
+                "last_inputs": self._capture_inputs(),
+                "history": self.history_records[-300:],
+            }
+            tmp_path = self.state_path.with_suffix(".tmp")
+            tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp_path, self.state_path)
+        except Exception:
+            pass
 
     def _restore_last_inputs(self, startup: bool = False) -> None:
         if not self.last_inputs:
@@ -1049,6 +1053,10 @@ class PDFCompareApp:
             return
 
         if dpi < 72:
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
+            return
+        # Guard against accidental huge values that can exhaust memory.
+        if dpi > 1200:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
             return
         if stroke_tol < 0:
