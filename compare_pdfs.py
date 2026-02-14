@@ -1952,8 +1952,18 @@ def compare_pdfs(
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
-    run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid4().hex[:6]}"
-    run_dir = out_dir / f"run_{run_id}"
+    # Generate human-readable folder name based on language
+    now = datetime.now()
+    if report_lang == "ru":
+        # Russian format: Сравнение_14-02-2026_23-22-39
+        date_str = now.strftime('%d-%m-%Y')
+        time_str = now.strftime('%H-%M-%S')
+        run_dir = out_dir / f"Сравнение_{date_str}_{time_str}"
+    else:
+        # English format: Comparison_2026-02-14_23-22-39
+        date_str = now.strftime('%Y-%m-%d')
+        time_str = now.strftime('%H-%M-%S')
+        run_dir = out_dir / f"Comparison_{date_str}_{time_str}"
     pages_dir = run_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
 
