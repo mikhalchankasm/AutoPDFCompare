@@ -34,8 +34,8 @@ I18N: dict[str, dict[str, str]] = {
         "tab_history": "История",
         "drop_primary": "Перетащите 2 файла PDF сюда",
         "drop_secondary": "или используйте кнопки ниже",
-        "path_old": "🔴 Старый PDF",
-        "path_new": "🟢 Новый PDF",
+        "path_old": "● Старый PDF",
+        "path_new": "● Новый PDF",
         "path_out": "Папка вывода",
         "btn_select": "Выбрать...",
         "btn_swap": "⇅ Поменять местами",
@@ -124,8 +124,8 @@ I18N: dict[str, dict[str, str]] = {
         "tab_history": "History",
         "drop_primary": "Drop 2 PDF files here",
         "drop_secondary": "or use the buttons below",
-        "path_old": "🔴 Old PDF",
-        "path_new": "🟢 New PDF",
+        "path_old": "● Old PDF",
+        "path_new": "● New PDF",
         "path_out": "Output folder",
         "btn_select": "Select...",
         "btn_swap": "⇅ Swap files",
@@ -389,6 +389,8 @@ class PDFCompareApp:
         style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"))
         style.configure("Small.TButton", font=("Segoe UI", 10))
         style.configure("Hint.TLabel", font=("Segoe UI", 9), foreground="#4b5872")
+        style.configure("Red.TLabel", foreground="#d32f2f")  # Red for old PDF
+        style.configure("Green.TLabel", foreground="#388e3c")  # Green for new PDF
 
         outer = ttk.Frame(self.root, padding=14)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -433,7 +435,7 @@ class PDFCompareApp:
 
         ttk.Label(self.compare_tab, textvariable=self.drop_badges_var, style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
 
-        self.old_label, self.old_entry, self.old_pick_btn = self._path_row(self.compare_tab, self.old_pdf, self._pick_old_pdf)
+        self.old_label, self.old_entry, self.old_pick_btn = self._path_row(self.compare_tab, self.old_pdf, self._pick_old_pdf, "Red.TLabel")
 
         # Swap button between old and new PDF
         swap_frame = ttk.Frame(self.compare_tab)
@@ -441,7 +443,7 @@ class PDFCompareApp:
         self.swap_btn = ttk.Button(swap_frame, text=self._tr("btn_swap"), style="Small.TButton", command=self._swap_files)
         self.swap_btn.pack(anchor="center")
 
-        self.new_label, self.new_entry, self.new_pick_btn = self._path_row(self.compare_tab, self.new_pdf, self._pick_new_pdf)
+        self.new_label, self.new_entry, self.new_pick_btn = self._path_row(self.compare_tab, self.new_pdf, self._pick_new_pdf, "Green.TLabel")
         self.out_label, self.out_entry, self.out_pick_btn = self._path_row(self.compare_tab, self.out_dir, self._pick_out_dir)
 
         options_wrap = ttk.Frame(self.compare_tab)
@@ -551,11 +553,11 @@ class PDFCompareApp:
         self._apply_locale()
 
     def _path_row(
-        self, parent: ttk.Frame, var: tk.StringVar, pick_cmd: Callable[[], None]
+        self, parent: ttk.Frame, var: tk.StringVar, pick_cmd: Callable[[], None], label_style: str = ""
     ) -> tuple[ttk.Label, ttk.Entry, ttk.Button]:
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=4)
-        label = ttk.Label(row, text="", width=20)
+        label = ttk.Label(row, text="", width=20, style=label_style if label_style else "TLabel")
         label.pack(side=tk.LEFT)
         entry = ttk.Entry(row, textvariable=var)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
