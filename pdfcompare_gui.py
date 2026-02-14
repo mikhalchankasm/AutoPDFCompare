@@ -57,6 +57,8 @@ I18N: dict[str, dict[str, str]] = {
         "hist_open_folder": "Открыть папку",
         "hist_refresh": "Обновить",
         "hist_col_time": "Дата/время",
+        "hist_col_duration": "Время",
+        "hist_col_pages": "Страницы",
         "hist_col_result": "Результат",
         "hist_col_old": "Старый PDF",
         "hist_col_new": "Новый PDF",
@@ -144,6 +146,8 @@ I18N: dict[str, dict[str, str]] = {
         "hist_open_folder": "Open folder",
         "hist_refresh": "Refresh",
         "hist_col_time": "Date/time",
+        "hist_col_duration": "Duration",
+        "hist_col_pages": "Pages",
         "hist_col_result": "Result",
         "hist_col_old": "Old PDF",
         "hist_col_new": "New PDF",
@@ -360,6 +364,8 @@ class PDFCompareApp:
             self.hist_refresh_btn.configure(text=self._tr("hist_refresh"))
         if self.history_tree is not None:
             self.history_tree.heading("ts", text=self._tr("hist_col_time"))
+            self.history_tree.heading("duration", text=self._tr("hist_col_duration"))
+            self.history_tree.heading("pages", text=self._tr("hist_col_pages"))
             self.history_tree.heading("result", text=self._tr("hist_col_result"))
             self.history_tree.heading("old", text=self._tr("hist_col_old"))
             self.history_tree.heading("new", text=self._tr("hist_col_new"))
@@ -497,20 +503,24 @@ class PDFCompareApp:
         )
         self.hist_refresh_btn.pack(side=tk.LEFT)
 
-        cols = ("ts", "result", "old", "new", "out", "run")
+        cols = ("ts", "duration", "pages", "result", "old", "new", "out", "run")
         self.history_tree = ttk.Treeview(self.history_tab, columns=cols, show="headings", selectmode="browse")
         self.history_tree.heading("ts", text=self._tr("hist_col_time"))
+        self.history_tree.heading("duration", text=self._tr("hist_col_duration"))
+        self.history_tree.heading("pages", text=self._tr("hist_col_pages"))
         self.history_tree.heading("result", text=self._tr("hist_col_result"))
         self.history_tree.heading("old", text=self._tr("hist_col_old"))
         self.history_tree.heading("new", text=self._tr("hist_col_new"))
         self.history_tree.heading("out", text=self._tr("hist_col_out"))
         self.history_tree.heading("run", text=self._tr("hist_col_run"))
-        self.history_tree.column("ts", width=150, anchor="w")
-        self.history_tree.column("result", width=90, anchor="center")
-        self.history_tree.column("old", width=190, anchor="w")
-        self.history_tree.column("new", width=190, anchor="w")
-        self.history_tree.column("out", width=150, anchor="w")
-        self.history_tree.column("run", width=230, anchor="w")
+        self.history_tree.column("ts", width=140, anchor="w", stretch=False)
+        self.history_tree.column("duration", width=60, anchor="center", stretch=False)
+        self.history_tree.column("pages", width=70, anchor="center", stretch=False)
+        self.history_tree.column("result", width=80, anchor="center", stretch=False)
+        self.history_tree.column("old", width=150, anchor="w", stretch=False)
+        self.history_tree.column("new", width=150, anchor="w", stretch=False)
+        self.history_tree.column("out", width=120, anchor="w", stretch=False)
+        self.history_tree.column("run", width=200, anchor="w", stretch=True)
         self.history_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
         self.history_tree.bind("<Double-1>", self._on_history_double_click)
 
@@ -544,6 +554,26 @@ class PDFCompareApp:
         mins = int(seconds // 60)
         secs = int(seconds % 60)
         return f"{mins:02d}:{secs:02d}"
+
+    def _get_pages_str(self, old_pdf: Path, new_pdf: Path) -> str:
+        """Get page counts from PDFs as 'old/new' format"""
+        try:
+            import fitz  # PyMuPDF
+            old_count = 0
+            new_count = 0
+            try:
+                with fitz.open(old_pdf) as doc:
+                    old_count = len(doc)
+            except Exception:
+                pass
+            try:
+                with fitz.open(new_pdf) as doc:
+                    new_count = len(doc)
+            except Exception:
+                pass
+            return f"{old_count}/{new_count}"
+        except ImportError:
+            return ""
 
     def _start_timer(self) -> None:
         """Start the elapsed time timer"""
@@ -725,12 +755,16 @@ class PDFCompareApp:
             old_name = Path(str(rec.get("old_pdf") or "")).name
             new_name = Path(str(rec.get("new_pdf") or "")).name
             out_name = Path(str(rec.get("out_dir") or "")).name
+            duration = rec.get("duration", "")
+            pages = rec.get("pages", "")
             self.history_tree.insert(
                 "",
                 tk.END,
                 iid=iid,
                 values=(
                     rec.get("ts", ""),
+                    duration,
+                    pages,
                     result,
                     old_name,
                     new_name,
@@ -1059,10 +1093,20 @@ class PDFCompareApp:
                     self.open_report_btn.configure(state=tk.NORMAL)
                     self.open_run_btn.configure(state=tk.NORMAL)
                     self._set_status("status_done", path=run_dir / "report_bundle" / "index.html")
+
+                    # Calculate duration
+                    duration_sec = time.monotonic() - self._run_started_monotonic
+                    duration_str = self._format_duration(duration_sec)
+
+                    # Get page counts from PDFs
+                    pages_str = self._get_pages_str(old, new)
+
                     self._add_history_record(
                         {
                             "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "result": "done",
+                            "duration": duration_str,
+                            "pages": pages_str,
                             "old_pdf": str(old),
                             "new_pdf": str(new),
                             "out_dir": str(out_dir),
