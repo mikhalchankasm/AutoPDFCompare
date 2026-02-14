@@ -209,8 +209,8 @@ class PDFCompareApp:
         self.root = root
         self.lang = tk.StringVar(value="ru")
         self.root.title(I18N["ru"]["window_title"])
-        self.root.geometry("900x580")
-        self.root.minsize(800, 500)
+        self.root.geometry("900x700")
+        self.root.minsize(800, 620)
 
         self.old_pdf = tk.StringVar()
         self.new_pdf = tk.StringVar()
@@ -235,7 +235,8 @@ class PDFCompareApp:
         self.options_body: ttk.Frame | None = None
         self.options_toggle_btn: ttk.Button | None = None
         self.drop_canvas: tk.Canvas | None = None
-        self.lang_combo: ttk.Combobox | None = None
+        self.lang_ru_btn: ttk.Button | None = None
+        self.lang_en_btn: ttk.Button | None = None
         self.subtitle_label: ttk.Label | None = None
         self.tabs: ttk.Notebook | None = None
         self.compare_tab: ttk.Frame | None = None
@@ -285,25 +286,24 @@ class PDFCompareApp:
     def _set_status(self, key: str, **kwargs: object) -> None:
         self.status.set(self._tr(key, **kwargs))
 
-    def _lang_label_to_code(self, label: str) -> str:
-        if label in {I18N["en"]["lang_en"], I18N["ru"]["lang_en"], "English"}:
-            return "en"
-        return "ru"
-
-    def _sync_lang_combo(self) -> None:
-        if self.lang_combo is None:
-            return
-        values = (self._tr("lang_ru"), self._tr("lang_en"))
-        self.lang_combo.configure(values=values)
-        current = values[0] if self.lang.get() != "en" else values[1]
-        self.lang_combo.set(current)
-
-    def _on_language_change(self, _event: tk.Event | None = None) -> None:
-        if self.lang_combo is None:
-            return
-        self.lang.set(self._lang_label_to_code(self.lang_combo.get()))
+    def _set_language(self, lang_code: str) -> None:
+        """Set language and update button styles"""
+        self.lang.set(lang_code)
+        self._update_lang_buttons()
         self._apply_locale()
         self._save_state()
+
+    def _update_lang_buttons(self) -> None:
+        """Update language button styles to show active language"""
+        if self.lang_ru_btn is None or self.lang_en_btn is None:
+            return
+        current = self.lang.get()
+        if current == "ru":
+            self.lang_ru_btn.configure(style="Primary.TButton")
+            self.lang_en_btn.configure(style="Small.TButton")
+        else:
+            self.lang_ru_btn.configure(style="Small.TButton")
+            self.lang_en_btn.configure(style="Primary.TButton")
 
     def _apply_locale(self) -> None:
         self.root.title(self._tr("window_title"))
@@ -324,8 +324,6 @@ class PDFCompareApp:
             self.new_pick_btn.configure(text=self._tr("btn_select"))
         if self.out_pick_btn is not None:
             self.out_pick_btn.configure(text=self._tr("btn_select"))
-        if self.options_toggle_btn is not None:
-            self.options_toggle_btn.configure(text=self._tr("opts_expanded" if self.options_expanded else "opts_collapsed"))
         if self.options_body is not None:
             self.options_body.configure(text=self._tr("opts_group"))
         if self.options_dpi_label is not None:
@@ -366,7 +364,7 @@ class PDFCompareApp:
             self.history_tree.heading("run", text=self._tr("hist_col_run"))
         if self.history_hint_label is not None:
             self.history_hint_label.configure(text=self._tr("hist_hint"))
-        self._sync_lang_combo()
+        self._update_lang_buttons()
         self._draw_drop_zone()
         self._refresh_drop_badges()
         self._refresh_history_table()
@@ -397,9 +395,15 @@ class PDFCompareApp:
 
         right_top = ttk.Frame(top)
         right_top.pack(side=tk.RIGHT)
-        self.lang_combo = ttk.Combobox(right_top, state="readonly", width=10)
-        self.lang_combo.bind("<<ComboboxSelected>>", self._on_language_change)
-        self.lang_combo.pack(side=tk.RIGHT)
+
+        # Language switcher - two buttons instead of combobox
+        lang_frame = ttk.Frame(right_top)
+        lang_frame.pack(side=tk.RIGHT)
+        self.lang_ru_btn = ttk.Button(lang_frame, text="RU", width=4, command=lambda: self._set_language("ru"))
+        self.lang_ru_btn.pack(side=tk.LEFT, padx=2)
+        self.lang_en_btn = ttk.Button(lang_frame, text="EN", width=4, command=lambda: self._set_language("en"))
+        self.lang_en_btn.pack(side=tk.LEFT)
+
         ttk.Button(right_top, text="⚙", style="Small.TButton", state=tk.DISABLED).pack(side=tk.RIGHT, padx=(8, 6))
 
         self.tabs = ttk.Notebook(outer)
@@ -422,11 +426,8 @@ class PDFCompareApp:
 
         options_wrap = ttk.Frame(self.compare_tab)
         options_wrap.pack(fill=tk.X, pady=(6, 6))
-        self.options_toggle_btn = ttk.Button(
-            options_wrap, text=self._tr("opts_collapsed"), style="Small.TButton", command=self._toggle_options
-        )
-        self.options_toggle_btn.pack(anchor="center", pady=(0, 4))
 
+        # Options always visible (no toggle button)
         self.options_body = ttk.LabelFrame(options_wrap, text=self._tr("opts_group"), padding=10)
         self.options_body.pack(fill=tk.X, pady=(0, 10))
         self.options_dpi_label = ttk.Label(self.options_body, text=self._tr("opts_dpi"))
@@ -442,7 +443,7 @@ class PDFCompareApp:
         self.options_stroke_hint_label = ttk.Label(self.options_body, text=self._tr("opts_stroke_hint"), style="Hint.TLabel")
         self.options_stroke_hint_label.grid(row=1, column=2, columnspan=2, sticky="w", pady=(2, 8))
         self.options_body.columnconfigure(4, weight=1)
-        self.options_body.pack_forget()
+        # Options always visible - no pack_forget()
 
         actions = ttk.Frame(self.compare_tab)
         actions.pack(fill=tk.X, pady=(2, 2))
@@ -516,7 +517,7 @@ class PDFCompareApp:
         self.history_hint_label = ttk.Label(self.history_tab, text=self._tr("hist_hint"), style="Hint.TLabel")
         self.history_hint_label.pack(anchor="w", pady=(8, 0))
 
-        self._sync_lang_combo()
+        self._update_lang_buttons()
         self._apply_locale()
 
     def _path_row(
@@ -532,14 +533,7 @@ class PDFCompareApp:
         btn.pack(side=tk.LEFT, padx=(8, 0))
         return label, entry, btn
 
-    def _toggle_options(self) -> None:
-        self.options_expanded = not self.options_expanded
-        if self.options_body is not None and self.options_toggle_btn is not None:
-            if self.options_expanded:
-                self.options_body.pack(fill=tk.X, pady=(0, 10))
-            else:
-                self.options_body.pack_forget()
-            self.options_toggle_btn.configure(text=self._tr("opts_expanded" if self.options_expanded else "opts_collapsed"))
+    # Options are now always visible - toggle removed
 
     def _draw_drop_zone(self) -> None:
         if self.drop_canvas is None:
