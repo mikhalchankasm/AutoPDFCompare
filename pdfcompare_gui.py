@@ -219,6 +219,7 @@ class PDFCompareApp:
         self.stroke_tol = tk.StringVar(value="2.0")
         self.status = tk.StringVar(value="")
         self.progress_pct = tk.StringVar(value="0%")
+        self.elapsed = tk.StringVar(value="00:00")
         self.drop_badges_var = tk.StringVar(value="")
         self.options_expanded = False
 
@@ -226,6 +227,8 @@ class PDFCompareApp:
         self.running = False
         self.cancel_requested = threading.Event()
         self.worker_thread: threading.Thread | None = None
+        self._run_started_monotonic = 0.0
+        self._timer_job: str | None = None
         self.last_run_dir: Path | None = None
         self._drop_hook: WindowsDropHook | None = None
         self._history_by_iid: dict[str, dict[str, Any]] = {}
@@ -471,7 +474,8 @@ class PDFCompareApp:
         progress_row.pack(fill=tk.X, pady=(10, 5))
         self.progress = ttk.Progressbar(progress_row, mode="determinate", maximum=100)
         self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(progress_row, textvariable=self.progress_pct, width=6, anchor="e").pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Label(progress_row, textvariable=self.elapsed, width=7, anchor="e").pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Label(progress_row, textvariable=self.progress_pct, width=6, anchor="e").pack(side=tk.LEFT, padx=(4, 0))
         ttk.Label(self.compare_tab, textvariable=self.status, style="Hint.TLabel", wraplength=860).pack(anchor="w")
 
         hist_tools = ttk.Frame(self.history_tab)
@@ -534,6 +538,32 @@ class PDFCompareApp:
         return label, entry, btn
 
     # Options are now always visible - toggle removed
+
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration as MM:SS"""
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins:02d}:{secs:02d}"
+
+    def _start_timer(self) -> None:
+        """Start the elapsed time timer"""
+        if self._timer_job is not None:
+            self.root.after_cancel(self._timer_job)
+        self._timer_tick()
+
+    def _stop_timer(self) -> None:
+        """Stop the elapsed time timer"""
+        if self._timer_job is not None:
+            self.root.after_cancel(self._timer_job)
+            self._timer_job = None
+
+    def _timer_tick(self) -> None:
+        """Update elapsed time display"""
+        if not self.running:
+            return
+        elapsed_sec = time.monotonic() - self._run_started_monotonic
+        self.elapsed.set(self._format_duration(elapsed_sec))
+        self._timer_job = self.root.after(250, self._timer_tick)
 
     def _draw_drop_zone(self) -> None:
         if self.drop_canvas is None:
@@ -1091,11 +1121,15 @@ class PDFCompareApp:
         if running:
             self.progress.configure(value=0.0)
             self.progress_pct.set("0%")
+            self.elapsed.set("00:00")
+            self._run_started_monotonic = time.monotonic()
+            self._start_timer()
             self.run_btn.configure(state=tk.NORMAL, command=self._request_cancel)
             self.run_btn.configure(text=self._tr("btn_cancel"))
             self.open_report_btn.configure(state=tk.DISABLED)
             self.open_run_btn.configure(state=tk.DISABLED)
         else:
+            self._stop_timer()
             self.cancel_requested.clear()
             self.worker_thread = None
             self.run_btn.configure(command=self.start_compare)
