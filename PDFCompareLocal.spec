@@ -1,12 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+from pathlib import Path
+
+# Locate tkinterdnd2 package data
+tkdnd_data = []
+try:
+    import tkinterdnd2
+    tkdnd_path = Path(tkinterdnd2.__file__).parent
+    tkdnd_data = [(str(tkdnd_path / 'tkdnd'), 'tkinterdnd2/tkdnd')]
+except ImportError:
+    pass
 
 a = Analysis(
     ['pdfcompare_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=tkdnd_data,
+    hiddenimports=['tkinterdnd2'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
