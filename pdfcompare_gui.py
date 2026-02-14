@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import ctypes.wintypes
 import json
 import os
 import queue
@@ -15,6 +14,15 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Any, Callable, Iterable
 
 from compare_pdfs import compare_pdfs
+
+# Try to import tkinterdnd2 for drag & drop support
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    HAS_TKDND = True
+except ImportError:
+    HAS_TKDND = False
+    TkinterDnD = None
+    DND_FILES = None
 
 
 I18N: dict[str, dict[str, str]] = {
@@ -194,108 +202,6 @@ I18N: dict[str, dict[str, str]] = {
     },
 }
 
-
-class WindowsDropHook:
-    """Enable Explorer drag-and-drop into a Tk window on Windows."""
-
-    GWL_WNDPROC = -4
-    WM_DROPFILES = 0x0233
-    UINT_MAX = 0xFFFFFFFF
-
-    def __init__(self, widget: tk.Misc, on_drop: Callable[[list[Path]], None]) -> None:
-        if os.name != "nt":
-            raise RuntimeError("Windows-only feature")
-
-        self.widget = widget
-        self.on_drop = on_drop
-        self.hwnd = widget.winfo_id()
-        self._active = False
-
-        self._user32 = ctypes.windll.user32
-        self._shell32 = ctypes.windll.shell32
-
-        if ctypes.sizeof(ctypes.c_void_p) == 8:
-            self._long_ptr_t = ctypes.c_longlong
-            self._get_wndproc = self._user32.GetWindowLongPtrW
-            self._get_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
-            self._get_wndproc.restype = self._long_ptr_t
-            self._set_wndproc = self._user32.SetWindowLongPtrW
-            self._set_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, self._long_ptr_t]
-            self._set_wndproc.restype = self._long_ptr_t
-        else:
-            self._long_ptr_t = ctypes.c_long
-            self._get_wndproc = self._user32.GetWindowLongW
-            self._get_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
-            self._get_wndproc.restype = self._long_ptr_t
-            self._set_wndproc = self._user32.SetWindowLongW
-            self._set_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, self._long_ptr_t]
-            self._set_wndproc.restype = self._long_ptr_t
-
-        self._wndproc_type = ctypes.WINFUNCTYPE(
-            self._long_ptr_t,
-            ctypes.wintypes.HWND,
-            ctypes.wintypes.UINT,
-            ctypes.wintypes.WPARAM,
-            ctypes.wintypes.LPARAM,
-        )
-
-        self._call_wndproc = self._user32.CallWindowProcW
-        self._call_wndproc.argtypes = [
-            self._long_ptr_t,
-            ctypes.wintypes.HWND,
-            ctypes.wintypes.UINT,
-            ctypes.wintypes.WPARAM,
-            ctypes.wintypes.LPARAM,
-        ]
-        self._call_wndproc.restype = self._long_ptr_t
-
-        self._shell32.DragQueryFileW.argtypes = [
-            ctypes.wintypes.HANDLE,
-            ctypes.wintypes.UINT,
-            ctypes.wintypes.LPWSTR,
-            ctypes.wintypes.UINT,
-        ]
-        self._shell32.DragQueryFileW.restype = ctypes.wintypes.UINT
-
-        self._shell32.DragAcceptFiles.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.BOOL]
-        self._shell32.DragAcceptFiles.restype = None
-
-        self._shell32.DragFinish.argtypes = [ctypes.wintypes.HANDLE]
-        self._shell32.DragFinish.restype = None
-
-        self._old_wndproc = self._get_wndproc(self.hwnd, self.GWL_WNDPROC)
-        self._new_wndproc = self._wndproc_type(self._wndproc)
-        # Get function address as integer
-        new_wndproc_addr = ctypes.cast(self._new_wndproc, ctypes.c_void_p).value
-        self._set_wndproc(self.hwnd, self.GWL_WNDPROC, new_wndproc_addr)
-        self._shell32.DragAcceptFiles(self.hwnd, True)
-        self._active = True
-
-    def close(self) -> None:
-        if not self._active:
-            return
-        self._shell32.DragAcceptFiles(self.hwnd, False)
-        self._set_wndproc(self.hwnd, self.GWL_WNDPROC, self._old_wndproc)
-        self._active = False
-
-    def _wndproc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
-        if msg == self.WM_DROPFILES:
-            hdrop = wparam
-            count = self._shell32.DragQueryFileW(hdrop, self.UINT_MAX, None, 0)
-            paths: list[Path] = []
-            for idx in range(count):
-                buf_len = self._shell32.DragQueryFileW(hdrop, idx, None, 0) + 1
-                buf = ctypes.create_unicode_buffer(buf_len)
-                self._shell32.DragQueryFileW(hdrop, idx, buf, buf_len)
-                p = Path(buf.value)
-                if p.exists():
-                    paths.append(p)
-            self._shell32.DragFinish(hdrop)
-            if paths:
-                self.widget.after(0, lambda: self.on_drop(paths))
-            return 0
-
-        return self._call_wndproc(self._old_wndproc, hwnd, msg, wparam, lparam)
 
 
 class PDFCompareApp:
@@ -872,11 +778,27 @@ class PDFCompareApp:
     def _install_drop_hook(self) -> None:
         self.root.update_idletasks()
         try:
-            self._drop_hook = WindowsDropHook(self.root, self._handle_dropped_files)
-            self._set_status("status_initial")
+            if HAS_TKDND and DND_FILES is not None:
+                # Use tkinterdnd2 for drag & drop (Python 3.12+ compatible)
+                if self.drop_canvas:
+                    self.drop_canvas.drop_target_register(DND_FILES)
+                    self.drop_canvas.dnd_bind('<<Drop>>', self._on_tkdnd_drop)
+                self._set_status("status_initial")
+            else:
+                # Fallback: drag & drop not available
+                self._set_status("status_drag_unavailable", error="tkinterdnd2 not installed")
         except Exception as exc:
-            self._drop_hook = None
             self._set_status("status_drag_unavailable", error=str(exc))
+
+    def _on_tkdnd_drop(self, event) -> None:
+        """Handle drop event from tkinterdnd2"""
+        try:
+            files = self.root.tk.splitlist(event.data)
+            paths = [Path(f) for f in files if Path(f).exists()]
+            self._handle_dropped_files(paths)
+        except Exception:
+            pass
+        return event.action
 
     def _handle_dropped_files(self, paths: Iterable[Path]) -> None:
         pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
@@ -1172,7 +1094,12 @@ class PDFCompareApp:
 
 
 def main() -> None:
-    root = tk.Tk()
+    # Use TkinterDnD if available for better drag & drop support
+    if HAS_TKDND and TkinterDnD is not None:
+        root = TkinterDnD.Tk()
+    else:
+        root = tk.Tk()
+
     # Use default Windows scaling/behavior but keep predictable font.
     try:
         style = ttk.Style(root)
