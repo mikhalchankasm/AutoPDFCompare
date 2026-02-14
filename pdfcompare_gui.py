@@ -217,11 +217,19 @@ class WindowsDropHook:
         if ctypes.sizeof(ctypes.c_void_p) == 8:
             self._long_ptr_t = ctypes.c_longlong
             self._get_wndproc = self._user32.GetWindowLongPtrW
+            self._get_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+            self._get_wndproc.restype = self._long_ptr_t
             self._set_wndproc = self._user32.SetWindowLongPtrW
+            self._set_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, self._long_ptr_t]
+            self._set_wndproc.restype = self._long_ptr_t
         else:
             self._long_ptr_t = ctypes.c_long
             self._get_wndproc = self._user32.GetWindowLongW
+            self._get_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+            self._get_wndproc.restype = self._long_ptr_t
             self._set_wndproc = self._user32.SetWindowLongW
+            self._set_wndproc.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, self._long_ptr_t]
+            self._set_wndproc.restype = self._long_ptr_t
 
         self._wndproc_type = ctypes.WINFUNCTYPE(
             self._long_ptr_t,
@@ -257,7 +265,9 @@ class WindowsDropHook:
 
         self._old_wndproc = self._get_wndproc(self.hwnd, self.GWL_WNDPROC)
         self._new_wndproc = self._wndproc_type(self._wndproc)
-        self._set_wndproc(self.hwnd, self.GWL_WNDPROC, ctypes.cast(self._new_wndproc, ctypes.c_void_p).value)
+        # Get function address as integer
+        new_wndproc_addr = ctypes.cast(self._new_wndproc, ctypes.c_void_p).value
+        self._set_wndproc(self.hwnd, self.GWL_WNDPROC, new_wndproc_addr)
         self._shell32.DragAcceptFiles(self.hwnd, True)
         self._active = True
 
