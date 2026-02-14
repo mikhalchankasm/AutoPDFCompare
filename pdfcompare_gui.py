@@ -38,6 +38,7 @@ I18N: dict[str, dict[str, str]] = {
         "path_new": "● Новый PDF",
         "path_out": "Папка вывода",
         "btn_select": "Выбрать...",
+        "btn_swap": "⇅ Поменять местами",
         "opts_collapsed": "Параметры ▾",
         "opts_expanded": "Параметры ▴",
         "opts_group": "Параметры сравнения",
@@ -127,6 +128,7 @@ I18N: dict[str, dict[str, str]] = {
         "path_new": "● New PDF",
         "path_out": "Output folder",
         "btn_select": "Select...",
+        "btn_swap": "⇅ Swap files",
         "opts_collapsed": "Options ▾",
         "opts_expanded": "Options ▴",
         "opts_group": "Comparison options",
@@ -327,6 +329,8 @@ class PDFCompareApp:
             self.out_label.configure(text=self._tr("path_out"))
         if self.old_pick_btn is not None:
             self.old_pick_btn.configure(text=self._tr("btn_select"))
+        if self.swap_btn is not None:
+            self.swap_btn.configure(text=self._tr("btn_swap"))
         if self.new_pick_btn is not None:
             self.new_pick_btn.configure(text=self._tr("btn_select"))
         if self.out_pick_btn is not None:
@@ -430,6 +434,13 @@ class PDFCompareApp:
         ttk.Label(self.compare_tab, textvariable=self.drop_badges_var, style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
 
         self.old_label, self.old_entry, self.old_pick_btn = self._path_row(self.compare_tab, self.old_pdf, self._pick_old_pdf)
+
+        # Swap button between old and new PDF
+        swap_frame = ttk.Frame(self.compare_tab)
+        swap_frame.pack(fill=tk.X, pady=2)
+        self.swap_btn = ttk.Button(swap_frame, text=self._tr("btn_swap"), style="Small.TButton", command=self._swap_files)
+        self.swap_btn.pack(anchor="center")
+
         self.new_label, self.new_entry, self.new_pick_btn = self._path_row(self.compare_tab, self.new_pdf, self._pick_new_pdf)
         self.out_label, self.out_entry, self.out_pick_btn = self._path_row(self.compare_tab, self.out_dir, self._pick_out_dir)
 
@@ -964,6 +975,14 @@ class PDFCompareApp:
         if p:
             self.out_dir.set(p)
             self._save_state()
+
+    def _swap_files(self) -> None:
+        """Swap old and new PDF paths"""
+        old_val = self.old_pdf.get()
+        new_val = self.new_pdf.get()
+        self.old_pdf.set(new_val)
+        self.new_pdf.set(old_val)
+        self._save_state()
 
     def _clear_inputs(self) -> None:
         if self.running:
