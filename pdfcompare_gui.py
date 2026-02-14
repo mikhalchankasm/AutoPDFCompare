@@ -503,8 +503,12 @@ class PDFCompareApp:
         )
         self.hist_refresh_btn.pack(side=tk.LEFT)
 
+        # Create container for table and scrollbar
+        tree_container = ttk.Frame(self.history_tab)
+        tree_container.pack(fill=tk.BOTH, expand=True)
+
         cols = ("ts", "duration", "pages", "result", "old", "new", "out", "run")
-        self.history_tree = ttk.Treeview(self.history_tab, columns=cols, show="headings", selectmode="browse")
+        self.history_tree = ttk.Treeview(tree_container, columns=cols, show="headings", selectmode="browse")
         self.history_tree.heading("ts", text=self._tr("hist_col_time"))
         self.history_tree.heading("duration", text=self._tr("hist_col_duration"))
         self.history_tree.heading("pages", text=self._tr("hist_col_pages"))
@@ -521,12 +525,12 @@ class PDFCompareApp:
         self.history_tree.column("new", width=150, anchor="w", stretch=False)
         self.history_tree.column("out", width=120, anchor="w", stretch=False)
         self.history_tree.column("run", width=200, anchor="w", stretch=True)
-        self.history_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
-        self.history_tree.bind("<Double-1>", self._on_history_double_click)
 
-        hist_scroll = ttk.Scrollbar(self.history_tab, orient=tk.VERTICAL, command=self.history_tree.yview)
+        hist_scroll = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.history_tree.yview)
         hist_scroll.pack(fill=tk.Y, side=tk.RIGHT)
+        self.history_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
         self.history_tree.configure(yscrollcommand=hist_scroll.set)
+        self.history_tree.bind("<Double-1>", self._on_history_double_click)
 
         self.history_hint_label = ttk.Label(self.history_tab, text=self._tr("hist_hint"), style="Hint.TLabel")
         self.history_hint_label.pack(anchor="w", pady=(8, 0))
