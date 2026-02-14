@@ -1953,17 +1953,19 @@ def compare_pdfs(
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
     # Generate human-readable folder name based on language
+    # Add unique suffix to prevent conflicts when running multiple comparisons per second
     now = datetime.now()
+    unique_suffix = uuid4().hex[:4]  # 4-char unique ID
     if report_lang == "ru":
-        # Russian format: Сравнение_14-02-2026_23-22-39
+        # Russian format: Сравнение_14-02-2026_23-22-39_a3f2
         date_str = now.strftime('%d-%m-%Y')
         time_str = now.strftime('%H-%M-%S')
-        run_dir = out_dir / f"Сравнение_{date_str}_{time_str}"
+        run_dir = out_dir / f"Сравнение_{date_str}_{time_str}_{unique_suffix}"
     else:
-        # English format: Comparison_2026-02-14_23-22-39
+        # English format: Comparison_2026-02-14_23-22-39_a3f2
         date_str = now.strftime('%Y-%m-%d')
         time_str = now.strftime('%H-%M-%S')
-        run_dir = out_dir / f"Comparison_{date_str}_{time_str}"
+        run_dir = out_dir / f"Comparison_{date_str}_{time_str}_{unique_suffix}"
     pages_dir = run_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
 
