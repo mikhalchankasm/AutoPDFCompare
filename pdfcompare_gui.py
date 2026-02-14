@@ -243,6 +243,9 @@ class PDFCompareApp:
         self.old_label: ttk.Label | None = None
         self.new_label: ttk.Label | None = None
         self.out_label: ttk.Label | None = None
+        self.old_entry: ttk.Entry | None = None
+        self.new_entry: ttk.Entry | None = None
+        self.out_entry: ttk.Entry | None = None
         self.old_pick_btn: ttk.Button | None = None
         self.new_pick_btn: ttk.Button | None = None
         self.out_pick_btn: ttk.Button | None = None
@@ -413,9 +416,9 @@ class PDFCompareApp:
 
         ttk.Label(self.compare_tab, textvariable=self.drop_badges_var, style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
 
-        self.old_label, self.old_pick_btn = self._path_row(self.compare_tab, self.old_pdf, self._pick_old_pdf)
-        self.new_label, self.new_pick_btn = self._path_row(self.compare_tab, self.new_pdf, self._pick_new_pdf)
-        self.out_label, self.out_pick_btn = self._path_row(self.compare_tab, self.out_dir, self._pick_out_dir)
+        self.old_label, self.old_entry, self.old_pick_btn = self._path_row(self.compare_tab, self.old_pdf, self._pick_old_pdf)
+        self.new_label, self.new_entry, self.new_pick_btn = self._path_row(self.compare_tab, self.new_pdf, self._pick_new_pdf)
+        self.out_label, self.out_entry, self.out_pick_btn = self._path_row(self.compare_tab, self.out_dir, self._pick_out_dir)
 
         options_wrap = ttk.Frame(self.compare_tab)
         options_wrap.pack(fill=tk.X, pady=(6, 6))
@@ -518,7 +521,7 @@ class PDFCompareApp:
 
     def _path_row(
         self, parent: ttk.Frame, var: tk.StringVar, pick_cmd: Callable[[], None]
-    ) -> tuple[ttk.Label, ttk.Button]:
+    ) -> tuple[ttk.Label, ttk.Entry, ttk.Button]:
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=4)
         label = ttk.Label(row, text="", width=20)
@@ -527,7 +530,7 @@ class PDFCompareApp:
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         btn = ttk.Button(row, text=self._tr("btn_select"), style="Small.TButton", command=pick_cmd)
         btn.pack(side=tk.LEFT, padx=(8, 0))
-        return label, btn
+        return label, entry, btn
 
     def _toggle_options(self) -> None:
         self.options_expanded = not self.options_expanded
@@ -780,9 +783,22 @@ class PDFCompareApp:
         try:
             if HAS_TKDND and DND_FILES is not None:
                 # Use tkinterdnd2 for drag & drop (Python 3.12+ compatible)
+                # Main drop canvas
                 if self.drop_canvas:
                     self.drop_canvas.drop_target_register(DND_FILES)
                     self.drop_canvas.dnd_bind('<<Drop>>', self._on_tkdnd_drop)
+
+                # Individual path entry fields
+                if self.old_entry:
+                    self.old_entry.drop_target_register(DND_FILES)
+                    self.old_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_old)
+                if self.new_entry:
+                    self.new_entry.drop_target_register(DND_FILES)
+                    self.new_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_new)
+                if self.out_entry:
+                    self.out_entry.drop_target_register(DND_FILES)
+                    self.out_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_out)
+
                 self._set_status("status_initial")
             else:
                 # Fallback: drag & drop not available
@@ -791,11 +807,54 @@ class PDFCompareApp:
             self._set_status("status_drag_unavailable", error=str(exc))
 
     def _on_tkdnd_drop(self, event) -> None:
-        """Handle drop event from tkinterdnd2"""
+        """Handle drop event from tkinterdnd2 (main canvas)"""
         try:
             files = self.root.tk.splitlist(event.data)
             paths = [Path(f) for f in files if Path(f).exists()]
             self._handle_dropped_files(paths)
+        except Exception:
+            pass
+        return event.action
+
+    def _on_tkdnd_drop_old(self, event) -> None:
+        """Handle drop to Old PDF field"""
+        try:
+            files = self.root.tk.splitlist(event.data)
+            if files:
+                path = Path(files[0])
+                if path.exists() and path.suffix.lower() == '.pdf':
+                    self.old_pdf.set(str(path))
+                    self._save_state()
+        except Exception:
+            pass
+        return event.action
+
+    def _on_tkdnd_drop_new(self, event) -> None:
+        """Handle drop to New PDF field"""
+        try:
+            files = self.root.tk.splitlist(event.data)
+            if files:
+                path = Path(files[0])
+                if path.exists() and path.suffix.lower() == '.pdf':
+                    self.new_pdf.set(str(path))
+                    self._save_state()
+        except Exception:
+            pass
+        return event.action
+
+    def _on_tkdnd_drop_out(self, event) -> None:
+        """Handle drop to Output folder field"""
+        try:
+            files = self.root.tk.splitlist(event.data)
+            if files:
+                path = Path(files[0])
+                # Accept both folders and files (use parent folder if file dropped)
+                if path.exists():
+                    if path.is_dir():
+                        self.out_dir.set(str(path))
+                    else:
+                        self.out_dir.set(str(path.parent))
+                    self._save_state()
         except Exception:
             pass
         return event.action
