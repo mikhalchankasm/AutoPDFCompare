@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build and Release
 
 on:
   workflow_dispatch:
@@ -11,6 +11,10 @@ on:
       - "compare_pdfs.py"
       - "pdfcompare_gui.py"
       - "PDFCompareLocal.spec"
+      - "requirements.txt"
+      - "run_gui.bat"
+      - "run_gui_silent.vbs"
+      - "scripts/**"
       - ".github/workflows/build-exe.yml"
 
 permissions:
@@ -32,56 +36,38 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller numpy opencv-python-headless pymupdf tkinterdnd2
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: .\scripts\lint.ps1
+
+      - name: Test
+        run: .\scripts\test.ps1
 
       - name: Build EXE
         run: pyinstaller --noconfirm PDFCompareLocal.spec
+
+      - name: Build portable ZIP
+        run: .\scripts\package_portable.ps1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: PDFCompareLocal-windows-build-${{ github.run_number }}
-          path: dist/PDFCompareLocal.exe
+          path: |
+            dist/PDFCompareLocal.exe
+            dist_portable/PDFCompareLocal-portable.zip
           if-no-files-found: error
-
-      - name: Publish build prerelease (master)
-        if: github.ref == 'refs/heads/master'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
-          prerelease: true
-          files: dist/PDFCompareLocal.exe
-          fail_on_unmatched_files: true
-          body: |
-            Automated CI build.
-            - Build number: ${{ github.run_number }}
-            - Commit: ${{ github.sha }}
-            - Branch: ${{ github.ref_name }}
-
-      - name: Publish rolling latest release (master)
-        if: github.ref == 'refs/heads/master'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest EXE
-          target_commitish: ${{ github.sha }}
-          prerelease: false
-          make_latest: true
-          files: dist/PDFCompareLocal.exe
-          fail_on_unmatched_files: true
-          body: |
-            Latest automatic build from `master`.
-            - Build number: ${{ github.run_number }}
-            - Commit: ${{ github.sha }}
-            - Direct download:
-              https://github.com/${{ github.repository }}/releases/latest/download/PDFCompareLocal.exe
 
       - name: Publish version release (tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
-          files: dist/PDFCompareLocal.exe
+          make_latest: true
+          files: |
+            dist/PDFCompareLocal.exe
+            dist_portable/PDFCompareLocal-portable.zip
           fail_on_unmatched_files: true
+          body_path: docs/releases/${{ github.ref_name }}.md

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
 import gc
 import html
 import json
+import multiprocessing
+import os
 import re
 import shutil
-import zipfile
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Sequence, Tuple
+from typing import Callable, Iterable, List, Sequence, Tuple
 from uuid import uuid4
 
 import cv2
@@ -29,6 +32,18 @@ SHEET_EN_RE = re.compile(
     re.IGNORECASE,
 )
 SHEET_FRACTION_RE = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")
+
+UNCHANGED_DIFF_PERCENT = 0.15
+MINOR_DIFF_PERCENT = 1.0
+MODERATE_DIFF_PERCENT = 5.0
+PAGE_INFO_THUMB_DPI = 96
+THUMB_MAX_WIDTH = 320
+THUMB_JPEG_QUALITY = 82
+LIVE_REPORT_EVENT_PREFIX = "__PDFCOMPARE_LIVE_REPORT__|"
+INTERNAL_REPORT_DIR = "_pdfcompare"
+START_REPORT_FILE = "start.html"
+APP_NAME = "PDFCompare Local"
+APP_VERSION = "0.1.0"
 
 
 @dataclass
@@ -72,6 +87,16 @@ def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
     return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 
+def render_page_gray(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
+    page = doc[page_index]
+    zoom = dpi / 72.0
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, colorspace=fitz.csGRAY)
+    arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    if pix.n == 1:
+        return arr[:, :, 0]
+    return cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+
+
 def page_tokens(text: str) -> set[str]:
     return {m.group(0).upper() for m in TOKEN_RE.finditer(text)}
 
@@ -105,19 +130,80 @@ def imread_compat(path: Path, flags: int = cv2.IMREAD_UNCHANGED) -> np.ndarray |
     return cv2.imdecode(raw, flags)
 
 
-def imwrite_compat(path: Path, img: np.ndarray) -> None:
+def imwrite_compat(path: Path, img: np.ndarray, params: Sequence[int] | None = None) -> None:
     """Unicode-safe image write for Windows paths."""
     ext = path.suffix.lower() or ".png"
-    ok, encoded = cv2.imencode(ext, img)
+    encode_params = [] if params is None else list(params)
+    ok, encoded = cv2.imencode(ext, img, encode_params)
     if not ok:
         raise RuntimeError(f"Не удалось закодировать изображение для {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded.tofile(str(path))
 
 
+def internal_dir(run_dir: Path) -> Path:
+    return run_dir / INTERNAL_REPORT_DIR
+
+
+def report_dir(run_dir: Path) -> Path:
+    return internal_dir(run_dir) / "report"
+
+
+def report_pages_dir(run_dir: Path) -> Path:
+    return internal_dir(run_dir) / "pages"
+
+
+def summary_json_path(run_dir: Path) -> Path:
+    return internal_dir(run_dir) / "summary.json"
+
+
+def page_map_csv_path(run_dir: Path) -> Path:
+    return internal_dir(run_dir) / "page_map.csv"
+
+
+def find_summary_json_path(run_dir: Path) -> Path:
+    current = summary_json_path(run_dir)
+    return current if current.exists() else run_dir / "summary.json"
+
+
+def find_pages_dir(run_dir: Path) -> Path:
+    current = report_pages_dir(run_dir)
+    return current if current.exists() else run_dir / "pages"
+
+
+def write_start_page(run_dir: Path, report_lang: str = "ru") -> None:
+    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
+    title = "Open PDF comparison report" if lang == "en" else "Открыть отчёт сравнения PDF"
+    body = "The report will open automatically." if lang == "en" else "Отчёт откроется автоматически."
+    link = f"{INTERNAL_REPORT_DIR}/report/index.html"
+    html_text = f"""<!doctype html>
+<html lang="{lang}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta http-equiv="refresh" content="0; url={html.escape(link)}"/>
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:Segoe UI,Arial,sans-serif; background:#f3f6fb; color:#1d2433; }}
+    a {{ display:inline-block; margin-top:12px; padding:10px 14px; border-radius:8px; background:#185fa5; color:white; text-decoration:none; }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{html.escape(title)}</h1>
+    <p>{html.escape(body)}</p>
+    <a href="{html.escape(link)}">{html.escape(title)}</a>
+  </main>
+  <script>window.location.replace({json.dumps(link)});</script>
+</body>
+</html>
+"""
+    atomic_write_text(run_dir / START_REPORT_FILE, html_text)
+
+
 def build_page_info(
     doc_path: Path,
-    thumb_dpi: int = 96,
+    thumb_dpi: int = PAGE_INFO_THUMB_DPI,
     progress_cb: Callable[[int, int, str], None] | None = None,
     label: str = "",
 ) -> List[PageInfo]:
@@ -125,9 +211,9 @@ def build_page_info(
     with fitz.open(doc_path) as doc:
         total = len(doc)
         for i in range(total):
-            img = render_page(doc, i, thumb_dpi)
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            thumb = cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
+            gray = render_page_gray(doc, i, thumb_dpi)
+            thumb_u8 = cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
+            thumb = cv2.normalize(thumb_u8, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
             text = doc[i].get_text("text") or ""
             rect = doc[i].rect
             infos.append(
@@ -149,9 +235,9 @@ def visual_similarity(a: np.ndarray, b: np.ndarray) -> float:
     if a.shape != b.shape:
         return 0.0
     # Robust to brightness shifts: compare normalized images.
-    a_n = cv2.normalize(a, None, 0, 255, cv2.NORM_MINMAX)
-    b_n = cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX)
-    mse = float(np.mean((a_n.astype(np.float32) - b_n.astype(np.float32)) ** 2))
+    a_n = a if a.dtype == np.float32 else cv2.normalize(a, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
+    b_n = b if b.dtype == np.float32 else cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
+    mse = float(np.mean((a_n - b_n) ** 2))
     return max(0.0, 1.0 - mse / (255.0 * 255.0))
 
 
@@ -589,14 +675,24 @@ def compute_diff(
     return mask, overlay, bboxes, float(diff_percent)
 
 
-def classify(diff_percent: float) -> str:
-    if diff_percent < 0.15:
+def classify(diff_percent: float, bboxes_count: int | None = None) -> str:
+    if diff_percent < UNCHANGED_DIFF_PERCENT:
+        if bboxes_count is not None and bboxes_count > 0:
+            return "minor"
         return "unchanged"
-    if diff_percent < 1.0:
+    if diff_percent < MINOR_DIFF_PERCENT:
         return "minor"
-    if diff_percent < 5.0:
+    if diff_percent < MODERATE_DIFF_PERCENT:
         return "moderate"
     return "major"
+
+
+def level_to_report_tags(level: str | None) -> Tuple[str, str]:
+    if level == "unchanged" or level is None:
+        return "UNCHANGED", "UNCHANGED"
+    if level in {"minor", "moderate", "major", "size_mismatch"}:
+        return "CHANGED", str(level).upper()
+    return "CHANGED", str(level).upper()
 
 
 def write_summary_md(
@@ -784,7 +880,10 @@ def status_and_confidence(row: dict) -> Tuple[str, str, str, bool]:
         return "CHANGED", "NONE", "CHANGED", moved
 
     diff = row.get("diff_percent")
-    content_status = "UNCHANGED" if diff is not None and diff < 0.15 else "CHANGED"
+    level = row.get("change_level")
+    if level is None and diff is not None:
+        level = classify(float(diff), row.get("bboxes_count"))
+    content_status, _ = level_to_report_tags(level)
     page_status = content_status
 
     score = float(row.get("score") or 0.0)
@@ -797,7 +896,7 @@ def status_and_confidence(row: dict) -> Tuple[str, str, str, bool]:
     return page_status, conf, content_status, moved
 
 
-def copy_thumb(src: Path | None, dst: Path, max_w: int = 420) -> None:
+def copy_thumb(src: Path | None, dst: Path, max_w: int = THUMB_MAX_WIDTH) -> None:
     if src is None or not src.exists():
         return
     img = imread_compat(src, cv2.IMREAD_UNCHANGED)
@@ -807,45 +906,493 @@ def copy_thumb(src: Path | None, dst: Path, max_w: int = 420) -> None:
     if w > max_w:
         scale = max_w / float(w)
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-    imwrite_compat(dst, img)
+    imwrite_compat(dst, img, [cv2.IMWRITE_JPEG_QUALITY, THUMB_JPEG_QUALITY])
 
 
-def build_compact_report_zip(run_dir: Path, zip_base: Path) -> Path:
-    """Create shareable zip with report_bundle + only files required for HTML navigation."""
-    zip_path = Path(str(zip_base) + ".zip")
-    pages_allow = {
-        "a.png",
-        "a_preview.png",
-        "b.png",
-        "b_preview.png",
-        "overlay.png",
-        "bbox_overlay.png",
-        "bboxes.json",
+def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    tmp.write_text(text, encoding=encoding)
+    os.replace(tmp, path)
+
+
+def live_report_labels(lang: str) -> dict[str, str]:
+    if str(lang).lower().startswith("en"):
+        return {
+            "title": "PDF comparison in progress",
+            "subtitle": "The report updates automatically while pages are being compared.",
+            "ready": "Ready",
+            "pending": "Processing",
+            "changed": "Changed",
+            "unchanged": "Unchanged",
+            "added": "Added",
+            "removed": "Removed",
+            "size_mismatch": "Size mismatch",
+            "summary": "Progress",
+            "open": "Open",
+            "old": "Old",
+            "new": "New",
+            "diff": "Diff",
+            "page": "Page",
+            "status": "Status",
+            "level": "Level",
+            "diff_pct": "Diff %",
+            "boxes": "Boxes",
+            "back": "Back to live summary",
+            "finalizing": "Final report is being prepared...",
+            "done": "Final report is ready.",
+        }
+    return {
+        "title": "Сравнение PDF выполняется",
+        "subtitle": "Отчёт обновляется автоматически по мере готовности листов.",
+        "ready": "Готово",
+        "pending": "Обрабатывается",
+        "changed": "Изменён",
+        "unchanged": "Без изменений",
+        "added": "Добавлен",
+        "removed": "Удалён",
+        "size_mismatch": "Разный размер",
+        "summary": "Прогресс",
+        "open": "Открыть",
+        "old": "Старый",
+        "new": "Новый",
+        "diff": "Разница",
+        "page": "Лист",
+        "status": "Статус",
+        "level": "Уровень",
+        "diff_pct": "Разница %",
+        "boxes": "Зоны",
+        "back": "К live-сводке",
+        "finalizing": "Финальный отчёт готовится...",
+        "done": "Финальный отчёт готов.",
     }
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        report_bundle = run_dir / "report_bundle"
-        if report_bundle.exists():
-            for fp in report_bundle.rglob("*"):
-                if fp.is_file():
-                    zf.write(fp, arcname=str(fp.relative_to(run_dir)).replace("\\", "/"))
 
-        pages_dir = run_dir / "pages"
-        if pages_dir.exists():
-            for pair_dir in pages_dir.iterdir():
-                if not pair_dir.is_dir():
-                    continue
-                for fp in pair_dir.iterdir():
-                    if fp.is_file() and fp.name in pages_allow:
-                        zf.write(fp, arcname=str(fp.relative_to(run_dir)).replace("\\", "/"))
+def live_row_status(row: dict, labels: dict[str, str]) -> tuple[str, str, str]:
+    raw_status = str(row.get("status") or "")
+    if raw_status == "added":
+        return "added", labels["added"], "added"
+    if raw_status == "removed":
+        return "removed", labels["removed"], "removed"
+    if raw_status == "size_mismatch" or row.get("change_level") == "size_mismatch":
+        return "changed", labels["size_mismatch"], "major"
+    level = row.get("change_level")
+    content_status, level_tag = level_to_report_tags(level)
+    if content_status == "UNCHANGED":
+        return "unchanged", labels["unchanged"], "unchanged"
+    return "changed", labels["changed"], str(level_tag or "changed").lower()
 
-        # Keep lightweight run-level summaries.
-        for name in ("summary.json", "summary.md", "engineer_report.md", "page_map.csv"):
-            fp = run_dir / name
-            if fp.exists() and fp.is_file():
-                zf.write(fp, arcname=name)
 
-    return zip_path
+def first_existing_rel(base_dir: Path, pair_name: str, names: Sequence[str], prefix: str) -> str | None:
+    pair_dir = base_dir / pair_name
+    for name in names:
+        if (pair_dir / name).exists():
+            return f"{prefix}{pair_name}/{name}"
+    return None
+
+
+def format_eta(seconds: float | None) -> str:
+    if seconds is None or seconds < 0:
+        return "-"
+    total = int(round(seconds))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}ч {minutes:02d}м"
+    if minutes:
+        return f"{minutes}м {secs:02d}с"
+    return f"{secs}с"
+
+
+def write_live_slider_view(
+    run_dir: Path,
+    file_a: Path,
+    file_b: Path,
+    row: dict,
+    report_lang: str,
+    old_src: str | None,
+    new_src: str | None,
+) -> str | None:
+    if not old_src or not new_src:
+        return None
+    labels = live_report_labels(report_lang)
+    views_dir = report_dir(run_dir) / "views"
+    views_dir.mkdir(parents=True, exist_ok=True)
+    seq = int(row["seq"])
+    slider_file = f"cmp_{seq:03d}.html"
+    pair_name = str(row.get("pair_dir") or "")
+    bboxes_path = find_pages_dir(run_dir) / pair_name / "bboxes.json"
+    try:
+        bboxes_data = json.loads(bboxes_path.read_text(encoding="utf-8")) if bboxes_path.exists() else []
+    except Exception:
+        bboxes_data = []
+    a_page = "-" if row.get("a_page") is None else str(row.get("a_page"))
+    b_page = "-" if row.get("b_page") is None else str(row.get("b_page"))
+    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
+    load_error = "Failed to load image" if lang == "en" else "Не удалось загрузить изображение"
+    fit_label = "Fit to window" if lang == "en" else "Вписать в окно"
+    back_label = "Back to page" if lang == "en" else "Назад к листу"
+    summary_label = "Back to summary" if lang == "en" else "К сводке"
+    zoom_label = "Zoom" if lang == "en" else "Масштаб"
+    bbox_color_label = "Box color" if lang == "en" else "Цвет зон"
+    bbox_yellow_label = "Yellow" if lang == "en" else "Жёлтый"
+    bbox_pink_label = "Pink" if lang == "en" else "Розовый"
+    bbox_green_label = "Green" if lang == "en" else "Зелёный"
+    bbox_opacity_label = "Opacity" if lang == "en" else "Непрозрачность"
+    html_text = f"""<!doctype html>
+<html lang="{lang}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{html.escape(labels["page"])} B{html.escape(b_page)}</title>
+  <style>
+    html,body {{ width:100%; height:100%; }}
+    body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; background:#f3f6fb; color:#1d2433; overflow:hidden; }}
+    .wrap {{ width:100vw; height:100vh; margin:0; padding:0; }}
+    .panel {{ width:100%; height:100%; background:#fff; border:0; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; }}
+    .top {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }}
+    .btn {{ border:1px solid #d7deea; border-radius:8px; padding:6px 10px; text-decoration:none; color:#0f4fa8; background:#fff; }}
+    .stage {{ flex:1; width:100%; border:1px solid #d7deea; border-radius:10px; background:#fff; padding:8px; box-sizing:border-box; overflow:auto; min-height:0; position:relative; }}
+    .stage.dragging {{ cursor:ew-resize; }}
+    .stage.panning {{ cursor:grabbing; }}
+    .compare-surface {{ --bbox-border:rgba(255,180,0,.74); --bbox-fill:rgba(255,235,120,.13); position:relative; display:none; background:#fff; overflow:hidden; cursor:ew-resize; transform-origin:0 0; }}
+    .layer {{ position:absolute; inset:0; width:100%; height:100%; object-fit:fill; user-select:none; -webkit-user-drag:none; }}
+    .old-layer {{ position:absolute; inset:0; overflow:hidden; clip-path:inset(0 50% 0 0); }}
+    .bbox-layer {{ position:absolute; inset:0; pointer-events:none; }}
+    .bbox {{ position:absolute; border:2px solid var(--bbox-border); background:var(--bbox-fill); box-sizing:border-box; }}
+    .divider {{ position:absolute; top:0; bottom:0; left:50%; width:2px; background:rgba(20,120,255,.95); pointer-events:none; }}
+    .load-msg {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#5f6b84; }}
+    .slider-wrap {{ margin:10px 0 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
+    input[type=range] {{ width:100%; }}
+    .small {{ width:150px; }}
+    .bbox-controls {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-left:auto; }}
+    .swatch-option {{ display:inline-flex; align-items:center; gap:5px; border:1px solid #d7deea; border-radius:8px; padding:5px 8px; background:#fff; cursor:pointer; user-select:none; }}
+    .swatch-option input {{ margin:0; }}
+    .swatch {{ width:14px; height:14px; border-radius:4px; border:2px solid currentColor; box-sizing:border-box; }}
+    .swatch-yellow {{ color:rgb(255,180,0); background:rgba(255,235,120,.45); }}
+    .swatch-pink {{ color:rgb(236,72,153); background:rgba(244,114,182,.45); }}
+    .swatch-green {{ color:rgb(22,163,74); background:rgba(134,239,172,.45); }}
+    .bbox-opacity {{ width:110px; }}
+    .muted {{ color:#5f6b84; font-size:12px; }}
+  </style>
+</head>
+<body>
+  <div class="wrap"><div class="panel">
+    <div class="top">
+      <div><b>{html.escape(labels["page"])} A{html.escape(a_page)} - B{html.escape(b_page)}</b><div class="muted">{html.escape(file_a.name)} -> {html.escape(file_b.name)}</div></div>
+      <div><a class="btn" href="{seq:03d}.html">{html.escape(back_label)}</a><a class="btn" href="../index.html">{html.escape(summary_label)}</a><button class="btn" id="fitBtn" type="button">{html.escape(fit_label)}</button></div>
+    </div>
+    <div class="stage" id="stage" tabindex="0">
+      <div class="compare-surface" id="surface">
+        <img id="imgNew" class="layer" alt="{html.escape(labels["new"])}" draggable="false"/>
+        <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(labels["old"])}" draggable="false"/></div>
+        <div id="bboxLayer" class="bbox-layer"></div><div id="divider" class="divider"></div>
+      </div>
+      <div id="loadMsg" class="load-msg">{html.escape(labels["pending"])}</div>
+    </div>
+    <div class="slider-wrap"><span>{html.escape(labels["old"])}</span><input id="split" type="range" min="0" max="100" step="0.1" value="50"/><span>{html.escape(labels["new"])}</span><span>{html.escape(zoom_label)}</span><input id="zoom" class="small" type="range" min="1" max="500" value="100"/><span id="zoomVal">100%</span>
+      <div class="bbox-controls" aria-label="{html.escape(bbox_color_label)}">
+        <span class="muted">{html.escape(bbox_color_label)}:</span>
+        <label class="swatch-option"><input type="radio" name="bboxColor" value="yellow" checked/><span class="swatch swatch-yellow"></span>{html.escape(bbox_yellow_label)}</label>
+        <label class="swatch-option"><input type="radio" name="bboxColor" value="pink"/><span class="swatch swatch-pink"></span>{html.escape(bbox_pink_label)}</label>
+        <label class="swatch-option"><input type="radio" name="bboxColor" value="green"/><span class="swatch swatch-green"></span>{html.escape(bbox_green_label)}</label>
+        <span class="muted">{html.escape(bbox_opacity_label)}:</span><input id="bboxOpacity" class="bbox-opacity" type="range" min="5" max="35" value="13"/><span id="bboxOpacityVal">13%</span>
+      </div>
+    </div>
+  </div></div>
+  <script>
+    const oldSrc = {json.dumps(old_src)};
+    const newSrc = {json.dumps(new_src)};
+    const bboxData = {json.dumps(bboxes_data, ensure_ascii=False)};
+    const slider = document.getElementById('split');
+    const zoom = document.getElementById('zoom');
+    const zoomVal = document.getElementById('zoomVal');
+    const fitBtn = document.getElementById('fitBtn');
+    const stage = document.getElementById('stage');
+    const surface = document.getElementById('surface');
+    const oldLayer = document.getElementById('oldLayer');
+    const divider = document.getElementById('divider');
+    const bboxLayer = document.getElementById('bboxLayer');
+    const loadMsg = document.getElementById('loadMsg');
+    const oldImg = document.getElementById('imgOld');
+    const newImg = document.getElementById('imgNew');
+    const bboxOpacity = document.getElementById('bboxOpacity');
+    const bboxOpacityVal = document.getElementById('bboxOpacityVal');
+    const bboxPalettes = {{
+      yellow: {{ border:'255,180,0', fill:'255,235,120' }},
+      pink: {{ border:'236,72,153', fill:'244,114,182' }},
+      green: {{ border:'22,163,74', fill:'134,239,172' }}
+    }};
+    let activeBboxColor = 'yellow';
+    function currentBboxAlpha() {{
+      const value = Math.max(5, Math.min(35, Number(bboxOpacity.value) || 13));
+      bboxOpacity.value = String(value);
+      bboxOpacityVal.textContent = value + '%';
+      return value / 100;
+    }}
+    function setBboxColor(name) {{
+      activeBboxColor = bboxPalettes[name] ? name : 'yellow';
+      applyBboxStyle();
+      try {{ localStorage.setItem('pdfcompare:bboxColor', activeBboxColor); }} catch (e) {{}}
+    }}
+    function applyBboxStyle() {{
+      const palette = bboxPalettes[activeBboxColor] || bboxPalettes.yellow;
+      const alpha = currentBboxAlpha();
+      const borderAlpha = Math.min(0.9, 0.35 + alpha * 3);
+      surface.style.setProperty('--bbox-border', `rgba(${{palette.border}},${{borderAlpha.toFixed(2)}})`);
+      surface.style.setProperty('--bbox-fill', `rgba(${{palette.fill}},${{alpha.toFixed(2)}})`);
+      try {{ localStorage.setItem('pdfcompare:bboxOpacity', bboxOpacity.value); }} catch (e) {{}}
+    }}
+    document.querySelectorAll('input[name="bboxColor"]').forEach(input => {{
+      input.addEventListener('change', () => setBboxColor(input.value));
+    }});
+    try {{
+      const savedColor = localStorage.getItem('pdfcompare:bboxColor') || 'yellow';
+      const savedOpacity = localStorage.getItem('pdfcompare:bboxOpacity') || '13';
+      bboxOpacity.value = savedOpacity;
+      const savedInput = document.querySelector(`input[name="bboxColor"][value="${{savedColor}}"]`);
+      if (savedInput) savedInput.checked = true;
+      setBboxColor(savedColor);
+    }} catch (e) {{
+      setBboxColor('yellow');
+    }}
+    bboxOpacity.addEventListener('input', applyBboxStyle);
+    let loaded = 0, naturalW = 0, naturalH = 0;
+    function ready() {{ loaded += 1; if (loaded >= 2) initialize(); }}
+    function fail() {{ loadMsg.textContent = {json.dumps(load_error)}; }}
+    oldImg.onload = ready; newImg.onload = ready; oldImg.onerror = fail; newImg.onerror = fail;
+    oldImg.src = oldSrc; newImg.src = newSrc;
+    function initialize() {{
+      naturalW = Math.max(oldImg.naturalWidth || 1, newImg.naturalWidth || 1);
+      naturalH = Math.max(oldImg.naturalHeight || 1, newImg.naturalHeight || 1);
+      surface.style.display = 'block'; loadMsg.style.display = 'none'; buildBboxes(); applySplit(); fitToWindow();
+    }}
+    function buildBboxes() {{
+      bboxLayer.innerHTML = '';
+      bboxData.forEach(b => {{
+        const x=Number(b.x||0), y=Number(b.y||0), bw=Number(b.w||0), bh=Number(b.h||0);
+        if (bw <= 1 || bh <= 1) return;
+        const box=document.createElement('div'); box.className='bbox';
+        box.style.left=(100*x/naturalW)+'%'; box.style.top=(100*y/naturalH)+'%';
+        box.style.width=(100*bw/naturalW)+'%'; box.style.height=(100*bh/naturalH)+'%';
+        bboxLayer.appendChild(box);
+      }});
+    }}
+    function setZoomPercent(v) {{ const clamped=Math.max(1, Math.min(500, Math.round(v))); zoom.value=String(clamped); applyZoom(); }}
+    function applyZoom() {{ if (!naturalW || !naturalH) return; const z=Number(zoom.value)/100; zoomVal.textContent=Math.round(z*100)+'%'; surface.style.width=Math.max(1, Math.round(naturalW*z))+'px'; surface.style.height=Math.max(1, Math.round(naturalH*z))+'px'; }}
+    function fitToWindow() {{ if (!naturalW || !naturalH) return; const pad=16; const sx=Math.max(0.01,(stage.clientWidth-pad)/naturalW); const sy=Math.max(0.01,(stage.clientHeight-pad)/naturalH); setZoomPercent(Math.max(0.01, Math.min(sx, sy))*100); }}
+    function applySplit() {{ const pct=Math.max(0, Math.min(100, Number(slider.value)||0)); oldLayer.style.clipPath=`inset(0 ${{100-pct}}% 0 0)`; divider.style.left=pct+'%'; }}
+    function setSplitFromClientX(clientX) {{ const rect=surface.getBoundingClientRect(); if (!rect.width) return; const x=Math.max(0, Math.min(rect.width, clientX-rect.left)); slider.value=String((x/rect.width)*100); applySplit(); }}
+    let draggingSplit=false, panning=false, panStartX=0, panStartY=0, panStartScrollLeft=0, panStartScrollTop=0;
+    surface.addEventListener('mousedown', e => {{ if (e.button===2) {{ panning=true; stage.classList.add('panning'); panStartX=e.clientX; panStartY=e.clientY; panStartScrollLeft=stage.scrollLeft; panStartScrollTop=stage.scrollTop; e.preventDefault(); return; }} if (e.button!==0) return; draggingSplit=true; stage.classList.add('dragging'); setSplitFromClientX(e.clientX); }});
+    window.addEventListener('mousemove', e => {{ if (panning) {{ stage.scrollLeft=panStartScrollLeft-(e.clientX-panStartX); stage.scrollTop=panStartScrollTop-(e.clientY-panStartY); return; }} if (draggingSplit) setSplitFromClientX(e.clientX); }});
+    window.addEventListener('mouseup', () => {{ draggingSplit=false; panning=false; stage.classList.remove('dragging'); stage.classList.remove('panning'); }});
+    stage.addEventListener('contextmenu', e => e.preventDefault());
+    stage.addEventListener('wheel', e => {{ if (!e.ctrlKey) return; e.preventDefault(); setZoomPercent(Number(zoom.value)+(e.deltaY<0?6:-6)); }}, {{ passive:false }});
+    slider.addEventListener('input', applySplit); zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value))); fitBtn.addEventListener('click', fitToWindow);
+  </script>
+</body>
+</html>
+"""
+    atomic_write_text(views_dir / slider_file, html_text)
+    return slider_file
+
+
+def write_live_detail_view(run_dir: Path, file_a: Path, file_b: Path, row: dict, report_lang: str) -> None:
+    labels = live_report_labels(report_lang)
+    bundle_dir = report_dir(run_dir)
+    views_dir = bundle_dir / "views"
+    views_dir.mkdir(parents=True, exist_ok=True)
+    pair_name = str(row.get("pair_dir") or "")
+    seq = int(row["seq"])
+    pages_dir = find_pages_dir(run_dir)
+    old_src = first_existing_rel(pages_dir, pair_name, ("a.png", "a_preview.png"), "../../pages/")
+    new_src = first_existing_rel(pages_dir, pair_name, ("b.png", "b_preview.png"), "../../pages/")
+    diff_src = first_existing_rel(pages_dir, pair_name, ("overlay.png", "mask.png"), "../../pages/")
+    slider_file = write_live_slider_view(run_dir, file_a, file_b, row, report_lang, old_src, new_src)
+    css_status, status_text, level_class = live_row_status(row, labels)
+    a_page = "-" if row.get("a_page") is None else str(row.get("a_page"))
+    b_page = "-" if row.get("b_page") is None else str(row.get("b_page"))
+    diff_text = "-" if row.get("diff_percent") is None else f"{float(row['diff_percent']):.3f}%"
+    boxes_text = "-" if row.get("bboxes_count") is None else str(int(row["bboxes_count"]))
+    level_text = "-" if row.get("change_level") is None else str(row["change_level"])
+    slider_label = "Slider" if str(report_lang).lower().startswith("en") else "Слайдер"
+
+    def figure(title: str, src: str | None, extra: str = "") -> str:
+        if src:
+            body = f'<img src="{html.escape(src)}" alt="{html.escape(title)}"/>'
+        else:
+            body = f'<div class="empty">{html.escape(labels["pending"])}</div>'
+        return f"<figure class='{extra}'>{body}<figcaption>{html.escape(title)}</figcaption></figure>"
+
+    doc_title = f"A{a_page} - B{b_page}"
+    html_text = f"""<!doctype html>
+<html lang="{'en' if str(report_lang).lower().startswith('en') else 'ru'}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{html.escape(labels["page"])} {html.escape(doc_title)}</title>
+  <style>
+    body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; background:#ECEBE5; color:#141413; }}
+    .wrap {{ max-width:1380px; margin:0 auto; padding:18px; }}
+    a {{ color:#185FA5; }}
+    .top {{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:14px; }}
+    .back {{ display:inline-block; padding:8px 12px; background:#185FA5; color:white; text-decoration:none; border-radius:6px; font-weight:700; }}
+    h1 {{ margin:0 0 6px 0; font-size:28px; }}
+    .meta {{ color:#6E6D68; }}
+    .badge {{ display:inline-block; padding:5px 10px; border-radius:999px; font-weight:700; }}
+    .changed {{ background:#F8D7D7; color:#7A1F1F; }}
+    .unchanged {{ background:#EAF3DE; color:#3B6D11; }}
+    .added {{ background:#E6F1FB; color:#0C447C; }}
+    .removed {{ background:#F1EFE8; color:#5F5E5A; }}
+    .grid {{ display:grid; grid-template-columns:1fr 1fr 1.6fr; gap:12px; align-items:start; }}
+    figure {{ margin:0; background:#FFFFFF; border:1px solid #E0DFDB; }}
+    img {{ width:100%; max-height:78vh; object-fit:contain; display:block; background:white; }}
+    figcaption {{ padding:8px 10px; border-top:1px solid #E0DFDB; color:#6E6D68; font-weight:700; }}
+    .empty {{ min-height:260px; display:flex; align-items:center; justify-content:center; color:#999791; }}
+    .wide img {{ max-height:82vh; }}
+    @media (max-width:1000px) {{ .grid {{ grid-template-columns:1fr; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>{html.escape(labels["page"])} {html.escape(doc_title)} <span class="badge {css_status}">{html.escape(status_text)}</span></h1>
+        <div class="meta">{html.escape(file_a.name)} -> {html.escape(file_b.name)} | {html.escape(labels["diff_pct"])}: {html.escape(diff_text)} | {html.escape(labels["boxes"])}: {html.escape(boxes_text)} | {html.escape(labels["level"])}: {html.escape(level_text)}</div>
+      </div>
+      <div>
+        {f'<a class="back" href="{html.escape(slider_file)}">{html.escape(slider_label)}</a>' if slider_file else ''}
+        <a class="back" href="../index.html">{html.escape(labels["back"])}</a>
+      </div>
+    </div>
+    <div class="grid">
+      {figure(labels["old"], old_src)}
+      {figure(labels["new"], new_src)}
+      {figure(labels["diff"], diff_src, "wide")}
+    </div>
+  </div>
+</body>
+</html>
+"""
+    atomic_write_text(views_dir / f"{seq:03d}.html", html_text)
+
+
+def write_live_html_report(
+    run_dir: Path,
+    file_a: Path,
+    file_b: Path,
+    pairs: Sequence[MatchPair],
+    details: Sequence[dict],
+    report_lang: str,
+    in_progress: bool = True,
+    write_detail_views: bool = True,
+) -> None:
+    labels = live_report_labels(report_lang)
+    bundle_dir = report_dir(run_dir)
+    views_dir = bundle_dir / "views"
+    views_dir.mkdir(parents=True, exist_ok=True)
+    details_by_seq = {int(row["seq"]): row for row in details}
+    total = len(pairs)
+    ready = len(details_by_seq)
+    rows: list[str] = []
+    counts = {"changed": 0, "unchanged": 0, "added": 0, "removed": 0, "pending": max(0, total - ready)}
+
+    for seq, pair in enumerate(pairs, start=1):
+        row = details_by_seq.get(seq)
+        if row is None:
+            a_page = "-" if pair.a_idx is None else str(pair.a_idx + 1)
+            b_page = "-" if pair.b_idx is None else str(pair.b_idx + 1)
+            rows.append(
+                "<tr class='pending'>"
+                f"<td>{seq}</td><td>{html.escape(a_page)}</td><td>{html.escape(b_page)}</td>"
+                f"<td><span class='badge pending-b'>{html.escape(labels['pending'])}</span></td>"
+                "<td>-</td><td>-</td><td>-</td><td>-</td>"
+                "</tr>"
+            )
+            continue
+
+        if write_detail_views:
+            write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
+        css_status, status_text, level_class = live_row_status(row, labels)
+        if css_status in counts:
+            counts[css_status] += 1
+        a_page = "-" if row.get("a_page") is None else str(row.get("a_page"))
+        b_page = "-" if row.get("b_page") is None else str(row.get("b_page"))
+        diff_text = "-" if row.get("diff_percent") is None else f"{float(row['diff_percent']):.3f}%"
+        boxes_text = "-" if row.get("bboxes_count") is None else str(int(row["bboxes_count"]))
+        level_text = "-" if row.get("change_level") is None else str(row["change_level"])
+        rows.append(
+            f"<tr class='ready' onclick=\"window.location.href='views/{seq:03d}.html'\">"
+            f"<td>{seq}</td><td>{html.escape(a_page)}</td><td>{html.escape(b_page)}</td>"
+            f"<td><span class='badge {html.escape(css_status)}'>{html.escape(status_text)}</span></td>"
+            f"<td><span class='level {html.escape(level_class)}'>{html.escape(level_text)}</span></td>"
+            f"<td>{html.escape(diff_text)}</td><td>{html.escape(boxes_text)}</td>"
+            f"<td><a href='views/{seq:03d}.html'>{html.escape(labels['open'])}</a></td>"
+            "</tr>"
+        )
+
+    refresh = '<meta http-equiv="refresh" content="4"/>' if in_progress else ""
+    progress_text = f"{ready}/{total}"
+    state_text = labels["finalizing"] if in_progress else labels["done"]
+    html_text = f"""<!doctype html>
+<html lang="{'en' if str(report_lang).lower().startswith('en') else 'ru'}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  {refresh}
+  <title>{html.escape(labels["title"])}</title>
+  <style>
+    body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; background:#ECEBE5; color:#141413; }}
+    .wrap {{ max-width:1240px; margin:0 auto; padding:22px; }}
+    h1 {{ margin:0; font-size:32px; font-weight:600; }}
+    .sub {{ margin:6px 0 16px 0; color:#6E6D68; }}
+    .summary {{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px; }}
+    .card {{ background:#FFFFFF; border:1px solid #E0DFDB; padding:12px; }}
+    .card span {{ color:#6E6D68; display:block; font-size:13px; }}
+    .card b {{ font-size:24px; }}
+    table {{ width:100%; border-collapse:collapse; background:#FFFFFF; border:1px solid #E0DFDB; }}
+    th, td {{ padding:10px 12px; border-bottom:1px solid #E0DFDB; text-align:left; }}
+    th {{ color:#6E6D68; font-weight:600; background:#F5F4EE; }}
+    tr.ready {{ cursor:pointer; }}
+    tr.ready:hover td {{ background:#E6F1FB; }}
+    .badge, .level {{ display:inline-block; padding:4px 9px; border-radius:999px; font-weight:700; font-size:13px; }}
+    .changed {{ background:#F8D7D7; color:#7A1F1F; }}
+    .unchanged {{ background:#EAF3DE; color:#3B6D11; }}
+    .added {{ background:#E6F1FB; color:#0C447C; }}
+    .removed, .pending-b {{ background:#F1EFE8; color:#5F5E5A; }}
+    .major, .moderate, .minor {{ background:#FFF4CC; color:#705200; }}
+    a {{ color:#185FA5; font-weight:700; }}
+    @media (max-width:800px) {{ .summary {{ grid-template-columns:1fr 1fr; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>{html.escape(labels["title"])}</h1>
+    <div class="sub">{html.escape(labels["subtitle"])} {html.escape(state_text)}</div>
+    <div class="summary">
+      <div class="card"><span>{html.escape(labels["summary"])}</span><b>{html.escape(progress_text)}</b></div>
+      <div class="card"><span>{html.escape(labels["changed"])}</span><b>{counts["changed"]}</b></div>
+      <div class="card"><span>{html.escape(labels["unchanged"])}</span><b>{counts["unchanged"]}</b></div>
+      <div class="card"><span>{html.escape(labels["added"])}</span><b>{counts["added"]}</b></div>
+      <div class="card"><span>{html.escape(labels["removed"])}</span><b>{counts["removed"]}</b></div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>A</th><th>B</th><th>{html.escape(labels["status"])}</th>
+          <th>{html.escape(labels["level"])}</th><th>{html.escape(labels["diff_pct"])}</th>
+          <th>{html.escape(labels["boxes"])}</th><th>{html.escape(labels["open"])}</th>
+        </tr>
+      </thead>
+      <tbody>{''.join(rows)}</tbody>
+    </table>
+  </div>
+</body>
+</html>
+"""
+    atomic_write_text(bundle_dir / "index.html", html_text)
+    write_start_page(run_dir, report_lang)
 
 
 def generate_html_report(
@@ -868,7 +1415,7 @@ def generate_html_report(
             "progress_prepare_bundle": "Подготовка папки отчета...",
             "progress_prepare_pages": "Подготовка страниц отчета {idx}/{total}",
             "progress_generate_view": "Генерация HTML вида {idx}/{total}",
-            "progress_pack_zip": "Упаковка report.zip...",
+            "progress_ready": "Отчёт готов",
             "status_new_sheet": "новый лист",
             "status_changed_short": "Есть изменения",
             "status_unchanged_short": "без изменений",
@@ -955,13 +1502,18 @@ def generate_html_report(
             "slider_old": "СТАРЫЙ",
             "slider_new": "НОВЫЙ",
             "slider_zoom": "Масштаб",
+            "bbox_color": "Цвет зон",
+            "bbox_yellow": "Жёлтый",
+            "bbox_pink": "Розовый",
+            "bbox_green": "Зелёный",
+            "bbox_opacity": "Непрозрачность",
             "slider_help": "Режим 1:1 по умолчанию. ЛКМ по чертежу — двигать разделитель, ПКМ+перетаскивание — панорамирование, Ctrl+колесо — масштаб внутри этого окна.",
         },
         "en": {
             "progress_prepare_bundle": "Preparing report bundle...",
             "progress_prepare_pages": "Preparing report pages {idx}/{total}",
             "progress_generate_view": "Generating HTML view {idx}/{total}",
-            "progress_pack_zip": "Packing report.zip...",
+            "progress_ready": "Report is ready",
             "status_new_sheet": "new sheet",
             "status_changed_short": "Changed",
             "status_unchanged_short": "unchanged",
@@ -1048,17 +1600,22 @@ def generate_html_report(
             "slider_old": "OLD",
             "slider_new": "NEW",
             "slider_zoom": "Zoom",
+            "bbox_color": "Box color",
+            "bbox_yellow": "Yellow",
+            "bbox_pink": "Pink",
+            "bbox_green": "Green",
+            "bbox_opacity": "Opacity",
             "slider_help": "1:1 mode by default. Left-click on drawing to move split, right-drag to pan, Ctrl+wheel to zoom inside this view.",
         },
     }[lang]
 
     emit(2, t["progress_prepare_bundle"])
-    bundle_dir = run_dir / "report_bundle"
+    bundle_dir = report_dir(run_dir)
     if bundle_dir.exists():
         shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    pages_root = run_dir / "pages"
+    pages_root = find_pages_dir(run_dir)
     if not pages_root.exists():
         raise RuntimeError(f"Не найдена папка страниц: {pages_root}")
     thumbs_dir = bundle_dir / "assets" / "thumbs"
@@ -1075,21 +1632,18 @@ def generate_html_report(
         a_page = row.get("a_page")
         b_page = row.get("b_page")
         pair_name = row.get("pair_dir", f"{seq:03d}__A_{a_page or 'NA'}__B_{b_page or 'NA'}")
-        pair_rel = Path("..") / "pages" / pair_name
         pair_abs = pages_root / pair_name
+        pair_rel = Path(os.path.relpath(pair_abs, bundle_dir))
 
         old_img = pair_rel / "a.png"
         new_img = pair_rel / "b.png"
         diff_img = pair_rel / "overlay.png"
-        bbox_img = pair_rel / "bbox_overlay.png"
         if not (pair_abs / "a.png").exists():
             old_img = pair_rel / "a_preview.png"
         if not (pair_abs / "b.png").exists():
             new_img = pair_rel / "b_preview.png"
         if not (pair_abs / "overlay.png").exists():
             diff_img = Path()
-        if not (pair_abs / "bbox_overlay.png").exists():
-            bbox_img = Path()
 
         thumb_old = Path("assets") / "thumbs" / f"{seq:03d}_old.jpg"
         thumb_new = Path("assets") / "thumbs" / f"{seq:03d}_new.jpg"
@@ -1097,8 +1651,12 @@ def generate_html_report(
         old_src = pair_abs / old_img.name if old_img and old_img.name else None
         new_src = pair_abs / new_img.name if new_img and new_img.name else None
         diff_src = pair_abs / diff_img.name if diff_img and diff_img.name else None
-        copy_thumb(old_src if old_src and old_src.is_file() else None, thumbs_dir / thumb_old.name)
-        copy_thumb(new_src if new_src and new_src.is_file() else None, thumbs_dir / thumb_new.name)
+        old_preview_src = pair_abs / "a_preview.png"
+        new_preview_src = pair_abs / "b_preview.png"
+        old_thumb_src = old_preview_src if old_preview_src.is_file() else old_src
+        new_thumb_src = new_preview_src if new_preview_src.is_file() else new_src
+        copy_thumb(old_thumb_src if old_thumb_src and old_thumb_src.is_file() else None, thumbs_dir / thumb_old.name)
+        copy_thumb(new_thumb_src if new_thumb_src and new_thumb_src.is_file() else None, thumbs_dir / thumb_new.name)
         copy_thumb(diff_src if diff_src and diff_src.is_file() else None, thumbs_dir / thumb_diff.name)
 
         status, conf, content_status, moved = status_and_confidence(row)
@@ -1137,6 +1695,7 @@ def generate_html_report(
                 "match_confidence": conf,
                 "moved": moved,
                 "diff_metric": row.get("diff_percent"),
+                "change_level": row.get("change_level"),
                 "bboxes_count": row.get("bboxes_count"),
                 "score": row.get("score"),
                 "notes": note,
@@ -1149,7 +1708,6 @@ def generate_html_report(
                     "hires_old": str(old_img).replace("\\", "/") if old_img and (pair_abs / old_img.name).exists() else None,
                     "hires_new": str(new_img).replace("\\", "/") if new_img and (pair_abs / new_img.name).exists() else None,
                     "hires_diff": str(diff_img).replace("\\", "/") if diff_img and (pair_abs / diff_img.name).exists() else None,
-                    "hires_bbox": str(bbox_img).replace("\\", "/") if bbox_img and (pair_abs / bbox_img.name).exists() else None,
                 },
             }
         )
@@ -1172,22 +1730,21 @@ def generate_html_report(
         "documents": {
             "a": {
                 "name": file_a.name,
-                "path": str(file_a),
                 "size_bytes": file_a.stat().st_size,
                 "page_count": page_count_a,
             },
             "b": {
                 "name": file_b.name,
-                "path": str(file_b),
                 "size_bytes": file_b.stat().st_size,
                 "page_count": page_count_b,
             },
         },
         "settings": {
-            "dpi_thumb": 120,
+            "dpi_thumb": PAGE_INFO_THUMB_DPI,
             "dpi_diff": high_dpi,
             "stroke_tolerance_px": stroke_tol_px,
-            "threshold_unchanged_percent": 0.15,
+            "threshold_unchanged_percent": UNCHANGED_DIFF_PERCENT,
+            "bbox_detected_means_changed": True,
             "align_mode": "ECC_AFFINE",
             "report_lang": lang,
         },
@@ -1250,22 +1807,10 @@ def generate_html_report(
             level_tag = ""
             removed_cnt += 1
         else:
-            diff_val = None if p.get("diff_metric") is None else float(p["diff_metric"])
-            if diff_val is None or diff_val < 0.15:
-                level_tag = "UNCHANGED"
-                status_tag = "UNCHANGED"
+            status_tag, level_tag = level_to_report_tags(p.get("change_level"))
+            if status_tag == "UNCHANGED":
                 unchanged_cnt += 1
-            elif diff_val < 1.0:
-                level_tag = "MINOR"
-                status_tag = "CHANGED"
-                changed_cnt += 1
-            elif diff_val < 5.0:
-                level_tag = "MODERATE"
-                status_tag = "CHANGED"
-                changed_cnt += 1
             else:
-                level_tag = "MAJOR"
-                status_tag = "CHANGED"
                 changed_cnt += 1
 
         a_idx = "—" if p["a_index"] is None else f"A{p['a_index']}"
@@ -1568,8 +2113,6 @@ def generate_html_report(
         old_src = f"../{p['assets']['hires_old']}" if p["assets"]["hires_old"] else None
         new_src = f"../{p['assets']['hires_new']}" if p["assets"]["hires_new"] else None
         diff_src = f"../{p['assets']['hires_diff']}" if p["assets"]["hires_diff"] else None
-        bbox_src_file = f"../{p['assets']['hires_bbox']}" if p["assets"].get("hires_bbox") else None
-        bbox_overlay_src = f"../{p['assets']['hires_bbox']}" if p["assets"].get("hires_bbox") else None
         prev_link = p["prev_view_file"]
         next_link = p["next_view_file"]
         slider_file = f"cmp_{p['view_file']}" if old_src and new_src else None
@@ -1743,15 +2286,29 @@ def generate_html_report(
     .panel {{ width:100%; height:100%; background:#fff; border:0; border-radius:0; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; }}
     .top {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }}
     .btn {{ border:1px solid #d7deea; border-radius:8px; padding:6px 10px; text-decoration:none; color:#0f4fa8; background:#fff; }}
-    .stage {{ flex:1; width:100%; border:1px solid #d7deea; border-radius:10px; background:#fff; padding:8px; box-sizing:border-box; overflow:auto; min-height:0; }}
+    .stage {{ flex:1; width:100%; border:1px solid #d7deea; border-radius:10px; background:#fff; padding:8px; box-sizing:border-box; overflow:auto; min-height:0; position:relative; }}
     .stage.dragging {{ cursor:ew-resize; }}
     .stage.panning {{ cursor:grabbing; }}
-    canvas {{ display:block; cursor:ew-resize; }}
-    .stage.panning canvas {{ cursor:grabbing; }}
+    .compare-surface {{ --bbox-border:rgba(255,180,0,.74); --bbox-fill:rgba(255,235,120,.13); position:relative; display:none; background:#fff; overflow:hidden; cursor:ew-resize; transform-origin:0 0; }}
+    .layer {{ position:absolute; inset:0; width:100%; height:100%; object-fit:fill; user-select:none; -webkit-user-drag:none; }}
+    .old-layer {{ position:absolute; inset:0; overflow:hidden; clip-path:inset(0 50% 0 0); }}
+    .bbox-layer {{ position:absolute; inset:0; pointer-events:none; }}
+    .bbox {{ position:absolute; border:2px solid var(--bbox-border); background:var(--bbox-fill); box-sizing:border-box; }}
+    .divider {{ position:absolute; top:0; bottom:0; left:50%; width:2px; background:rgba(20,120,255,.95); pointer-events:none; }}
+    .load-msg {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#5f6b84; }}
+    .stage.panning .compare-surface {{ cursor:grabbing; }}
     .slider-wrap {{ margin:10px 0 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
     input[type=range] {{ width:100%; }}
     .muted {{ color:#5f6b84; font-size:12px; }}
     .small {{ width:150px; }}
+    .bbox-controls {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-left:auto; }}
+    .swatch-option {{ display:inline-flex; align-items:center; gap:5px; border:1px solid #d7deea; border-radius:8px; padding:5px 8px; background:#fff; cursor:pointer; user-select:none; }}
+    .swatch-option input {{ margin:0; }}
+    .swatch {{ width:14px; height:14px; border-radius:4px; border:2px solid currentColor; box-sizing:border-box; }}
+    .swatch-yellow {{ color:rgb(255,180,0); background:rgba(255,235,120,.45); }}
+    .swatch-pink {{ color:rgb(236,72,153); background:rgba(244,114,182,.45); }}
+    .swatch-green {{ color:rgb(22,163,74); background:rgba(134,239,172,.45); }}
+    .bbox-opacity {{ width:110px; }}
   </style>
 </head>
 <body>
@@ -1765,10 +2322,25 @@ def generate_html_report(
           <button class="btn" id="fitBtn" type="button">{html.escape(t["fit_to_window"])}</button>
         </div>
       </div>
-      <div class="stage" id="stage" tabindex="0"><canvas id="cmpCanvas"></canvas></div>
+      <div class="stage" id="stage" tabindex="0">
+        <div class="compare-surface" id="surface">
+          <img id="imgNew" class="layer new-layer" alt="{html.escape(t["slider_new"])}" draggable="false"/>
+          <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(t["slider_old"])}" draggable="false"/></div>
+          <div id="bboxLayer" class="bbox-layer"></div>
+          <div id="divider" class="divider"></div>
+        </div>
+        <div id="loadMsg" class="load-msg">{html.escape(t["no_data"])}</div>
+      </div>
       <div class="slider-wrap">
         <span>{html.escape(t["slider_old"])}</span><input id="split" type="range" min="0" max="100" step="0.1" value="50"/><span>{html.escape(t["slider_new"])}</span>
-        <span>{html.escape(t["slider_zoom"])}</span><input id="zoom" class="small" type="range" min="1" max="300" value="100"/><span id="zoomVal">100%</span>
+        <span>{html.escape(t["slider_zoom"])}</span><input id="zoom" class="small" type="range" min="1" max="500" value="100"/><span id="zoomVal">100%</span>
+        <div class="bbox-controls" aria-label="{html.escape(t["bbox_color"])}">
+          <span class="muted">{html.escape(t["bbox_color"])}:</span>
+          <label class="swatch-option"><input type="radio" name="bboxColor" value="yellow" checked/><span class="swatch swatch-yellow"></span>{html.escape(t["bbox_yellow"])}</label>
+          <label class="swatch-option"><input type="radio" name="bboxColor" value="pink"/><span class="swatch swatch-pink"></span>{html.escape(t["bbox_pink"])}</label>
+          <label class="swatch-option"><input type="radio" name="bboxColor" value="green"/><span class="swatch swatch-green"></span>{html.escape(t["bbox_green"])}</label>
+          <span class="muted">{html.escape(t["bbox_opacity"])}:</span><input id="bboxOpacity" class="bbox-opacity" type="range" min="5" max="35" value="13"/><span id="bboxOpacityVal">13%</span>
+        </div>
       </div>
       <div class="muted">{html.escape(t["slider_help"])}</div>
     </div>
@@ -1776,99 +2348,129 @@ def generate_html_report(
   <script>
     const oldSrc = {json.dumps(old_src)};
     const newSrc = {json.dumps(new_src)};
-    const bboxOverlaySrc = {json.dumps(bbox_overlay_src)};
     const bboxData = {json.dumps(bboxes_data, ensure_ascii=False)};
     const slider = document.getElementById('split');
     const zoom = document.getElementById('zoom');
     const zoomVal = document.getElementById('zoomVal');
     const fitBtn = document.getElementById('fitBtn');
     const stage = document.getElementById('stage');
-    const canvas = document.getElementById('cmpCanvas');
-    const ctx = canvas.getContext('2d');
-    const oldImg = new Image();
-    const newImg = new Image();
-    const bboxImg = new Image();
-    let bboxImgLoaded = false;
+    const surface = document.getElementById('surface');
+    const oldLayer = document.getElementById('oldLayer');
+    const divider = document.getElementById('divider');
+    const bboxLayer = document.getElementById('bboxLayer');
+    const loadMsg = document.getElementById('loadMsg');
+    const oldImg = document.getElementById('imgOld');
+    const newImg = document.getElementById('imgNew');
+    const bboxOpacity = document.getElementById('bboxOpacity');
+    const bboxOpacityVal = document.getElementById('bboxOpacityVal');
+    const bboxPalettes = {{
+      yellow: {{ border: '255,180,0', fill: '255,235,120' }},
+      pink: {{ border: '236,72,153', fill: '244,114,182' }},
+      green: {{ border: '22,163,74', fill: '134,239,172' }}
+    }};
+    let activeBboxColor = 'yellow';
+    function currentBboxAlpha() {{
+      const value = Math.max(5, Math.min(35, Number(bboxOpacity.value) || 13));
+      bboxOpacity.value = String(value);
+      bboxOpacityVal.textContent = value + '%';
+      return value / 100;
+    }}
+    function setBboxColor(name) {{
+      activeBboxColor = bboxPalettes[name] ? name : 'yellow';
+      applyBboxStyle();
+      try {{ localStorage.setItem('pdfcompare:bboxColor', activeBboxColor); }} catch (e) {{}}
+    }}
+    function applyBboxStyle() {{
+      const palette = bboxPalettes[activeBboxColor] || bboxPalettes.yellow;
+      const alpha = currentBboxAlpha();
+      const borderAlpha = Math.min(0.9, 0.35 + alpha * 3);
+      surface.style.setProperty('--bbox-border', `rgba(${{palette.border}},${{borderAlpha.toFixed(2)}})`);
+      surface.style.setProperty('--bbox-fill', `rgba(${{palette.fill}},${{alpha.toFixed(2)}})`);
+      try {{ localStorage.setItem('pdfcompare:bboxOpacity', bboxOpacity.value); }} catch (e) {{}}
+    }}
+    document.querySelectorAll('input[name="bboxColor"]').forEach((input) => {{
+      input.addEventListener('change', () => setBboxColor(input.value));
+    }});
+    try {{
+      const savedColor = localStorage.getItem('pdfcompare:bboxColor') || 'yellow';
+      const savedOpacity = localStorage.getItem('pdfcompare:bboxOpacity') || '13';
+      bboxOpacity.value = savedOpacity;
+      const savedInput = document.querySelector(`input[name="bboxColor"][value="${{savedColor}}"]`);
+      if (savedInput) savedInput.checked = true;
+      setBboxColor(savedColor);
+    }} catch (e) {{
+      setBboxColor('yellow');
+    }}
+    bboxOpacity.addEventListener('input', applyBboxStyle);
     let loaded = 0;
-    function ready() {{ loaded += 1; if (loaded >= 2) draw(); }}
+    let naturalW = 0;
+    let naturalH = 0;
+    function ready() {{ loaded += 1; if (loaded >= 2) initialize(); }}
+    function fail() {{ loadMsg.textContent = 'Не удалось загрузить изображение'; }}
     oldImg.onload = ready;
     newImg.onload = ready;
+    oldImg.onerror = fail;
+    newImg.onerror = fail;
     oldImg.src = oldSrc;
     newImg.src = newSrc;
-    if (bboxOverlaySrc) {{
-      bboxImg.onload = () => {{ bboxImgLoaded = true; draw(); }};
-      bboxImg.src = bboxOverlaySrc;
+    function initialize() {{
+      naturalW = Math.max(oldImg.naturalWidth || 1, newImg.naturalWidth || 1);
+      naturalH = Math.max(oldImg.naturalHeight || 1, newImg.naturalHeight || 1);
+      surface.style.display = 'block';
+      loadMsg.style.display = 'none';
+      buildBboxes();
+      applySplit();
+      fitToWindow();
+    }}
+    function buildBboxes() {{
+      bboxLayer.innerHTML = '';
+      bboxData.forEach(b => {{
+        const x = Number(b.x || 0);
+        const y = Number(b.y || 0);
+        const bw = Number(b.w || 0);
+        const bh = Number(b.h || 0);
+        if (bw <= 1 || bh <= 1) return;
+        const box = document.createElement('div');
+        box.className = 'bbox';
+        box.style.left = (100 * x / naturalW) + '%';
+        box.style.top = (100 * y / naturalH) + '%';
+        box.style.width = (100 * bw / naturalW) + '%';
+        box.style.height = (100 * bh / naturalH) + '%';
+        bboxLayer.appendChild(box);
+      }});
     }}
     function setZoomPercent(v) {{
-      const clamped = Math.max(1, Math.min(300, Math.round(v)));
+      const clamped = Math.max(1, Math.min(500, Math.round(v)));
       zoom.value = String(clamped);
       applyZoom();
     }}
     function applyZoom() {{
+      if (!naturalW || !naturalH) return;
       const z = Number(zoom.value) / 100;
       zoomVal.textContent = Math.round(z * 100) + '%';
-      if (canvas.width > 0) {{
-        canvas.style.width = Math.max(1, Math.round(canvas.width * z)) + 'px';
-        canvas.style.height = Math.max(1, Math.round(canvas.height * z)) + 'px';
-      }}
+      surface.style.width = Math.max(1, Math.round(naturalW * z)) + 'px';
+      surface.style.height = Math.max(1, Math.round(naturalH * z)) + 'px';
     }}
     function fitToWindow() {{
-      if (!canvas.width || !canvas.height) return;
+      if (!naturalW || !naturalH) return;
       const pad = 16;
-      const sx = Math.max(0.01, (stage.clientWidth - pad) / canvas.width);
-      const sy = Math.max(0.01, (stage.clientHeight - pad) / canvas.height);
+      const sx = Math.max(0.01, (stage.clientWidth - pad) / naturalW);
+      const sy = Math.max(0.01, (stage.clientHeight - pad) / naturalH);
       const s = Math.max(0.01, Math.min(sx, sy));
       setZoomPercent(s * 100);
     }}
     function setSplitFromClientX(clientX) {{
-      const rect = canvas.getBoundingClientRect();
+      const rect = surface.getBoundingClientRect();
       if (!rect.width) return;
       const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
       const pct = (x / rect.width) * 100;
       slider.value = String(pct);
-      draw();
+      applySplit();
     }}
-    function draw() {{
-      if (!oldImg.naturalWidth || !newImg.naturalWidth) return;
-      const w0 = oldImg.naturalWidth;
-      const h0 = oldImg.naturalHeight;
-      const w = Math.max(1, w0);
-      const h = Math.max(1, h0);
-      canvas.width = w;
-      canvas.height = h;
-      const splitX = Math.round((Number(slider.value) / 100) * w);
-      ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(newImg, 0, 0, w, h);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, splitX, h);
-      ctx.clip();
-      ctx.drawImage(oldImg, 0, 0, w, h);
-      ctx.restore();
-      if (bboxImgLoaded) {{
-        ctx.drawImage(bboxImg, 0, 0, w, h);
-      }} else if (bboxData.length) {{
-        ctx.fillStyle = 'rgba(255,235,120,0.22)';
-        ctx.strokeStyle = 'rgba(255,180,0,0.55)';
-        ctx.lineWidth = 1.2;
-        bboxData.forEach(b => {{
-          const x = Math.round((b.x || 0));
-          const y = Math.round((b.y || 0));
-          const bw = Math.round((b.w || 0));
-          const bh = Math.round((b.h || 0));
-          if (bw > 1 && bh > 1) {{
-            ctx.fillRect(x, y, bw, bh);
-            ctx.strokeRect(x, y, bw, bh);
-          }}
-        }});
-      }}
-      ctx.strokeStyle = 'rgba(20,120,255,0.95)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(splitX, 0);
-      ctx.lineTo(splitX, h);
-      ctx.stroke();
-      applyZoom();
+    function applySplit() {{
+      const pct = Math.max(0, Math.min(100, Number(slider.value) || 0));
+      oldLayer.style.clipPath = `inset(0 ${{100 - pct}}% 0 0)`;
+      divider.style.left = pct + '%';
     }}
     let draggingSplit = false;
     let panning = false;
@@ -1876,7 +2478,7 @@ def generate_html_report(
     let panStartY = 0;
     let panStartScrollLeft = 0;
     let panStartScrollTop = 0;
-    canvas.addEventListener('mousedown', (e) => {{
+    surface.addEventListener('mousedown', (e) => {{
       if (e.button === 2) {{
         panning = true;
         stage.classList.add('panning');
@@ -1914,7 +2516,7 @@ def generate_html_report(
     stage.addEventListener('contextmenu', (e) => {{
       e.preventDefault();
     }});
-    canvas.addEventListener('touchstart', (e) => {{
+    surface.addEventListener('touchstart', (e) => {{
       if (!e.touches || !e.touches.length) return;
       draggingSplit = true;
       stage.classList.add('dragging');
@@ -1936,20 +2538,324 @@ def generate_html_report(
       const delta = e.deltaY < 0 ? 6 : -6;
       setZoomPercent(Number(zoom.value) + delta);
     }}, {{ passive: false }});
-    slider.addEventListener('input', draw);
+    slider.addEventListener('input', applySplit);
     zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value)));
     fitBtn.addEventListener('click', fitToWindow);
-    window.addEventListener('resize', draw);
+    window.addEventListener('resize', () => {{
+      if (Number(zoom.value) <= 5) fitToWindow();
+    }});
   </script>
 </body>
 </html>"""
             (views_dir / slider_file).write_text(slider_html, encoding="utf-8")
         emit(66 + 32 * (view_idx / total_views), t["progress_generate_view"].format(idx=view_idx, total=total_views))
 
-    zip_base = run_dir.parent / f"{run_dir.name}_report"
-    zip_path = build_compact_report_zip(run_dir, zip_base)
-    emit(100, t["progress_pack_zip"])
-    return zip_path
+    write_start_page(run_dir, report_lang)
+    emit(100, t["progress_ready"])
+    return run_dir / START_REPORT_FILE
+
+
+def resolve_worker_count(requested: int | None, total_pairs: int) -> int:
+    if total_pairs <= 1:
+        return 1
+    cpu_count = os.cpu_count() or 1
+    if requested is not None and requested > 0:
+        return max(1, min(int(requested), total_pairs, cpu_count))
+    return max(1, min(total_pairs, max(1, cpu_count - 1), 4))
+
+
+def process_pair_task(
+    file_a: Path,
+    file_b: Path,
+    pages_dir: Path,
+    seq: int,
+    a_idx: int | None,
+    b_idx: int | None,
+    status: str,
+    score: float,
+    high_dpi: int,
+    stroke_tol_px: float,
+    keep_debug_images: bool,
+    limit_cv_threads: bool = False,
+) -> dict:
+    started = time.monotonic()
+
+    def remember_shape(img: np.ndarray) -> None:
+        h, w = img.shape[:2]
+        entry["width_px"] = int(w)
+        entry["height_px"] = int(h)
+        entry["pixel_count"] = int(w * h)
+
+    def finish() -> dict:
+        entry["elapsed_sec"] = round(time.monotonic() - started, 3)
+        return entry
+
+    if limit_cv_threads:
+        try:
+            cv2.setNumThreads(1)
+        except Exception:
+            pass
+
+    a_page = None if a_idx is None else a_idx + 1
+    b_page = None if b_idx is None else b_idx + 1
+    pair_name = f"{seq:03d}__A_{a_page or 'NA'}__B_{b_page or 'NA'}"
+    pair_dir = pages_dir / pair_name
+    pair_dir.mkdir(parents=True, exist_ok=True)
+
+    entry = {
+        "seq": seq,
+        "a_page": a_page,
+        "b_page": b_page,
+        "pair_dir": pair_name,
+        "status": status,
+        "score": float(score),
+        "diff_percent": None,
+        "change_level": None,
+        "bboxes_count": None,
+        "ecc_failed": False,
+        "width_px": None,
+        "height_px": None,
+        "pixel_count": None,
+        "elapsed_sec": None,
+    }
+
+    with fitz.open(file_a) as doc_a, fitz.open(file_b) as doc_b:
+        if status == "matched" and a_idx is not None and b_idx is not None:
+            a_img = render_page(doc_a, a_idx, high_dpi)
+            b_img = render_page(doc_b, b_idx, high_dpi)
+            remember_shape(a_img)
+            harmonized = harmonize_canvas(a_img, b_img)
+            if harmonized is None:
+                entry["status"] = "size_mismatch"
+                entry["change_level"] = "size_mismatch"
+                imwrite_compat(pair_dir / "a.png", a_img)
+                imwrite_compat(pair_dir / "b.png", b_img)
+                return finish()
+
+            a_h, b_h = harmonized
+            b_aligned, ecc_ok = align_ecc(a_h, b_h)
+            entry["ecc_failed"] = not ecc_ok
+            mask, overlay, bboxes, diff_percent = compute_diff(a_h, b_aligned, stroke_tol_px=stroke_tol_px)
+            level = classify(diff_percent, len(bboxes))
+
+            imwrite_compat(pair_dir / "a.png", a_h)
+            imwrite_compat(pair_dir / "b.png", b_aligned)
+            if keep_debug_images:
+                imwrite_compat(pair_dir / "b_raw.png", b_h)
+                imwrite_compat(pair_dir / "b_aligned.png", b_aligned)
+            imwrite_compat(pair_dir / "mask.png", mask)
+            imwrite_compat(pair_dir / "overlay.png", overlay)
+            (pair_dir / "bboxes.json").write_text(
+                json.dumps([{"x": x, "y": y, "w": w, "h": h} for x, y, w, h in bboxes], ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            entry["diff_percent"] = float(diff_percent)
+            entry["change_level"] = level
+            entry["bboxes_count"] = len(bboxes)
+            return finish()
+
+        if a_idx is not None:
+            a_full = render_page(doc_a, a_idx, high_dpi)
+            remember_shape(a_full)
+            a_prev = render_page(doc_a, a_idx, 120)
+            imwrite_compat(pair_dir / "a.png", a_full)
+            imwrite_compat(pair_dir / "a_preview.png", a_prev)
+        if b_idx is not None:
+            b_full = render_page(doc_b, b_idx, high_dpi)
+            if entry["width_px"] is None:
+                remember_shape(b_full)
+            b_prev = render_page(doc_b, b_idx, 120)
+            imwrite_compat(pair_dir / "b.png", b_full)
+            imwrite_compat(pair_dir / "b_preview.png", b_prev)
+        return finish()
+
+
+def _page_value_to_idx(value: object) -> int | None:
+    if value in (None, "", "-"):
+        return None
+    try:
+        return int(value) - 1
+    except (TypeError, ValueError):
+        return None
+
+
+def _details_to_pairs(details: Sequence[dict]) -> list[MatchPair]:
+    pairs: list[MatchPair] = []
+    for row in details:
+        status = str(row.get("status") or "matched")
+        if status not in {"matched", "added", "removed"}:
+            status = "matched"
+        try:
+            score = float(row.get("score") or 0.0)
+        except (TypeError, ValueError):
+            score = 0.0
+        pairs.append(
+            MatchPair(
+                _page_value_to_idx(row.get("a_page")),
+                _page_value_to_idx(row.get("b_page")),
+                status,
+                score,
+            )
+        )
+    return pairs
+
+
+def _write_run_summary_files(
+    run_dir: Path,
+    file_a: Path,
+    file_b: Path,
+    details: Sequence[dict],
+    high_dpi: int,
+    stroke_tol_px: float,
+    report_lang: str,
+) -> None:
+    pairs = _details_to_pairs(details)
+    summary_json_path(run_dir).parent.mkdir(parents=True, exist_ok=True)
+    summary_json_path(run_dir).write_text(
+        json.dumps(
+            {
+                "file_a": str(file_a),
+                "file_b": str(file_b),
+                "app_name": APP_NAME,
+                "app_version": APP_VERSION,
+                "created_at": datetime.now().isoformat(),
+                "high_dpi": int(high_dpi),
+                "stroke_tol_px": float(stroke_tol_px),
+                "pairs": list(details),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    with page_map_csv_path(run_dir).open("w", newline="", encoding="utf-8") as f:
+        csv_fields = [
+            "seq",
+            "a_page",
+            "b_page",
+            "status",
+            "score",
+            "diff_percent",
+            "change_level",
+            "bboxes_count",
+            "ecc_failed",
+            "width_px",
+            "height_px",
+            "pixel_count",
+            "elapsed_sec",
+        ]
+        w = csv.DictWriter(f, fieldnames=csv_fields)
+        w.writeheader()
+        for row in details:
+            w.writerow({k: row.get(k) for k in csv_fields})
+
+    write_summary_md(internal_dir(run_dir) / "summary.md", file_a, file_b, pairs, details, lang=report_lang)
+    write_engineer_report_md(internal_dir(run_dir) / "engineer_report.md", file_a, file_b, details, lang=report_lang)
+
+
+def regenerate_report_pages(
+    run_dir: Path,
+    seqs: Iterable[int],
+    high_dpi: int = 500,
+    stroke_tol_px: float | None = None,
+    report_lang: str = "ru",
+    workers: int | None = None,
+    progress_cb: Callable[[float, str], None] | None = None,
+) -> Path:
+    """Re-render selected mapped pages in an existing run and rebuild the report."""
+
+    def emit(pct: float, msg: str) -> None:
+        if progress_cb is not None:
+            progress_cb(float(max(0.0, min(100.0, pct))), msg)
+
+    run_dir = Path(run_dir)
+    summary_path = find_summary_json_path(run_dir)
+    pages_dir = find_pages_dir(run_dir)
+    if not summary_path.exists():
+        raise RuntimeError(f"Не найден summary.json: {summary_path}")
+    if not pages_dir.exists():
+        raise RuntimeError(f"Не найдена папка pages: {pages_dir}")
+
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    file_a = Path(str(payload.get("file_a") or ""))
+    file_b = Path(str(payload.get("file_b") or ""))
+    if not file_a.exists() or not file_b.exists():
+        raise RuntimeError("Исходные PDF из summary.json не найдены на диске")
+
+    details = [dict(row) for row in payload.get("pairs") or []]
+    if not details:
+        raise RuntimeError("В summary.json нет данных по листам")
+
+    selected = {int(seq) for seq in seqs}
+    if not selected:
+        raise RuntimeError("Не выбраны листы для перегенерации")
+
+    by_seq = {int(row.get("seq")): row for row in details if row.get("seq") is not None}
+    missing = sorted(selected.difference(by_seq))
+    if missing:
+        raise RuntimeError(f"Не найдены листы в отчёте: {', '.join(map(str, missing))}")
+
+    dpi = int(high_dpi)
+    tol = float(stroke_tol_px if stroke_tol_px is not None else payload.get("stroke_tol_px", 2.0))
+    worker_count = resolve_worker_count(workers, len(selected))
+    pages_root_resolved = pages_dir.resolve()
+
+    tasks = []
+    for seq in sorted(selected):
+        row = by_seq[seq]
+        status = str(row.get("status") or "matched")
+        score = float(row.get("score") or 0.0)
+        a_idx = _page_value_to_idx(row.get("a_page"))
+        b_idx = _page_value_to_idx(row.get("b_page"))
+        pair_name = str(row.get("pair_dir") or f"{seq:03d}__A_{row.get('a_page') or 'NA'}__B_{row.get('b_page') or 'NA'}")
+        pair_dir = (pages_dir / pair_name).resolve()
+        if pair_dir.exists():
+            if pages_root_resolved not in pair_dir.parents:
+                raise RuntimeError(f"Небезопасный путь листа: {pair_dir}")
+            shutil.rmtree(pair_dir)
+        tasks.append((file_a, file_b, pages_dir, seq, a_idx, b_idx, status, score, dpi, tol, False, worker_count > 1))
+
+    emit(5, f"Перегенерация листов: {len(tasks)}, DPI {dpi}, процессов {worker_count}")
+    completed = 0
+    updated_rows: dict[int, dict] = {}
+    if worker_count <= 1:
+        for task in tasks:
+            row = process_pair_task(*task)
+            updated_rows[int(row["seq"])] = row
+            completed += 1
+            emit(5 + 65 * (completed / len(tasks)), f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})")
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=worker_count) as executor:
+            future_map = {executor.submit(process_pair_task, *task): task[3] for task in tasks}
+            for future in concurrent.futures.as_completed(future_map):
+                row = future.result()
+                updated_rows[int(row["seq"])] = row
+                completed += 1
+                emit(5 + 65 * (completed / len(tasks)), f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})")
+
+    for idx, row in enumerate(details):
+        seq = int(row.get("seq"))
+        if seq in updated_rows:
+            details[idx] = updated_rows[seq]
+    details.sort(key=lambda row: int(row["seq"]))
+
+    emit(75, "Обновление summary.json и CSV")
+    _write_run_summary_files(run_dir, file_a, file_b, details, dpi, tol, report_lang)
+    emit(82, "Пересборка HTML отчёта")
+    generate_html_report(
+        run_dir,
+        file_a,
+        file_b,
+        details,
+        high_dpi=dpi,
+        stroke_tol_px=tol,
+        report_lang=report_lang,
+        progress_cb=lambda p, msg: emit(82 + 17 * (p / 100.0), msg),
+    )
+    emit(100, "Готово")
+    return run_dir
 
 
 def compare_pdfs(
@@ -1959,6 +2865,8 @@ def compare_pdfs(
     high_dpi: int = 250,
     stroke_tol_px: float = 2.0,
     report_lang: str = "ru",
+    keep_debug_images: bool = False,
+    workers: int | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
@@ -1979,7 +2887,7 @@ def compare_pdfs(
         date_str = now.strftime('%Y-%m-%d')
         time_str = now.strftime('%H-%M-%S')
         run_dir = out_dir / f"Comparison_{date_str}_{time_str}_{unique_suffix}"
-    pages_dir = run_dir / "pages"
+    pages_dir = report_pages_dir(run_dir)
     pages_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -1997,120 +2905,96 @@ def compare_pdfs(
         )
         emit(36, "Сопоставление листов (v1: глобальное + проверка последовательности)")
         pairs = align_pages_v1(pages_a, pages_b)
+        del pages_a, pages_b
 
         details: List[dict] = []
 
         total_pairs = max(1, len(pairs))
-        with fitz.open(file_a) as doc_a, fitz.open(file_b) as doc_b:
-            for idx, p in enumerate(pairs, start=1):
-                a_page = None if p.a_idx is None else p.a_idx + 1
-                b_page = None if p.b_idx is None else p.b_idx + 1
-                pair_name = f"{idx:03d}__A_{a_page or 'NA'}__B_{b_page or 'NA'}"
-                pair_dir = pages_dir / pair_name
-                pair_dir.mkdir(parents=True, exist_ok=True)
+        worker_count = resolve_worker_count(workers, len(pairs))
+        emit(37, f"Сравнение листов: процессов {worker_count}")
+        tasks = [
+            (
+                file_a,
+                file_b,
+                pages_dir,
+                idx,
+                p.a_idx,
+                p.b_idx,
+                p.status,
+                float(p.score),
+                high_dpi,
+                stroke_tol_px,
+                keep_debug_images,
+                worker_count > 1,
+            )
+            for idx, p in enumerate(pairs, start=1)
+        ]
+        write_live_html_report(run_dir, file_a, file_b, pairs, details, report_lang=report_lang, in_progress=True)
+        emit(37, f"{LIVE_REPORT_EVENT_PREFIX}{run_dir}")
+        completed = 0
+        processing_started = time.monotonic()
 
-                entry = {
-                    "seq": idx,
-                    "a_page": a_page,
-                    "b_page": b_page,
-                    "pair_dir": pair_name,
-                    "status": p.status,
-                    "score": float(p.score),
-                    "diff_percent": None,
-                    "change_level": None,
-                    "bboxes_count": None,
-                    "ecc_failed": False,
-                }
+        def compare_progress_message() -> str:
+            elapsed = max(0.001, time.monotonic() - processing_started)
+            remaining = (elapsed / max(1, completed)) * max(0, total_pairs - completed) if completed else None
+            eta_text = format_eta(remaining)
+            avg_page = elapsed / max(1, completed)
+            return f"Сравнение листов {completed}/{total_pairs}, осталось ~{eta_text}, среднее {avg_page:.1f}с/лист"
 
-                if p.status == "matched" and p.a_idx is not None and p.b_idx is not None:
-                    a_img = render_page(doc_a, p.a_idx, high_dpi)
-                    b_img = render_page(doc_b, p.b_idx, high_dpi)
-                    harmonized = harmonize_canvas(a_img, b_img)
-                    if harmonized is None:
-                        entry["status"] = "size_mismatch"
-                        entry["change_level"] = "size_mismatch"
-                        imwrite_compat(pair_dir / "a.png", a_img)
-                        imwrite_compat(pair_dir / "b.png", b_img)
-                        details.append(entry)
-                        continue
-
-                    a_h, b_h = harmonized
-                    b_aligned, ecc_ok = align_ecc(a_h, b_h)
-                    entry["ecc_failed"] = not ecc_ok
-                    mask, overlay, bboxes, diff_percent = compute_diff(a_h, b_aligned, stroke_tol_px=stroke_tol_px)
-                    level = classify(diff_percent)
-
-                    imwrite_compat(pair_dir / "a.png", a_h)
-                    # Keep report visuals consistent: b.png must be the aligned image used for diff.
-                    imwrite_compat(pair_dir / "b.png", b_aligned)
-                    imwrite_compat(pair_dir / "b_raw.png", b_h)
-                    imwrite_compat(pair_dir / "b_aligned.png", b_aligned)
-                    imwrite_compat(pair_dir / "mask.png", mask)
-                    imwrite_compat(pair_dir / "overlay.png", overlay)
-                    # Separate bbox layer for slider mode (transparent PNG).
-                    bbox_layer = np.zeros((a_h.shape[0], a_h.shape[1], 4), dtype=np.uint8)
-                    for x, y, w, h in bboxes:
-                        cv2.rectangle(bbox_layer, (x, y), (x + w, y + h), (120, 235, 255, 70), -1)
-                        cv2.rectangle(bbox_layer, (x, y), (x + w, y + h), (0, 180, 255, 135), 1)
-                    imwrite_compat(pair_dir / "bbox_overlay.png", bbox_layer)
-                    (pair_dir / "bboxes.json").write_text(
-                        json.dumps([{"x": x, "y": y, "w": w, "h": h} for x, y, w, h in bboxes], ensure_ascii=False, indent=2),
-                        encoding="utf-8",
-                    )
-
-                    entry["diff_percent"] = float(diff_percent)
-                    entry["change_level"] = level
-                    entry["bboxes_count"] = len(bboxes)
-                    del a_img, b_img, harmonized, a_h, b_h, b_aligned, mask, overlay, bbox_layer
-                else:
-                    # Keep quick preview for unmatched pages.
-                    if p.a_idx is not None:
-                        a_full = render_page(doc_a, p.a_idx, high_dpi)
-                        a_prev = render_page(doc_a, p.a_idx, 120)
-                        imwrite_compat(pair_dir / "a.png", a_full)
-                        imwrite_compat(pair_dir / "a_preview.png", a_prev)
-                        del a_full, a_prev
-                    if p.b_idx is not None:
-                        b_full = render_page(doc_b, p.b_idx, high_dpi)
-                        b_prev = render_page(doc_b, p.b_idx, 120)
-                        imwrite_compat(pair_dir / "b.png", b_full)
-                        imwrite_compat(pair_dir / "b_preview.png", b_prev)
-                        del b_full, b_prev
-
-                details.append(entry)
-                if idx % 8 == 0:
+        if worker_count <= 1:
+            for task in tasks:
+                row = process_pair_task(*task)
+                details.append(row)
+                completed += 1
+                write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
+                write_live_html_report(
+                    run_dir,
+                    file_a,
+                    file_b,
+                    pairs,
+                    details,
+                    report_lang=report_lang,
+                    in_progress=True,
+                    write_detail_views=False,
+                )
+                if completed % 8 == 0:
                     gc.collect()
-                emit(38 + 48 * (idx / total_pairs), f"Сравнение листов {idx}/{total_pairs}")
-
-        emit(87, "Подготовка сводки и CSV")
-        (run_dir / "summary.json").write_text(
-            json.dumps(
-                {
-                    "file_a": str(file_a),
-                    "file_b": str(file_b),
-                    "created_at": datetime.now().isoformat(),
-                    "pairs": details,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+                emit(38 + 48 * (completed / total_pairs), compare_progress_message())
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=worker_count) as executor:
+                future_map = {executor.submit(process_pair_task, *task): task[3] for task in tasks}
+                for future in concurrent.futures.as_completed(future_map):
+                    row = future.result()
+                    details.append(row)
+                    completed += 1
+                    write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
+                    write_live_html_report(
+                        run_dir,
+                        file_a,
+                        file_b,
+                        pairs,
+                        details,
+                        report_lang=report_lang,
+                        in_progress=True,
+                        write_detail_views=False,
+                    )
+                    emit(38 + 48 * (completed / total_pairs), compare_progress_message())
+        details.sort(key=lambda row: int(row["seq"]))
+        write_live_html_report(
+            run_dir,
+            file_a,
+            file_b,
+            pairs,
+            details,
+            report_lang=report_lang,
+            in_progress=False,
+            write_detail_views=False,
         )
 
-        with (run_dir / "page_map.csv").open("w", newline="", encoding="utf-8") as f:
-            csv_fields = ["seq", "a_page", "b_page", "status", "score", "diff_percent", "change_level", "bboxes_count", "ecc_failed"]
-            w = csv.DictWriter(
-                f,
-                fieldnames=csv_fields,
-            )
-            w.writeheader()
-            for row in details:
-                w.writerow({k: row.get(k) for k in csv_fields})
-
-        write_summary_md(run_dir / "summary.md", file_a, file_b, pairs, details, lang=report_lang)
-        write_engineer_report_md(run_dir / "engineer_report.md", file_a, file_b, details, lang=report_lang)
+        emit(87, "Подготовка сводки и CSV")
+        _write_run_summary_files(run_dir, file_a, file_b, details, high_dpi, stroke_tol_px, report_lang)
         emit(90, "Генерация HTML отчета")
-        zip_path = generate_html_report(
+        generate_html_report(
             run_dir,
             file_a,
             file_b,
@@ -2120,7 +3004,6 @@ def compare_pdfs(
             report_lang=report_lang,
             progress_cb=lambda p, msg: emit(90 + 9 * (p / 100.0), msg),
         )
-        (run_dir / "report_zip.txt").write_text(str(zip_path), encoding="utf-8")
         emit(100, "Готово")
         return run_dir
     except Exception as exc:
@@ -2139,6 +3022,7 @@ def pick_two_pdfs(folder: Path) -> Tuple[Path, Path]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare two multi-page PDFs and build visual report.")
+    parser.add_argument("--version", action="version", version=f"{APP_NAME} {APP_VERSION}")
     parser.add_argument("--old", type=Path, help="Path to file A (old/base)")
     parser.add_argument("--new", type=Path, help="Path to file B (new/target)")
     parser.add_argument("--input-dir", type=Path, default=Path("TestDocs"), help="Folder with two PDFs (used if --old/--new omitted)")
@@ -2146,6 +3030,12 @@ def main() -> None:
     parser.add_argument("--dpi", type=int, default=250, help="High DPI for final page diff rendering")
     parser.add_argument("--stroke-tol", type=float, default=2.0, help="Tolerance in pixels for line-thickness jitter")
     parser.add_argument("--lang", type=str, default="ru", choices=["ru", "en"], help="Report language")
+    parser.add_argument("--workers", type=int, default=0, help="Parallel page workers; 0 means auto")
+    parser.add_argument(
+        "--keep-debug-images",
+        action="store_true",
+        help="Keep extra full-size debug PNGs such as b_raw.png and b_aligned.png",
+    )
     args = parser.parse_args()
 
     if args.old and args.new:
@@ -2161,10 +3051,13 @@ def main() -> None:
         high_dpi=args.dpi,
         stroke_tol_px=args.stroke_tol,
         report_lang=args.lang,
+        keep_debug_images=args.keep_debug_images,
+        workers=args.workers,
     )
     print(f"Готово. Результаты: {run_dir}")
-    print(f"Сводка: {run_dir / 'summary.md'}")
+    print(f"Открыть отчёт: {run_dir / START_REPORT_FILE}")
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

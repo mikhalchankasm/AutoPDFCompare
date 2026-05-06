@@ -1,13 +1,26 @@
 __pycache__/
+.claude/
 *.pyc
 *.pyo
 *.pyd
 
 build/
+build_*/
 runs/
+runs_*/
 TestDocs/
 
 dist/*
+dist_*/
+dist_portable/
+.venv/
+tmp/
+docs/design/
+/*.zip
+/*.png
+/*.jpg
+/*.jpeg
+/*.pdf
 
 # Temporary spec / prompt docs (keep local, do not publish)
 CLAUDE.md
