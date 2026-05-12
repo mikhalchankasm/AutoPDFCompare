@@ -23,6 +23,7 @@ import numpy as np
 
 
 TOKEN_RE = re.compile(r"[A-Za-zА-Яа-я0-9]{3,}")
+INVALID_DOWNLOAD_NAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 SHEET_RU_RE = re.compile(
     r"(?:\bЛИСТ(?:\s*№)?|\bЛ\.)\s*[:№#-]?\s*([A-ZА-Я]{0,3}\d{1,4}[A-ZА-Я]{0,3})",
     re.IGNORECASE,
@@ -43,7 +44,7 @@ LIVE_REPORT_EVENT_PREFIX = "__PDFCOMPARE_LIVE_REPORT__|"
 INTERNAL_REPORT_DIR = "_pdfcompare"
 START_REPORT_FILE = "start.html"
 APP_NAME = "PDFCompare Local"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 
 
 @dataclass
@@ -62,6 +63,22 @@ class MatchPair:
     b_idx: int | None
     status: str  # matched | added | removed
     score: float
+
+
+def safe_download_file_name(raw_name: str, suffix: str = ".png") -> str:
+    """Return a browser-download-friendly file name."""
+    name = str(raw_name or "").strip()
+    name = INVALID_DOWNLOAD_NAME_CHARS_RE.sub("_", name)
+    name = re.sub(r"\s+", "_", name, flags=re.UNICODE)
+    name = re.sub(r"_+", "_", name).strip(" ._")
+    if not name:
+        name = "download"
+    if suffix and not name.lower().endswith(suffix.lower()):
+        name = f"{name}{suffix}"
+    name = name[:140].rstrip(" ._")
+    if not name:
+        name = f"download{suffix}"
+    return name
 
 
 def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
@@ -1487,6 +1504,7 @@ def generate_html_report(
             "open_old_win": "Открыть <span class=\"tag tag-old\">СТАРЫЙ</span> в приложении Windows",
             "open_new_win": "Открыть <span class=\"tag tag-new\">НОВЫЙ</span> в приложении Windows",
             "open_diff_win": "Открыть <span class=\"tag tag-diff\">РАЗНИЦА</span> в приложении Windows",
+            "save_diff_as": "Сохранить РАЗНИЦУ как",
             "slider_mode": "↔ Режим сравнения (слайдер)",
             "cap_old": "СТАРЫЙ",
             "cap_new": "НОВЫЙ",
@@ -1497,6 +1515,14 @@ def generate_html_report(
             "slider_title_page": "Слайдер сравнения лист {b}",
             "slider_mode_title": "Режим сравнения (слайдер)",
             "slider_subtitle": "{a_name} лист {a_idx} ↔ {b_name} лист {b_idx}",
+            "slider_sheet_menu": "Листы",
+            "slider_sheet_menu_hint": "наведите или нажмите",
+            "slider_nav_title": "Слайдеры листов",
+            "slider_current": "текущий",
+            "slider_prev": "← предыдущий слайдер",
+            "slider_next": "следующий слайдер →",
+            "slider_no_prev": "первый лист",
+            "slider_no_next": "последний лист",
             "back_to_sheet": "Назад к листу",
             "fit_to_window": "Вписать в окно",
             "slider_old": "СТАРЫЙ",
@@ -1585,6 +1611,7 @@ def generate_html_report(
             "open_old_win": "Open <span class=\"tag tag-old\">OLD</span> in Windows viewer",
             "open_new_win": "Open <span class=\"tag tag-new\">NEW</span> in Windows viewer",
             "open_diff_win": "Open <span class=\"tag tag-diff\">DIFF</span> in Windows viewer",
+            "save_diff_as": "Save DIFF as",
             "slider_mode": "↔ Compare mode (slider)",
             "cap_old": "OLD",
             "cap_new": "NEW",
@@ -1595,6 +1622,14 @@ def generate_html_report(
             "slider_title_page": "Slider compare page {b}",
             "slider_mode_title": "Compare mode (slider)",
             "slider_subtitle": "{a_name} page {a_idx} ↔ {b_name} page {b_idx}",
+            "slider_sheet_menu": "Sheets",
+            "slider_sheet_menu_hint": "hover or click",
+            "slider_nav_title": "Sheet sliders",
+            "slider_current": "current",
+            "slider_prev": "← previous slider",
+            "slider_next": "next slider →",
+            "slider_no_prev": "first sheet",
+            "slider_no_next": "last sheet",
             "back_to_sheet": "Back to page",
             "fit_to_window": "Fit to window",
             "slider_old": "OLD",
@@ -1717,6 +1752,12 @@ def generate_html_report(
     for idx, p in enumerate(pages_records):
         p["prev_view_file"] = pages_records[idx - 1]["view_file"] if idx > 0 else None
         p["next_view_file"] = pages_records[idx + 1]["view_file"] if idx + 1 < len(pages_records) else None
+        p["slider_file"] = f"cmp_{p['view_file']}" if p["assets"]["hires_old"] and p["assets"]["hires_new"] else None
+
+    slider_records = [p for p in pages_records if p["slider_file"]]
+    for idx, p in enumerate(slider_records):
+        p["prev_slider_file"] = slider_records[idx - 1]["slider_file"] if idx > 0 else None
+        p["next_slider_file"] = slider_records[idx + 1]["slider_file"] if idx + 1 < len(slider_records) else None
 
     counts = {
         "unchanged": sum(1 for p in pages_records if p["status"] == "UNCHANGED"),
@@ -2113,9 +2154,10 @@ def generate_html_report(
         old_src = f"../{p['assets']['hires_old']}" if p["assets"]["hires_old"] else None
         new_src = f"../{p['assets']['hires_new']}" if p["assets"]["hires_new"] else None
         diff_src = f"../{p['assets']['hires_diff']}" if p["assets"]["hires_diff"] else None
+        diff_download_name = safe_download_file_name(f"PDFCompare_A{a_idx}_B{b_idx}_diff")
         prev_link = p["prev_view_file"]
         next_link = p["next_view_file"]
-        slider_file = f"cmp_{p['view_file']}" if old_src and new_src else None
+        slider_file = p["slider_file"]
         pair_rel = None
         bboxes_data: list[dict] = []
         if p["assets"]["hires_old"]:
@@ -2150,7 +2192,7 @@ def generate_html_report(
     .search {{ width:100%; border:1px solid var(--line); border-radius:8px; padding:8px; margin:8px 0 10px 0; box-sizing:border-box; }}
     .nav-list {{ display:grid; gap:6px; }}
     .nav-item {{ display:flex; justify-content:space-between; gap:8px; border:1px solid var(--line); border-radius:8px; padding:8px; text-decoration:none; color:inherit; font-size:12px; background:#fafcff; }}
-    .nav-item.current {{ border-color:#0f4fa8; background:#eef5ff; }}
+    .nav-item.current {{ border-color:#1fa463; background:#e8f8ee; box-shadow:inset 4px 0 0 #1fa463; font-weight:800; }}
     .s {{ font-size:11px; border-radius:999px; padding:2px 8px; color:#fff; white-space:nowrap; align-self:center; }}
     .s.ok {{ background:var(--ok); }} .s.warn {{ background:var(--warn); }} .s.add {{ background:var(--add); }}
     .head {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }}
@@ -2171,6 +2213,7 @@ def generate_html_report(
     .btn-new {{ background:#ebf9ef; border-color:#9fdcb2; color:#1f6235; }}
     .btn-diff {{ background:#ffecec; border-color:#f0b7b7; color:#8a2a2a; }}
     .btn-compare {{ margin-left:24px; background:#fff1df; border-color:#ffc98f; color:#8f560c; font-weight:700; }}
+    .btn-save {{ background:#eaf8ef; border-color:#88d4a2; color:#176235; font-weight:800; }}
     .tag {{ font-weight:800; padding:0 4px; border-radius:4px; }}
     .tag-old {{ background:#f7e793; color:#574700; }}
     .tag-new {{ background:#cfeeda; color:#15552d; }}
@@ -2213,6 +2256,7 @@ def generate_html_report(
           {f'<button type="button" class="btn open-ext btn-old" data-src="{html.escape(old_src)}">{t["open_old_win"]}</button>' if old_src else ''}
           {f'<button type="button" class="btn open-ext btn-new" data-src="{html.escape(new_src)}">{t["open_new_win"]}</button>' if new_src else ''}
           {f'<button type="button" class="btn open-ext btn-diff" data-src="{html.escape(diff_src)}">{t["open_diff_win"]}</button>' if diff_src else ''}
+          {f'<a class="btn btn-save" href="{html.escape(diff_src)}" download="{html.escape(diff_download_name)}">{html.escape(t["save_diff_as"])}</a>' if diff_src else ''}
           {f'<a class="btn btn-compare" href="{html.escape(slider_file)}">{html.escape(t["slider_mode"])}</a>' if slider_file else ''}
         </div>
         <div class="cmp">
@@ -2273,6 +2317,32 @@ def generate_html_report(
         (views_dir / p["view_file"]).write_text(detail_html, encoding="utf-8")
 
         if slider_file and old_src and new_src:
+            prev_slider_file = p.get("prev_slider_file")
+            next_slider_file = p.get("next_slider_file")
+            slider_nav_items: list[str] = []
+            for nav_p in slider_records:
+                nav_a = "-" if nav_p["a_index"] is None else str(nav_p["a_index"])
+                nav_b = "-" if nav_p["b_index"] is None else str(nav_p["b_index"])
+                nav_diff = "-" if nav_p["diff_metric"] is None else f'{nav_p["diff_metric"]:.3f}%'
+                nav_boxes = "-" if nav_p["bboxes_count"] is None else str(nav_p["bboxes_count"])
+                nav_current = " current" if nav_p["slider_file"] == slider_file else ""
+                nav_search = f"{nav_a} {nav_b} {nav_p['status_ru']} {nav_diff} {nav_p['notes']}".lower()
+                slider_nav_items.append(
+                    f"<a class='slider-nav-item{nav_current}' data-label='{html.escape(nav_search)}' "
+                    f"href='{html.escape(str(nav_p['slider_file']))}'>"
+                    f"<span class='slider-nav-main'><b>A{html.escape(nav_a)} / B{html.escape(nav_b)}</b>"
+                    f"<span class='s {badge_class(nav_p['status'])}'>{html.escape(nav_p['status_ru'])}</span></span>"
+                    f"<span class='slider-nav-meta'>{html.escape(t['diff_label'])}: {html.escape(nav_diff)} | "
+                    f"{html.escape(t['th_boxes'])}: {html.escape(nav_boxes)}</span></a>"
+                )
+            slider_nav_html = "".join(slider_nav_items)
+            slider_summary_html = (
+                f"<div class='slider-menu-summary'>"
+                f"<span>{html.escape(t['summary_changed'])} <b>{counts['changed']}</b></span>"
+                f"<span>{html.escape(t['summary_unchanged'])} <b>{counts['unchanged']}</b></span>"
+                f"<span>{html.escape(t['summary_added'])} <b>{counts['new']}</b></span>"
+                f"</div>"
+            )
             slider_html = f"""<!doctype html>
 <html lang="{lang}">
 <head>
@@ -2285,7 +2355,26 @@ def generate_html_report(
     .wrap {{ width:100vw; height:100vh; margin:0; padding:0; }}
     .panel {{ width:100%; height:100%; background:#fff; border:0; border-radius:0; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; }}
     .top {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }}
+    .top-actions {{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; }}
     .btn {{ border:1px solid #d7deea; border-radius:8px; padding:6px 10px; text-decoration:none; color:#0f4fa8; background:#fff; }}
+    .btn.disabled {{ color:#7b8496; background:#f4f6fa; cursor:default; }}
+    .btn-save {{ background:#eaf8ef; border-color:#88d4a2; color:#176235; font-weight:800; }}
+    .slider-menu {{ position:relative; display:inline-block; }}
+    .slider-menu-btn {{ display:flex; align-items:center; gap:8px; }}
+    .slider-menu-panel {{ position:absolute; right:0; top:calc(100% + 6px); width:min(420px, calc(100vw - 24px)); max-height:min(72vh, 680px); overflow:auto; padding:10px; border:1px solid #cfd8e8; border-radius:10px; background:#fff; box-shadow:0 18px 45px rgba(20,31,54,.18); z-index:20; display:none; }}
+    .slider-menu:hover .slider-menu-panel, .slider-menu:focus-within .slider-menu-panel, .slider-menu.open .slider-menu-panel {{ display:block; }}
+    .slider-menu-title {{ display:flex; justify-content:space-between; gap:8px; align-items:baseline; margin-bottom:8px; }}
+    .slider-menu-summary {{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:8px; }}
+    .slider-menu-summary span {{ border:1px solid #e2e8f3; border-radius:8px; padding:6px; background:#f8fbff; font-size:12px; }}
+    .slider-nav-search {{ width:100%; box-sizing:border-box; border:1px solid #d7deea; border-radius:8px; padding:8px; margin:0 0 8px 0; }}
+    .slider-nav-list {{ display:grid; gap:6px; }}
+    .slider-nav-item {{ display:grid; gap:4px; border:1px solid #d7deea; border-radius:8px; padding:8px; text-decoration:none; color:inherit; background:#fbfdff; }}
+    .slider-nav-item:hover {{ border-color:#0f4fa8; background:#eef5ff; }}
+    .slider-nav-item.current {{ border-color:#1fa463; background:#e8f8ee; box-shadow:inset 4px 0 0 #1fa463; font-weight:800; }}
+    .slider-nav-main {{ display:flex; justify-content:space-between; gap:8px; align-items:center; }}
+    .slider-nav-meta {{ color:#5f6b84; font-size:12px; }}
+    .s {{ font-size:11px; border-radius:999px; padding:2px 8px; color:#fff; white-space:nowrap; }}
+    .s.ok {{ background:#1f8c4f; }} .s.warn {{ background:#cc3d17; }} .s.add {{ background:#0569d0; }}
     .stage {{ flex:1; width:100%; border:1px solid #d7deea; border-radius:10px; background:#fff; padding:8px; box-sizing:border-box; overflow:auto; min-height:0; position:relative; }}
     .stage.dragging {{ cursor:ew-resize; }}
     .stage.panning {{ cursor:grabbing; }}
@@ -2316,7 +2405,19 @@ def generate_html_report(
     <div class="panel">
       <div class="top">
         <div><b>{html.escape(t["slider_mode_title"])}</b><div class="muted">{html.escape(t["slider_subtitle"].format(a_name=file_a.name, a_idx=a_idx, b_name=file_b.name, b_idx=b_idx))}</div></div>
-        <div>
+        <div class="top-actions">
+          {f'<a class="btn" href="{html.escape(str(prev_slider_file))}">{html.escape(t["slider_prev"])}</a>' if prev_slider_file else f'<span class="btn disabled">{html.escape(t["slider_no_prev"])}</span>'}
+          {f'<a class="btn" href="{html.escape(str(next_slider_file))}">{html.escape(t["slider_next"])}</a>' if next_slider_file else f'<span class="btn disabled">{html.escape(t["slider_no_next"])}</span>'}
+          <div class="slider-menu" id="sliderMenu">
+            <button class="btn slider-menu-btn" id="sliderMenuBtn" type="button">{html.escape(t["slider_sheet_menu"])} <span class="muted">{html.escape(t["slider_sheet_menu_hint"])}</span></button>
+            <div class="slider-menu-panel">
+              <div class="slider-menu-title"><b>{html.escape(t["slider_nav_title"])}</b><span class="muted">A{html.escape(a_idx)} / B{html.escape(b_idx)} - {html.escape(t["slider_current"])}</span></div>
+              {slider_summary_html}
+              <input id="sliderNavSearch" class="slider-nav-search" placeholder="{html.escape(t["search_hint"])}"/>
+              <div id="sliderNavList" class="slider-nav-list">{slider_nav_html}</div>
+            </div>
+          </div>
+          {f'<a class="btn btn-save" href="{html.escape(diff_src)}" download="{html.escape(diff_download_name)}">{html.escape(t["save_diff_as"])}</a>' if diff_src else ''}
           <a class="btn" href="{html.escape(p['view_file'])}">{html.escape(t["back_to_sheet"])}</a>
           <a class="btn" href="../index.html">{html.escape(t["back_summary"])}</a>
           <button class="btn" id="fitBtn" type="button">{html.escape(t["fit_to_window"])}</button>
@@ -2349,6 +2450,8 @@ def generate_html_report(
     const oldSrc = {json.dumps(old_src)};
     const newSrc = {json.dumps(new_src)};
     const bboxData = {json.dumps(bboxes_data, ensure_ascii=False)};
+    const prevSliderHref = {json.dumps(prev_slider_file)};
+    const nextSliderHref = {json.dumps(next_slider_file)};
     const slider = document.getElementById('split');
     const zoom = document.getElementById('zoom');
     const zoomVal = document.getElementById('zoomVal');
@@ -2363,6 +2466,33 @@ def generate_html_report(
     const newImg = document.getElementById('imgNew');
     const bboxOpacity = document.getElementById('bboxOpacity');
     const bboxOpacityVal = document.getElementById('bboxOpacityVal');
+    const sliderMenu = document.getElementById('sliderMenu');
+    const sliderMenuBtn = document.getElementById('sliderMenuBtn');
+    const sliderNavSearch = document.getElementById('sliderNavSearch');
+    const sliderNavItems = [...document.querySelectorAll('.slider-nav-item')];
+    sliderMenuBtn.addEventListener('click', (e) => {{
+      e.stopPropagation();
+      sliderMenu.classList.toggle('open');
+      if (sliderMenu.classList.contains('open')) sliderNavSearch.focus();
+    }});
+    document.addEventListener('click', (e) => {{
+      if (!sliderMenu.contains(e.target)) sliderMenu.classList.remove('open');
+    }});
+    sliderNavSearch.addEventListener('input', () => {{
+      const q = sliderNavSearch.value.trim().toLowerCase();
+      sliderNavItems.forEach(item => {{
+        item.style.display = !q || item.dataset.label.includes(q) ? '' : 'none';
+      }});
+    }});
+    window.addEventListener('keydown', (e) => {{
+      const tag = (e.target && e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'button') return;
+      if ((e.key === 'ArrowLeft' || e.key === 'PageUp') && prevSliderHref) {{
+        window.location.href = prevSliderHref;
+      }} else if ((e.key === 'ArrowRight' || e.key === 'PageDown') && nextSliderHref) {{
+        window.location.href = nextSliderHref;
+      }}
+    }});
     const bboxPalettes = {{
       yellow: {{ border: '255,180,0', fill: '255,235,120' }},
       pink: {{ border: '236,72,153', fill: '244,114,182' }},

@@ -1,6 +1,9 @@
+import base64
 import tempfile
 import unittest
 from pathlib import Path
+
+import fitz
 
 from compare_pdfs import (
     INTERNAL_REPORT_DIR,
@@ -10,6 +13,8 @@ from compare_pdfs import (
     UNCHANGED_DIFF_PERCENT,
     MatchPair,
     classify,
+    generate_html_report,
+    report_pages_dir,
     status_and_confidence,
     write_live_html_report,
 )
@@ -107,6 +112,68 @@ class LiveReportTests(unittest.TestCase):
             write_live_html_report(run_dir, Path("old.pdf"), Path("new.pdf"), pairs, details, report_lang="ru", in_progress=False)
             final_live_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "index.html").read_text(encoding="utf-8")
             self.assertNotIn("http-equiv=\"refresh\"", final_live_html)
+
+
+class FinalReportTests(unittest.TestCase):
+    PNG_1X1 = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+    )
+
+    def _write_pdf(self, path: Path, pages: int) -> None:
+        doc = fitz.open()
+        for idx in range(pages):
+            page = doc.new_page(width=120, height=80)
+            page.insert_text((12, 30), f"Page {idx + 1}", fontsize=10)
+        doc.save(path)
+        doc.close()
+
+    def test_slider_report_has_next_prev_and_hover_sheet_picker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old_pdf = root / "old.pdf"
+            new_pdf = root / "new.pdf"
+            self._write_pdf(old_pdf, 2)
+            self._write_pdf(new_pdf, 2)
+
+            run_dir = root / "run"
+            pages_dir = report_pages_dir(run_dir)
+            details = []
+            for seq in (1, 2):
+                pair_name = f"{seq:03d}__A_{seq}__B_{seq}"
+                pair_dir = pages_dir / pair_name
+                pair_dir.mkdir(parents=True)
+                for image_name in ("a.png", "b.png", "overlay.png"):
+                    (pair_dir / image_name).write_bytes(self.PNG_1X1)
+                (pair_dir / "bboxes.json").write_text("[]", encoding="utf-8")
+                details.append(
+                    {
+                        "seq": seq,
+                        "a_page": seq,
+                        "b_page": seq,
+                        "pair_dir": pair_name,
+                        "status": "matched",
+                        "score": 0.99,
+                        "diff_percent": 0.0,
+                        "change_level": "unchanged",
+                        "bboxes_count": 0,
+                        "ecc_failed": False,
+                    }
+                )
+
+            generate_html_report(run_dir, old_pdf, new_pdf, details, high_dpi=72, stroke_tol_px=2.0, report_lang="ru")
+
+            slider_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "cmp_001.html").read_text(
+                encoding="utf-8"
+            )
+            detail_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "001.html").read_text(encoding="utf-8")
+            self.assertIn("следующий слайдер", slider_html)
+            self.assertIn("Слайдеры листов", slider_html)
+            self.assertIn("sliderNavSearch", slider_html)
+            self.assertIn("cmp_002.html", slider_html)
+            self.assertIn("Сохранить РАЗНИЦУ как", slider_html)
+            self.assertIn('download="PDFCompare_A1_B1_diff.png"', slider_html)
+            self.assertIn("box-shadow:inset 4px 0 0 #1fa463", detail_html)
+            self.assertIn("Сохранить РАЗНИЦУ как", detail_html)
 
 
 if __name__ == "__main__":
