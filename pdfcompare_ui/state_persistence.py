@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from .i18n import I18N
+from .contracts import AppProtocol
+
 
 class StatePersistenceMixin:
-    def _capture_inputs(self) -> dict[str, Any]:
+    def _capture_inputs(self: AppProtocol) -> dict[str, Any]:
         return {
             "old_pdf": self.old_pdf.get().strip(),
             "new_pdf": self.new_pdf.get().strip(),
@@ -22,7 +24,7 @@ class StatePersistenceMixin:
             "last_run_dir": str(self.last_run_dir) if self.last_run_dir else "",
         }
 
-    def _apply_inputs(self, data: dict[str, Any]) -> None:
+    def _apply_inputs(self: AppProtocol, data: dict[str, Any]) -> None:
         self.old_pdf.set(str(data.get("old_pdf") or ""))
         self.new_pdf.set(str(data.get("new_pdf") or ""))
         self.out_dir.set(str(data.get("out_dir") or ""))
@@ -49,7 +51,7 @@ class StatePersistenceMixin:
         self._refresh_option_values()
         self._refresh_status_links()
 
-    def _load_state(self) -> None:
+    def _load_state(self: AppProtocol) -> None:
         try:
             if not self.state_path.exists():
                 return
@@ -68,7 +70,7 @@ class StatePersistenceMixin:
             self.last_inputs = {}
             self.history_records = []
 
-    def _save_state(self) -> None:
+    def _save_state(self: AppProtocol) -> None:
         # State persistence is a UX feature; it must never crash the app.
         try:
             self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -83,7 +85,7 @@ class StatePersistenceMixin:
         except Exception:
             pass
 
-    def _restore_last_inputs(self, startup: bool = False) -> None:
+    def _restore_last_inputs(self: AppProtocol, startup: bool = False) -> None:
         if not self.last_inputs:
             if not startup:
                 self._set_status("status_no_saved")

@@ -13,6 +13,8 @@ from compare_pdfs import find_summary_json_path, regenerate_report_pages
 
 from .styles import BG_SOFT, BG_WINDOW
 
+from .contracts import AppProtocol
+
 
 class RerenderTabMixin:
     """Provides rerender-tab construction and worker logic.
@@ -22,7 +24,7 @@ class RerenderTabMixin:
     _primary_button, _open_report) — i.e. PDFCompareApp.
     """
 
-    def _build_rerender_tab(self) -> None:
+    def _build_rerender_tab(self: AppProtocol) -> None:
         if self.rerender_tab is None:
             return
         self.rerender_title_label = ttk.Label(self.rerender_tab, text=self._tr("rerender_title"), style="SubHeader.TLabel")
@@ -88,19 +90,19 @@ class RerenderTabMixin:
         self.rerender_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def _load_current_rerender_report(self) -> None:
+    def _load_current_rerender_report(self: AppProtocol) -> None:
         if self.last_run_dir:
             self.rerender_run_dir.set(str(self.last_run_dir))
         self._load_rerender_report()
 
-    def _pick_rerender_run_dir(self) -> None:
+    def _pick_rerender_run_dir(self: AppProtocol) -> None:
         start_dir = self.rerender_run_dir.get().strip() or (str(self.last_run_dir) if self.last_run_dir else self.out_dir.get().strip())
         folder = filedialog.askdirectory(title=self._tr("rerender_run"), initialdir=start_dir if start_dir else None)
         if folder:
             self.rerender_run_dir.set(folder)
             self._load_rerender_report()
 
-    def _load_rerender_report(self, run_dir: Path | None = None, quiet: bool = False) -> None:
+    def _load_rerender_report(self: AppProtocol, run_dir: Path | None = None, quiet: bool = False) -> None:
         if self.rerender_tree is None:
             return
         path_text = str(run_dir) if run_dir is not None else self.rerender_run_dir.get().strip()
@@ -161,7 +163,7 @@ class RerenderTabMixin:
         if self.open_run_btn is not None:
             self.open_run_btn.configure(state=tk.NORMAL)
 
-    def _start_rerender_selected(self) -> None:
+    def _start_rerender_selected(self: AppProtocol) -> None:
         if self.running or self.rerender_running:
             messagebox.showwarning(self._tr("err_invalid_input_title"), self._tr("err_rerender_busy"))
             return
@@ -195,7 +197,7 @@ class RerenderTabMixin:
         t = threading.Thread(target=self._rerender_worker, args=(run_dir, seqs, dpi, workers), daemon=True)
         t.start()
 
-    def _rerender_worker(self, run_dir: Path, seqs: list[int], dpi: int, workers: int) -> None:
+    def _rerender_worker(self: AppProtocol, run_dir: Path, seqs: list[int], dpi: int, workers: int) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
                 self.worker_events.put(("rerender_progress", float(pct), str(msg)))

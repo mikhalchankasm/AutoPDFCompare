@@ -8,9 +8,11 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
 from typing import Any
+from .contracts import AppProtocol
+
 
 class HistoryTabMixin:
-    def _refresh_history_table(self) -> None:
+    def _refresh_history_table(self: AppProtocol) -> None:
         if self.history_tree is None:
             return
         self._history_by_iid.clear()
@@ -73,13 +75,13 @@ class HistoryTabMixin:
             self.tabs.tab(1, text=self._history_tab_text())
         self._update_history_filter_buttons()
 
-    def _get_selected_history(self) -> dict[str, Any] | None:
+    def _get_selected_history(self: AppProtocol) -> dict[str, Any] | None:
         selected = self.history_tree.selection()
         if not selected:
             return None
         return self._history_by_iid.get(selected[0])
 
-    def _restore_selected_history(self) -> None:
+    def _restore_selected_history(self: AppProtocol) -> None:
         rec = self._get_selected_history()
         if not rec:
             self._set_status("status_select_history_first")
@@ -94,7 +96,7 @@ class HistoryTabMixin:
             msg += f" {self._tr('status_history_missing_files')}"
         self.status.set(msg)
 
-    def _open_selected_history_run(self) -> None:
+    def _open_selected_history_run(self: AppProtocol) -> None:
         rec = self._get_selected_history()
         if not rec:
             self._set_status("status_select_history_first")
@@ -109,10 +111,10 @@ class HistoryTabMixin:
         else:
             messagebox.showerror(self._tr("err_folder_missing_title"), self._tr("err_not_found", path=p))
 
-    def _on_history_double_click(self, event: tk.Event) -> None:
+    def _on_history_double_click(self: AppProtocol, event: tk.Event) -> None:
         self._restore_selected_history()
 
-    def _save_snapshot_to_history(self) -> None:
+    def _save_snapshot_to_history(self: AppProtocol) -> None:
         snap = self._capture_inputs()
         self._add_history_record(
             {
@@ -129,7 +131,7 @@ class HistoryTabMixin:
         )
         self._set_status("status_snapshot_saved")
 
-    def _add_history_record(self, rec: dict[str, Any]) -> None:
+    def _add_history_record(self: AppProtocol, rec: dict[str, Any]) -> None:
         self.history_records.append(rec)
         if len(self.history_records) > 300:
             self.history_records = self.history_records[-300:]

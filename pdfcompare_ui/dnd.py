@@ -16,28 +16,32 @@ except ImportError:
     HAS_TKDND = False
     DND_FILES = None
 
+from .contracts import AppProtocol
+
 
 class DragDropMixin:
-    def _install_drop_hook(self) -> None:
+    def _install_drop_hook(self: AppProtocol) -> None:
         self.root.update_idletasks()
         try:
             if HAS_TKDND and DND_FILES is not None:
                 # Use tkinterdnd2 for drag & drop (Python 3.12+ compatible)
                 # Main drop canvas
+                # tkinterdnd2 monkey-patches Canvas/Entry with drop_target_register /
+                # dnd_bind at runtime — these aren't visible to mypy.
                 if self.drop_canvas:
-                    self.drop_canvas.drop_target_register(DND_FILES)
-                    self.drop_canvas.dnd_bind('<<Drop>>', self._on_tkdnd_drop)
+                    self.drop_canvas.drop_target_register(DND_FILES)  # type: ignore[attr-defined]
+                    self.drop_canvas.dnd_bind('<<Drop>>', self._on_tkdnd_drop)  # type: ignore[attr-defined]
 
                 # Individual path entry fields
                 if self.old_entry:
-                    self.old_entry.drop_target_register(DND_FILES)
-                    self.old_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_old)
+                    self.old_entry.drop_target_register(DND_FILES)  # type: ignore[attr-defined]
+                    self.old_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_old)  # type: ignore[attr-defined]
                 if self.new_entry:
-                    self.new_entry.drop_target_register(DND_FILES)
-                    self.new_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_new)
+                    self.new_entry.drop_target_register(DND_FILES)  # type: ignore[attr-defined]
+                    self.new_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_new)  # type: ignore[attr-defined]
                 if self.out_entry:
-                    self.out_entry.drop_target_register(DND_FILES)
-                    self.out_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_out)
+                    self.out_entry.drop_target_register(DND_FILES)  # type: ignore[attr-defined]
+                    self.out_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_out)  # type: ignore[attr-defined]
 
                 self._set_status("status_initial")
             else:
@@ -46,7 +50,7 @@ class DragDropMixin:
         except Exception as exc:
             self._set_status("status_drag_unavailable", error=str(exc))
 
-    def _on_tkdnd_drop(self, event) -> None:
+    def _on_tkdnd_drop(self: AppProtocol, event) -> None:
         """Main canvas: route into the general dropped-files handler."""
         try:
             self._handle_dropped_files(parse_dnd_filelist(self.root, event.data))
@@ -54,7 +58,7 @@ class DragDropMixin:
             pass
         return event.action
 
-    def _on_tkdnd_drop_old(self, event) -> None:
+    def _on_tkdnd_drop_old(self: AppProtocol, event) -> None:
         try:
             paths = parse_dnd_filelist(self.root, event.data)
             if paths and paths[0].suffix.lower() == ".pdf":
@@ -64,7 +68,7 @@ class DragDropMixin:
             pass
         return event.action
 
-    def _on_tkdnd_drop_new(self, event) -> None:
+    def _on_tkdnd_drop_new(self: AppProtocol, event) -> None:
         try:
             paths = parse_dnd_filelist(self.root, event.data)
             if paths and paths[0].suffix.lower() == ".pdf":
@@ -74,7 +78,7 @@ class DragDropMixin:
             pass
         return event.action
 
-    def _on_tkdnd_drop_out(self, event) -> None:
+    def _on_tkdnd_drop_out(self: AppProtocol, event) -> None:
         """Accept both folders and files (use the file's parent folder if a file is dropped)."""
         try:
             paths = parse_dnd_filelist(self.root, event.data)
@@ -86,7 +90,7 @@ class DragDropMixin:
             pass
         return event.action
 
-    def _handle_dropped_files(self, paths: Iterable[Path]) -> None:
+    def _handle_dropped_files(self: AppProtocol, paths: Iterable[Path]) -> None:
         pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
         if not pdfs:
             self._set_status("status_drop_no_pdf")
