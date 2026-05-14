@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import multiprocessing
 import os
 import queue
@@ -12,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 
 from compare_pdfs import (
     APP_NAME,
@@ -20,15 +19,16 @@ from compare_pdfs import (
     LIVE_REPORT_EVENT_PREFIX,
     START_REPORT_FILE,
     compare_pdfs,
-    find_summary_json_path,
-    regenerate_report_pages,
 )
+from pdfcompare_ui.dnd import DragDropMixin
+from pdfcompare_ui.history_tab import HistoryTabMixin
 from pdfcompare_ui.i18n import I18N
+from pdfcompare_ui.rerender_tab import RerenderTabMixin
+from pdfcompare_ui.state_persistence import StatePersistenceMixin
 from pdfcompare_ui.utils import (
     count_pdf_pages_pair,
     extract_revision_label,
     format_duration_mmss,
-    parse_dnd_filelist,
 )
 from pdfcompare_ui.styles import (
     ACCENT,
@@ -65,7 +65,12 @@ except ImportError:
 
 
 
-class PDFCompareApp:
+class PDFCompareApp(
+    RerenderTabMixin,
+    StatePersistenceMixin,
+    HistoryTabMixin,
+    DragDropMixin,
+):
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.lang = tk.StringVar(value="ru")
@@ -607,196 +612,6 @@ class PDFCompareApp:
         self._update_lang_buttons()
         self._apply_locale()
 
-    def _build_rerender_tab(self) -> None:
-        if self.rerender_tab is None:
-            return
-        self.rerender_title_label = ttk.Label(self.rerender_tab, text=self._tr("rerender_title"), style="SubHeader.TLabel")
-        self.rerender_title_label.pack(anchor="w")
-        self.rerender_hint_label = ttk.Label(self.rerender_tab, text=self._tr("rerender_hint"), style="Hint.TLabel", wraplength=980)
-        self.rerender_hint_label.pack(anchor="w", pady=(4, 12))
-
-        run_row = tk.Frame(self.rerender_tab, bg=BG_WINDOW)
-        run_row.pack(fill=tk.X, pady=(0, 10))
-        self.rerender_run_label = ttk.Label(run_row, text=self._tr("rerender_run"), style="FileLabel.TLabel")
-        self.rerender_run_label.pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Entry(run_row, textvariable=self.rerender_run_dir, style="Path.TEntry").pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.rerender_load_current_btn = ttk.Button(
-            run_row,
-            text=self._tr("rerender_load_current"),
-            style="Small.TButton",
-            command=self._load_current_rerender_report,
-        )
-        self.rerender_load_current_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.rerender_pick_btn = ttk.Button(run_row, text=self._tr("rerender_pick"), style="Small.TButton", command=self._pick_rerender_run_dir)
-        self.rerender_pick_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.rerender_reload_btn = ttk.Button(run_row, text=self._tr("rerender_reload"), style="Small.TButton", command=self._load_rerender_report)
-        self.rerender_reload_btn.pack(side=tk.LEFT, padx=(8, 0))
-
-        options_row = tk.Frame(self.rerender_tab, bg=BG_SOFT, padx=12, pady=10)
-        options_row.pack(fill=tk.X, pady=(0, 10))
-        self.rerender_dpi_label = ttk.Label(options_row, text=self._tr("rerender_dpi"), style="FileLabel.TLabel", background=BG_SOFT)
-        self.rerender_dpi_label.pack(side=tk.LEFT)
-        ttk.Entry(options_row, textvariable=self.rerender_dpi, width=8).pack(side=tk.LEFT, padx=(6, 18))
-        self.rerender_workers_label = ttk.Label(options_row, text=self._tr("rerender_workers"), style="FileLabel.TLabel", background=BG_SOFT)
-        self.rerender_workers_label.pack(side=tk.LEFT)
-        ttk.Entry(options_row, textvariable=self.rerender_workers, width=8).pack(side=tk.LEFT, padx=(6, 18))
-        self.rerender_start_btn = self._primary_button(options_row, self._tr("rerender_start"), self._start_rerender_selected, compact=True)
-        self.rerender_start_btn.pack(side=tk.RIGHT)
-        self.rerender_open_report_btn = ttk.Button(options_row, text=self._tr("btn_open_report"), style="Small.TButton", command=self._open_report)
-        self.rerender_open_report_btn.pack(side=tk.RIGHT, padx=(0, 8))
-
-        table_frame = ttk.Frame(self.rerender_tab)
-        table_frame.pack(fill=tk.BOTH, expand=True)
-        cols = ("seq", "a", "b", "level", "diff", "boxes", "pixels", "time")
-        self.rerender_tree = ttk.Treeview(table_frame, columns=cols, show="headings", selectmode="extended", style="History.Treeview")
-        for col, key in (
-            ("seq", "rerender_col_seq"),
-            ("a", "rerender_col_a"),
-            ("b", "rerender_col_b"),
-            ("level", "rerender_col_level"),
-            ("diff", "rerender_col_diff"),
-            ("boxes", "rerender_col_boxes"),
-            ("pixels", "rerender_col_pixels"),
-            ("time", "rerender_col_time"),
-        ):
-            self.rerender_tree.heading(col, text=self._tr(key))
-        self.rerender_tree.column("seq", width=60, minwidth=50, anchor="center")
-        self.rerender_tree.column("a", width=70, minwidth=60, anchor="center")
-        self.rerender_tree.column("b", width=70, minwidth=60, anchor="center")
-        self.rerender_tree.column("level", width=150, minwidth=100, anchor="w")
-        self.rerender_tree.column("diff", width=90, minwidth=70, anchor="center")
-        self.rerender_tree.column("boxes", width=80, minwidth=60, anchor="center")
-        self.rerender_tree.column("pixels", width=120, minwidth=90, anchor="e")
-        self.rerender_tree.column("time", width=80, minwidth=70, anchor="center")
-        scroll = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.rerender_tree.yview)
-        self.rerender_tree.configure(yscrollcommand=scroll.set)
-        self.rerender_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _load_current_rerender_report(self) -> None:
-        if self.last_run_dir:
-            self.rerender_run_dir.set(str(self.last_run_dir))
-        self._load_rerender_report()
-
-    def _pick_rerender_run_dir(self) -> None:
-        start_dir = self.rerender_run_dir.get().strip() or (str(self.last_run_dir) if self.last_run_dir else self.out_dir.get().strip())
-        folder = filedialog.askdirectory(title=self._tr("rerender_run"), initialdir=start_dir if start_dir else None)
-        if folder:
-            self.rerender_run_dir.set(folder)
-            self._load_rerender_report()
-
-    def _load_rerender_report(self, run_dir: Path | None = None, quiet: bool = False) -> None:
-        if self.rerender_tree is None:
-            return
-        path_text = str(run_dir) if run_dir is not None else self.rerender_run_dir.get().strip()
-        if not path_text:
-            if not quiet:
-                self._set_status("err_folder_missing_title")
-            return
-        path = Path(path_text)
-        summary_path = find_summary_json_path(path)
-        if not summary_path.exists():
-            if not quiet:
-                messagebox.showerror(self._tr("err_file_missing_title"), self._tr("err_not_found", path=summary_path))
-            return
-        try:
-            payload = json.loads(summary_path.read_text(encoding="utf-8"))
-            rows = [dict(row) for row in payload.get("pairs") or []]
-        except Exception as exc:
-            if not quiet:
-                messagebox.showerror(self._tr("dlg_error_title"), str(exc))
-            return
-        self.rerender_run_dir.set(str(path))
-        self.last_run_dir = path
-        self.rerender_by_iid.clear()
-        for iid in self.rerender_tree.get_children():
-            self.rerender_tree.delete(iid)
-        for row in rows:
-            seq = int(row.get("seq") or 0)
-            pixels = row.get("pixel_count")
-            pixels_text = f"{int(pixels):,}".replace(",", " ") if pixels else ""
-            elapsed = row.get("elapsed_sec")
-            elapsed_text = f"{float(elapsed):.1f}s" if elapsed not in (None, "") else ""
-            diff = row.get("diff_percent")
-            diff_text = "" if diff in (None, "") else f"{float(diff):.3f}"
-            level = str(row.get("change_level") or row.get("status") or "")
-            iid = str(seq)
-            self.rerender_tree.insert(
-                "",
-                tk.END,
-                iid=iid,
-                values=(
-                    seq,
-                    row.get("a_page") or "-",
-                    row.get("b_page") or "-",
-                    level,
-                    diff_text,
-                    row.get("bboxes_count") if row.get("bboxes_count") is not None else "",
-                    pixels_text,
-                    elapsed_text,
-                ),
-            )
-            self.rerender_by_iid[iid] = row
-        if rows:
-            self._set_status("status_rerender_loaded", count=len(rows))
-        else:
-            self._set_status("status_rerender_empty")
-        if self.open_report_btn is not None:
-            self.open_report_btn.configure(state=tk.NORMAL)
-        if self.open_run_btn is not None:
-            self.open_run_btn.configure(state=tk.NORMAL)
-
-    def _start_rerender_selected(self) -> None:
-        if self.running or self.rerender_running:
-            messagebox.showwarning(self._tr("err_invalid_input_title"), self._tr("err_rerender_busy"))
-            return
-        if self.rerender_tree is None:
-            return
-        selected = self.rerender_tree.selection()
-        if not selected:
-            self._set_status("status_rerender_select")
-            return
-        try:
-            dpi = int(self.rerender_dpi.get().strip())
-            workers = int(self.rerender_workers.get().strip() or "0")
-        except ValueError:
-            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_rerender_dpi"))
-            return
-        if dpi < 72:
-            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_rerender_dpi"))
-            return
-        if workers < 0:
-            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_workers"))
-            return
-        run_dir = Path(self.rerender_run_dir.get().strip())
-        seqs = [int(iid) for iid in selected]
-        self.rerender_running = True
-        if self.rerender_start_btn is not None:
-            self.rerender_start_btn.configure(state=tk.DISABLED)
-        self.progress.configure(value=0.0)
-        self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
-        self.progress_pct.set("0%")
-        self._set_status("status_rerender_running")
-        t = threading.Thread(target=self._rerender_worker, args=(run_dir, seqs, dpi, workers), daemon=True)
-        t.start()
-
-    def _rerender_worker(self, run_dir: Path, seqs: list[int], dpi: int, workers: int) -> None:
-        try:
-            def report_progress(pct: float, msg: str) -> None:
-                self.worker_events.put(("rerender_progress", float(pct), str(msg)))
-
-            result = regenerate_report_pages(
-                run_dir,
-                seqs,
-                high_dpi=dpi,
-                report_lang=self.lang.get(),
-                workers=workers,
-                progress_cb=report_progress,
-            )
-            self.worker_events.put(("rerender_done", result))
-        except Exception as exc:
-            self.worker_events.put(("rerender_error", str(exc), traceback.format_exc()))
-
     def _path_row(
         self, parent: ttk.Frame, var: tk.StringVar, pick_cmd: Callable[[], None], label_style: str = ""
     ) -> tuple[ttk.Label, ttk.Entry, ttk.Button]:
@@ -1103,308 +918,6 @@ class PDFCompareApp:
             except Exception:
                 ready = False
         self._set_primary_state(self.run_btn, tk.NORMAL if ready else tk.DISABLED)
-
-    def _capture_inputs(self) -> dict[str, Any]:
-        return {
-            "old_pdf": self.old_pdf.get().strip(),
-            "new_pdf": self.new_pdf.get().strip(),
-            "out_dir": self.out_dir.get().strip(),
-            "dpi": self.dpi.get().strip(),
-            "stroke_tol": self.stroke_tol.get().strip(),
-            "workers": self.workers.get().strip(),
-            "last_run_dir": str(self.last_run_dir) if self.last_run_dir else "",
-        }
-
-    def _apply_inputs(self, data: dict[str, Any]) -> None:
-        self.old_pdf.set(str(data.get("old_pdf") or ""))
-        self.new_pdf.set(str(data.get("new_pdf") or ""))
-        self.out_dir.set(str(data.get("out_dir") or ""))
-        self.dpi.set(str(data.get("dpi") or "250"))
-        self.stroke_tol.set(str(data.get("stroke_tol") or "2.0"))
-        self.workers.set(str(data.get("workers") or "0"))
-        if self.open_report_btn is not None:
-            self.open_report_btn.configure(state=tk.DISABLED)
-        if self.open_run_btn is not None:
-            self.open_run_btn.configure(state=tk.DISABLED)
-        self.last_run_dir = None
-        run_dir = str(data.get("last_run_dir") or "").strip()
-        if run_dir:
-            self.last_run_dir = Path(run_dir)
-            self.rerender_run_dir.set(str(self.last_run_dir))
-            if self.last_run_dir.exists():
-                if self.open_report_btn is not None:
-                    self.open_report_btn.configure(state=tk.NORMAL)
-                if self.open_run_btn is not None:
-                    self.open_run_btn.configure(state=tk.NORMAL)
-        self.last_inputs = self._capture_inputs()
-        self._refresh_drop_badges()
-        self._refresh_file_cards()
-        self._refresh_option_values()
-        self._refresh_status_links()
-
-    def _load_state(self) -> None:
-        try:
-            if not self.state_path.exists():
-                return
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                last_inputs = data.get("last_inputs")
-                history = data.get("history")
-                lang = str(data.get("language") or "").strip().lower()
-                if lang in I18N:
-                    self.lang.set(lang)
-                if isinstance(last_inputs, dict):
-                    self.last_inputs = last_inputs
-                if isinstance(history, list):
-                    self.history_records = [h for h in history if isinstance(h, dict)][-300:]
-        except Exception:
-            self.last_inputs = {}
-            self.history_records = []
-
-    def _save_state(self) -> None:
-        # State persistence is a UX feature; it must never crash the app.
-        try:
-            self.state_dir.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "language": self.lang.get(),
-                "last_inputs": self._capture_inputs(),
-                "history": self.history_records[-300:],
-            }
-            tmp_path = self.state_path.with_suffix(".tmp")
-            tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            os.replace(tmp_path, self.state_path)
-        except Exception:
-            pass
-
-    def _restore_last_inputs(self, startup: bool = False) -> None:
-        if not self.last_inputs:
-            if not startup:
-                self._set_status("status_no_saved")
-            return
-        self._apply_inputs(self.last_inputs)
-        if startup:
-            self._set_status("status_restored_startup")
-        else:
-            self._set_status("status_restored")
-
-    def _refresh_history_table(self) -> None:
-        if self.history_tree is None:
-            return
-        self._history_by_iid.clear()
-        for iid in self.history_tree.get_children():
-            self.history_tree.delete(iid)
-
-        query = self.history_search.get().strip().lower()
-        if query == self._tr("history_search_placeholder").lower():
-            query = ""
-        status_filter = self.history_filter.get()
-        for rec_idx in range(len(self.history_records) - 1, -1, -1):
-            rec = self.history_records[rec_idx]
-            iid = str(rec_idx)
-            raw_result = str(rec.get("result") or "").upper()
-            if status_filter == "done" and raw_result not in {"DONE", "OK"}:
-                continue
-            if status_filter == "cancelled" and raw_result != "CANCELLED":
-                continue
-            searchable = " ".join(str(rec.get(k) or "") for k in ("old_pdf", "new_pdf", "out_dir", "run_dir")).lower()
-            if query and query not in searchable:
-                continue
-            result = raw_result
-            tag = ""
-            if result == "DONE":
-                result = self._tr("hist_result_done")
-                tag = "pill_ok"
-            elif result == "ERROR":
-                result = self._tr("hist_result_error")
-            elif result == "SNAPSHOT":
-                result = self._tr("hist_result_snapshot")
-            elif result == "CANCELLED":
-                result = self._tr("hist_result_cancelled")
-                tag = "pill_cancel"
-            else:
-                result = self._tr("hist_result_done") if result == "OK" else result
-                tag = "pill_ok" if raw_result == "OK" else ""
-            old_name = Path(str(rec.get("old_pdf") or "")).name
-            new_name = Path(str(rec.get("new_pdf") or "")).name
-            out_name = Path(str(rec.get("out_dir") or "")).name
-            duration = rec.get("duration", "")
-            pages = rec.get("pages", "")
-            self.history_tree.insert(
-                "",
-                tk.END,
-                iid=iid,
-                values=(
-                    rec.get("ts", ""),
-                    duration,
-                    pages,
-                    result,
-                    old_name,
-                    new_name,
-                    out_name,
-                    rec.get("run_dir", ""),
-                ),
-                tags=(tag,) if tag else (),
-            )
-            self._history_by_iid[iid] = rec
-        if self.tabs is not None:
-            self.tabs.tab(1, text=self._history_tab_text())
-        self._update_history_filter_buttons()
-
-    def _get_selected_history(self) -> dict[str, Any] | None:
-        selected = self.history_tree.selection()
-        if not selected:
-            return None
-        return self._history_by_iid.get(selected[0])
-
-    def _restore_selected_history(self) -> None:
-        rec = self._get_selected_history()
-        if not rec:
-            self._set_status("status_select_history_first")
-            return
-        data = dict(rec)
-        data["last_run_dir"] = rec.get("run_dir", "")
-        self._apply_inputs(data)
-        old_ok = Path(self.old_pdf.get()).exists() if self.old_pdf.get() else False
-        new_ok = Path(self.new_pdf.get()).exists() if self.new_pdf.get() else False
-        msg = self._tr("status_history_restored")
-        if not old_ok or not new_ok:
-            msg += f" {self._tr('status_history_missing_files')}"
-        self.status.set(msg)
-
-    def _open_selected_history_run(self) -> None:
-        rec = self._get_selected_history()
-        if not rec:
-            self._set_status("status_select_history_first")
-            return
-        run_dir = str(rec.get("run_dir") or "").strip()
-        if not run_dir:
-            self._set_status("status_history_no_run")
-            return
-        p = Path(run_dir)
-        if p.exists():
-            os.startfile(str(p))
-        else:
-            messagebox.showerror(self._tr("err_folder_missing_title"), self._tr("err_not_found", path=p))
-
-    def _on_history_double_click(self, event: tk.Event) -> None:
-        self._restore_selected_history()
-
-    def _save_snapshot_to_history(self) -> None:
-        snap = self._capture_inputs()
-        self._add_history_record(
-            {
-                "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "result": "snapshot",
-                "old_pdf": snap.get("old_pdf", ""),
-                "new_pdf": snap.get("new_pdf", ""),
-                "out_dir": snap.get("out_dir", ""),
-                "dpi": snap.get("dpi", ""),
-                "stroke_tol": snap.get("stroke_tol", ""),
-                "workers": snap.get("workers", ""),
-                "run_dir": "",
-            }
-        )
-        self._set_status("status_snapshot_saved")
-
-    def _add_history_record(self, rec: dict[str, Any]) -> None:
-        self.history_records.append(rec)
-        if len(self.history_records) > 300:
-            self.history_records = self.history_records[-300:]
-        self._refresh_history_table()
-        self._save_state()
-
-    def _install_drop_hook(self) -> None:
-        self.root.update_idletasks()
-        try:
-            if HAS_TKDND and DND_FILES is not None:
-                # Use tkinterdnd2 for drag & drop (Python 3.12+ compatible)
-                # Main drop canvas
-                if self.drop_canvas:
-                    self.drop_canvas.drop_target_register(DND_FILES)
-                    self.drop_canvas.dnd_bind('<<Drop>>', self._on_tkdnd_drop)
-
-                # Individual path entry fields
-                if self.old_entry:
-                    self.old_entry.drop_target_register(DND_FILES)
-                    self.old_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_old)
-                if self.new_entry:
-                    self.new_entry.drop_target_register(DND_FILES)
-                    self.new_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_new)
-                if self.out_entry:
-                    self.out_entry.drop_target_register(DND_FILES)
-                    self.out_entry.dnd_bind('<<Drop>>', self._on_tkdnd_drop_out)
-
-                self._set_status("status_initial")
-            else:
-                # Fallback: drag & drop not available
-                self._set_status("status_drag_unavailable", error="tkinterdnd2 not installed")
-        except Exception as exc:
-            self._set_status("status_drag_unavailable", error=str(exc))
-
-    def _on_tkdnd_drop(self, event) -> None:
-        """Main canvas: route into the general dropped-files handler."""
-        try:
-            self._handle_dropped_files(parse_dnd_filelist(self.root, event.data))
-        except Exception:
-            pass
-        return event.action
-
-    def _on_tkdnd_drop_old(self, event) -> None:
-        try:
-            paths = parse_dnd_filelist(self.root, event.data)
-            if paths and paths[0].suffix.lower() == ".pdf":
-                self.old_pdf.set(str(paths[0]))
-                self._save_state()
-        except Exception:
-            pass
-        return event.action
-
-    def _on_tkdnd_drop_new(self, event) -> None:
-        try:
-            paths = parse_dnd_filelist(self.root, event.data)
-            if paths and paths[0].suffix.lower() == ".pdf":
-                self.new_pdf.set(str(paths[0]))
-                self._save_state()
-        except Exception:
-            pass
-        return event.action
-
-    def _on_tkdnd_drop_out(self, event) -> None:
-        """Accept both folders and files (use the file's parent folder if a file is dropped)."""
-        try:
-            paths = parse_dnd_filelist(self.root, event.data)
-            if paths:
-                path = paths[0]
-                self.out_dir.set(str(path if path.is_dir() else path.parent))
-                self._save_state()
-        except Exception:
-            pass
-        return event.action
-
-    def _handle_dropped_files(self, paths: Iterable[Path]) -> None:
-        pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
-        if not pdfs:
-            self._set_status("status_drop_no_pdf")
-            return
-
-        if len(pdfs) >= 2:
-            self.old_pdf.set(str(pdfs[0]))
-            self.new_pdf.set(str(pdfs[1]))
-            self._set_status("status_drop_loaded_two")
-            self._save_state()
-            return
-
-        one = str(pdfs[0])
-        if not self.old_pdf.get():
-            self.old_pdf.set(one)
-            self._set_status("status_drop_set_old")
-        elif not self.new_pdf.get():
-            self.new_pdf.set(one)
-            self._set_status("status_drop_set_new")
-        else:
-            self.new_pdf.set(one)
-            self._set_status("status_drop_replaced_new")
-        self._save_state()
 
     def _pick_old_pdf(self) -> None:
         p = filedialog.askopenfilename(title=self._tr("dlg_pick_old"), filetypes=[("PDF", "*.pdf")])
