@@ -49,12 +49,9 @@ from pdfcompare_core.constants import (
     UNCHANGED_DIFF_PERCENT,
 )
 from pdfcompare_core.diff_engine import compute_diff, harmonize_canvas
-from pdfcompare_core.html_report import (
-    REPORT_CSS_TOKENS,
-    REPORT_ICON_SVGS,
-    generate_html_report,
-    report_icon,
-)
+from pdfcompare_core.html_css import REPORT_CSS_TOKENS
+from pdfcompare_core.html_icons import REPORT_ICON_SVGS, report_icon
+from pdfcompare_core.html_report import generate_html_report
 from pdfcompare_core.live_report import (
     first_existing_rel,
     format_eta,

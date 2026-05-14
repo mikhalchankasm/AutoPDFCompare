@@ -30,274 +30,11 @@ from .pdf_io import (
 )
 
 
-REPORT_ICON_SVGS = {
-    "git-compare": '<path d="M18 8V6a2 2 0 0 0-2-2H6"/><path d="m8 2-3 3 3 3"/><path d="M6 16v2a2 2 0 0 0 2 2h10"/><path d="m16 22 3-3-3-3"/>',
-    "file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
-    "alert-circle": '<circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
-    "plus-circle": '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/>',
-    "minus-circle": '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
-    "check-circle": '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>',
-    "sliders-horizontal": '<path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/>',
-    "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-    "download": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
-    "arrow-up-right": '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
-    "arrow-left-right": '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
-    "chevron-left": '<path d="m15 18-6-6 6-6"/>',
-    "chevron-right": '<path d="m9 18 6-6-6-6"/>',
-    "arrow-left": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
-    "arrow-right": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
-    "external-link": '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
-    "maximize-2": '<path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="M9 21H3v-6"/><path d="m3 21 7-7"/>',
-    "square": '<rect x="5" y="5" width="14" height="14" rx="2"/>',
-    "zoom-in": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/>',
-    "zoom-out": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/>',
-    "square-dashed": '<path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M14 3h1"/><path d="M21 9v1"/><path d="M21 14v1"/><path d="M15 21h-1"/><path d="M10 21H9"/><path d="M3 15v-1"/><path d="M3 10V9"/>',
-    "list": '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
-    "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
-    "moon": '<path d="M20.99 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 20.99 12.79z"/>',
-    "globe": '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 0 20"/><path d="M12 2a15.3 15.3 0 0 0 0 20"/>',
-}
 
+from .html_css import REPORT_CSS_TOKENS
+from .html_i18n import HTML_REPORT_I18N
+from .html_icons import report_icon
 
-def report_icon(name: str, cls: str = "ic", size: int = 18) -> str:
-    body = REPORT_ICON_SVGS.get(name, "")
-    safe_cls = html.escape(cls, quote=True)
-    return (
-        f'<svg class="{safe_cls}" width="{int(size)}" height="{int(size)}" viewBox="0 0 24 24" '
-        f'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
-        f'stroke-linejoin="round" aria-hidden="true">{body}</svg>'
-    )
-
-
-REPORT_CSS_TOKENS = """
-:root {
-  --bg: #F8FAFC;
-  --surface: #FFFFFF;
-  --surface-2: #F1F5F9;
-  --border: #E2E8F0;
-  --border-strong: #CBD5E1;
-  --text: #0F172A;
-  --text-muted: #475569;
-  --text-faint: #94A3B8;
-  --brand: #2563EB;
-  --brand-hover: #1D4ED8;
-  --brand-soft: #EFF6FF;
-  --ok: #16A34A;
-  --ok-bg: #DCFCE7;
-  --ok-text: #166534;
-  --danger: #DC2626;
-  --danger-bg: #FEE2E2;
-  --danger-text: #991B1B;
-  --warn: #EA580C;
-  --warn-bg: #FED7AA;
-  --warn-text: #9A3412;
-  --minor-bg: #FEF3C7;
-  --minor-text: #92400E;
-  --info: #7C3AED;
-  --info-bg: #EDE9FE;
-  --info-text: #5B21B6;
-  --removed-bg: #FFEDD5;
-  --removed-text: #9A3412;
-  --removed-border: #FDBA74;
-  --heat-ok: linear-gradient(90deg, #16A34A 0%, #86EFAC 100%);
-  --heat-warn: linear-gradient(90deg, #D97706 0%, #FCD34D 100%);
-  --heat-bad: linear-gradient(90deg, #DC2626 0%, #FCA5A5 100%);
-  --shadow-sm: 0 1px 2px rgba(15,23,42,.05);
-  --shadow-md: 0 4px 12px rgba(15,23,42,.08);
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-}
-[data-theme="dark"] {
-  --bg: #0B1220;
-  --surface: #111827;
-  --surface-2: #1F2937;
-  --border: #1F2937;
-  --border-strong: #334155;
-  --text: #E5E7EB;
-  --text-muted: #94A3B8;
-  --text-faint: #64748B;
-  --brand-soft: #1E3A8A33;
-  --ok-bg: #052E1633;
-  --ok-text: #4ADE80;
-  --danger-bg: #3F121233;
-  --danger-text: #F87171;
-  --warn-bg: #3F1B0A33;
-  --warn-text: #FB923C;
-  --minor-bg: #3A2E0E33;
-  --minor-text: #FCD34D;
-  --info-bg: #23184A33;
-  --info-text: #C4B5FD;
-  --removed-bg: #3F1B0A33;
-  --removed-text: #FB923C;
-}
-* { box-sizing: border-box; }
-html { color-scheme: light; }
-html[data-theme="dark"] { color-scheme: dark; }
-body {
-  margin: 0;
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-}
-a { color: inherit; }
-button, input, a, summary { font: inherit; }
-button { cursor: pointer; }
-button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-.ic { flex: 0 0 auto; }
-.muted { color: var(--text-muted); }
-.faint { color: var(--text-faint); }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0,0,0,0);
-  white-space: nowrap;
-  border: 0;
-}
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 11px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: .5px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.st-changed, .lv-major { background: var(--danger-bg); color: var(--danger-text); }
-.st-unchanged, .lv-unchanged { background: var(--ok-bg); color: var(--ok-text); }
-.st-added { background: var(--info-bg); color: var(--info-text); }
-.st-removed {
-  background: var(--removed-bg);
-  color: var(--removed-text);
-  border-style: dashed;
-  border-color: var(--removed-border);
-}
-.lv-moderate { background: var(--warn-bg); color: var(--warn-text); }
-.lv-minor { background: var(--minor-bg); color: var(--minor-text); }
-.lv-empty { background: var(--surface-2); color: var(--text-faint); }
-.btn {
-  min-height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 7px 12px;
-  color: var(--text);
-  background: var(--surface);
-  text-decoration: none;
-  box-shadow: var(--shadow-sm);
-}
-.btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.btn.primary {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: #FFFFFF;
-}
-.btn.primary:hover { background: var(--brand-hover); }
-.btn.ghost {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-.btn.icon-only {
-  width: 32px;
-  padding: 0;
-  border-radius: 999px;
-}
-.btn[disabled], .btn.disabled {
-  opacity: .45;
-  cursor: not-allowed;
-  box-shadow: none;
-  pointer-events: none;
-}
-.btn[disabled]:hover, .btn.disabled:hover { background: var(--surface); border-color: var(--border); }
-.dropdown { position: relative; display: inline-flex; }
-.dropdown-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  min-width: 210px;
-  display: none;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-md);
-  z-index: 60;
-}
-.dropdown.open .dropdown-menu, .dropdown:focus-within .dropdown-menu { display: grid; gap: 4px; }
-.dropdown-menu a, .dropdown-menu button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  color: var(--text);
-  background: transparent;
-  text-align: left;
-  text-decoration: none;
-}
-.dropdown-menu a:hover, .dropdown-menu button:hover { background: var(--brand-soft); }
-.seg-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 3px;
-  background: var(--surface);
-  min-height: 32px;
-}
-.seg-toggle[aria-disabled="true"] { opacity: .55; }
-.seg-toggle-label {
-  padding: 0 6px 0 8px;
-  color: var(--text-muted);
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: .5px;
-  text-transform: uppercase;
-}
-.seg-toggle-opt {
-  min-height: 26px;
-  padding: 3px 10px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: 700;
-  font-size: 12px;
-}
-.seg-toggle-opt.active {
-  background: var(--brand);
-  color: #FFFFFF;
-}
-.seg-toggle-opt[data-bbox="off"].active {
-  background: var(--surface-2);
-  color: var(--text);
-  outline: 1px solid var(--border-strong);
-}
-.seg-toggle-opt[disabled] { cursor: not-allowed; }
-"""
 
 
 CSS_INDEX = """
@@ -1232,311 +969,21 @@ input[type=range] {
 
 
 
-def generate_html_report(
-    run_dir: Path,
+def _prepare_pages_records(
+    details: Sequence[dict],
     file_a: Path,
     file_b: Path,
-    details: Sequence[dict],
-    high_dpi: int,
-    stroke_tol_px: float,
-    report_lang: str = "ru",
-    progress_cb: Callable[[float, str], None] | None = None,
-) -> Path:
-    def emit(pct: float, msg: str) -> None:
-        if progress_cb is not None:
-            progress_cb(float(max(0.0, min(100.0, pct))), msg)
+    pages_root: Path,
+    bundle_dir: Path,
+    thumbs_dir: Path,
+    t: dict[str, str],
+    progress_cb: Callable[[int, int], None] | None = None,
+) -> list[dict]:
+    """Copy thumbnails and assemble the per-page display records.
 
-    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
-    i18n = {
-        "ru": {
-            "progress_prepare_bundle": "Подготовка папки отчета...",
-            "progress_prepare_pages": "Подготовка страниц отчета {idx}/{total}",
-            "progress_generate_view": "Генерация HTML вида {idx}/{total}",
-            "progress_ready": "Отчёт готов",
-            "status_new_sheet": "новый лист",
-            "status_changed_short": "Есть изменения",
-            "status_unchanged_short": "без изменений",
-            "note_new_only": "Лист присутствует только в новом документе.",
-            "note_removed_in_b": "Лист отсутствует в новом документе (удален относительно A).",
-            "note_no_significant": "Существенные изменения не обнаружены.",
-            "note_visual_changes": "Обнаружены изменения визуального содержимого: разница={d:.3f}%.",
-            "note_ecc_failed": "ECC-выравнивание не сошлось, сравнение выполнено без выравнивания.",
-            "nav_sheet_word": "лист",
-            "conf_exact": "точное",
-            "conf_probable": "вероятное",
-            "conf_none": "нет",
-            "status_col_changed": "ИЗМЕНЕН",
-            "status_col_unchanged": "БЕЗ ИЗМЕНЕНИЙ",
-            "status_col_added": "НОВЫЙ",
-            "status_col_removed": "УДАЛЕН",
-            "level_major": "КРУПНЫЕ",
-            "level_moderate": "СРЕДНИЕ",
-            "level_minor": "МАЛЫЕ",
-            "level_unchanged": "БЕЗ ИЗМЕНЕНИЙ",
-            "pv_old": "СТАР",
-            "pv_new": "НОВ",
-            "pv_diff": "ДИФ",
-            "pv_new_pill": "НОВЫЙ",
-            "pv_removed_pill": "УДАЛЕН",
-            "pv_preview_pill": "ПРЕВЬЮ",
-            "title_matrix": "Сводка сравнения PDF - матрица изменений",
-            "subtitle_docs": "Документ A: {a} ({ac} листов) → Документ B: {b} ({bc} листов)",
-            "chip_all": "Все",
-            "chip_changed": "Есть изменения",
-            "chip_added": "Новый лист",
-            "chip_removed": "Удален",
-            "chip_major": "Крупные",
-            "chip_moderate": "Средние",
-            "chip_minor": "Малые",
-            "search_sheet": "Поиск листа...",
-            "th_seq_b": "Порядок (B)",
-            "th_a_page": "Лист A",
-            "th_b_page": "Лист B",
-            "th_status": "Статус",
-            "th_level": "Уровень изменений",
-            "th_diff": "Разница %",
-            "th_boxes": "Δ зоны",
-            "th_preview": "Превью",
-            "th_open": "Открыть",
-            "empty_filter": "Нет листов по выбранному фильтру.",
-            "summary_title": "Сводка",
-            "summary_changed": "Есть изменения:",
-            "summary_added": "Новые листы:",
-            "summary_removed": "Удалено листов:",
-            "summary_unchanged": "Без изменений:",
-            "legend_title": "Легенда",
-            "legend_major_desc": "существенные изменения",
-            "legend_moderate_desc": "заметные изменения",
-            "legend_minor_desc": "небольшие изменения",
-            "legend_added_desc": "лист добавлен в B",
-            "legend_removed_desc": "удален / отсутствует",
-            "foot_open_row": "Нажмите строку для детального просмотра СТАРЫЙ / НОВЫЙ / РАЗНИЦА",
-            "open_sheet_title": "Открыть лист",
-            "nav_title": "Навигация по листам",
-            "back_summary": "← К сводке",
-            "summary_preview_title": "Превью сводки",
-            "search_hint": "Поиск (например, 5)",
-            "old_document": "Старый документ",
-            "new_document": "Новый документ",
-            "moved_label": "перемещен",
-            "conf_label": "уверенность",
-            "diff_label": "разница",
-            "open_old_win": "Открыть <span class=\"tag tag-old\">СТАРЫЙ</span> в приложении Windows",
-            "open_new_win": "Открыть <span class=\"tag tag-new\">НОВЫЙ</span> в приложении Windows",
-            "open_diff_win": "Открыть <span class=\"tag tag-diff\">РАЗНИЦА</span> в приложении Windows",
-            "save_diff_as": "Сохранить РАЗНИЦУ как",
-            "slider_mode": "↔ Режим сравнения (слайдер)",
-            "cap_old": "СТАРЫЙ",
-            "cap_new": "НОВЫЙ",
-            "cap_diff": "РАЗНИЦА",
-            "no_data": "нет данных",
-            "prev_page": "← предыдущий",
-            "next_page": "следующий →",
-            "slider_title_page": "Слайдер сравнения лист {b}",
-            "slider_mode_title": "Режим сравнения (слайдер)",
-            "slider_subtitle": "{a_name} лист {a_idx} ↔ {b_name} лист {b_idx}",
-            "slider_sheet_menu": "Листы",
-            "slider_sheet_menu_hint": "наведите или нажмите",
-            "slider_nav_title": "Слайдеры листов",
-            "slider_current": "текущий",
-            "slider_prev": "← предыдущий слайдер",
-            "slider_next": "следующий слайдер →",
-            "slider_no_prev": "первый лист",
-            "slider_no_next": "последний лист",
-            "back_to_sheet": "Назад к листу",
-            "fit_to_window": "Вписать в окно",
-            "slider_old": "СТАРЫЙ",
-            "slider_new": "НОВЫЙ",
-            "slider_zoom": "Масштаб",
-            "bbox_color": "Цвет зон",
-            "bbox_yellow": "Жёлтый",
-            "bbox_pink": "Розовый",
-            "bbox_green": "Зелёный",
-            "bbox_opacity": "Непрозрачность",
-            "slider_help": "Режим 1:1 по умолчанию. ЛКМ по чертежу — двигать разделитель, ПКМ+перетаскивание — панорамирование, Ctrl+колесо — масштаб внутри этого окна.",
-        },
-        "en": {
-            "progress_prepare_bundle": "Preparing report bundle...",
-            "progress_prepare_pages": "Preparing report pages {idx}/{total}",
-            "progress_generate_view": "Generating HTML view {idx}/{total}",
-            "progress_ready": "Report is ready",
-            "status_new_sheet": "new sheet",
-            "status_changed_short": "Changed",
-            "status_unchanged_short": "unchanged",
-            "note_new_only": "Sheet exists only in the new document.",
-            "note_removed_in_b": "Sheet is missing in the new document (removed vs A).",
-            "note_no_significant": "No significant changes detected.",
-            "note_visual_changes": "Visual content changes detected: diff={d:.3f}%.",
-            "note_ecc_failed": "ECC alignment failed; comparison was performed without alignment.",
-            "nav_sheet_word": "sheet",
-            "conf_exact": "exact",
-            "conf_probable": "probable",
-            "conf_none": "none",
-            "status_col_changed": "CHANGED",
-            "status_col_unchanged": "UNCHANGED",
-            "status_col_added": "ADDED",
-            "status_col_removed": "REMOVED",
-            "level_major": "MAJOR",
-            "level_moderate": "MODERATE",
-            "level_minor": "MINOR",
-            "level_unchanged": "UNCHANGED",
-            "pv_old": "OLD",
-            "pv_new": "NEW",
-            "pv_diff": "DIFF",
-            "pv_new_pill": "ADDED",
-            "pv_removed_pill": "REMOVED",
-            "pv_preview_pill": "PREVIEW",
-            "title_matrix": "PDF Compare Summary - Change Matrix",
-            "subtitle_docs": "Doc A: {a} ({ac} sheets) → Doc B: {b} ({bc} sheets)",
-            "chip_all": "All",
-            "chip_changed": "Changed",
-            "chip_added": "Added",
-            "chip_removed": "Removed",
-            "chip_major": "Major",
-            "chip_moderate": "Moderate",
-            "chip_minor": "Minor",
-            "search_sheet": "Search sheet...",
-            "th_seq_b": "Seq (B)",
-            "th_a_page": "A page",
-            "th_b_page": "B page",
-            "th_status": "Status",
-            "th_level": "Change level",
-            "th_diff": "Diff %",
-            "th_boxes": "Δ boxes",
-            "th_preview": "Preview",
-            "th_open": "Open",
-            "empty_filter": "No pages match current filter.",
-            "summary_title": "Summary",
-            "summary_changed": "Changed:",
-            "summary_added": "Added:",
-            "summary_removed": "Removed:",
-            "summary_unchanged": "Unchanged:",
-            "legend_title": "Legend",
-            "legend_major_desc": "significant change",
-            "legend_moderate_desc": "visible change",
-            "legend_minor_desc": "small change",
-            "legend_added_desc": "new sheet in B",
-            "legend_removed_desc": "removed / missing",
-            "foot_open_row": "Click a row to open OLD / NEW / DIFF detailed view",
-            "open_sheet_title": "Open sheet",
-            "nav_title": "Sheet Navigation",
-            "back_summary": "← Back to Summary",
-            "summary_preview_title": "Summary preview",
-            "search_hint": "Search (e.g., 5)",
-            "old_document": "Old document",
-            "new_document": "New document",
-            "moved_label": "moved",
-            "conf_label": "confidence",
-            "diff_label": "diff",
-            "open_old_win": "Open <span class=\"tag tag-old\">OLD</span> in Windows viewer",
-            "open_new_win": "Open <span class=\"tag tag-new\">NEW</span> in Windows viewer",
-            "open_diff_win": "Open <span class=\"tag tag-diff\">DIFF</span> in Windows viewer",
-            "save_diff_as": "Save DIFF as",
-            "slider_mode": "↔ Compare mode (slider)",
-            "cap_old": "OLD",
-            "cap_new": "NEW",
-            "cap_diff": "DIFF",
-            "no_data": "n/a",
-            "prev_page": "← previous",
-            "next_page": "next →",
-            "slider_title_page": "Slider compare page {b}",
-            "slider_mode_title": "Compare mode (slider)",
-            "slider_subtitle": "{a_name} page {a_idx} ↔ {b_name} page {b_idx}",
-            "slider_sheet_menu": "Sheets",
-            "slider_sheet_menu_hint": "hover or click",
-            "slider_nav_title": "Sheet sliders",
-            "slider_current": "current",
-            "slider_prev": "← previous slider",
-            "slider_next": "next slider →",
-            "slider_no_prev": "first sheet",
-            "slider_no_next": "last sheet",
-            "back_to_sheet": "Back to page",
-            "fit_to_window": "Fit to window",
-            "slider_old": "OLD",
-            "slider_new": "NEW",
-            "slider_zoom": "Zoom",
-            "bbox_color": "Box color",
-            "bbox_yellow": "Yellow",
-            "bbox_pink": "Pink",
-            "bbox_green": "Green",
-            "bbox_opacity": "Opacity",
-            "slider_help": "1:1 mode by default. Left-click on drawing to move split, right-drag to pan, Ctrl+wheel to zoom inside this view.",
-        },
-    }
-    t = i18n[lang]
-
-    def tr(key: str) -> str:
-        return html.escape(str(t.get(key, key)))
-
-    def tr_attr(key: str) -> str:
-        return html.escape(str(t.get(key, key)), quote=True)
-
-    def i18n_span(key: str, cls: str | None = None) -> str:
-        ru = html.escape(str(i18n["ru"].get(key, key)), quote=True)
-        en = html.escape(str(i18n["en"].get(key, key)), quote=True)
-        text = html.escape(str(i18n[lang].get(key, key)))
-        cls_attr = f' class="{html.escape(cls, quote=True)}"' if cls else ""
-        return f'<span{cls_attr} data-i18n-ru="{ru}" data-i18n-en="{en}">{text}</span>'
-
-    def i18n_span_text(ru_text: str, en_text: str, cls: str | None = None) -> str:
-        ru_attr = html.escape(ru_text, quote=True)
-        en_attr = html.escape(en_text, quote=True)
-        text = html.escape(en_text if lang == "en" else ru_text)
-        cls_attr = f' class="{html.escape(cls, quote=True)}"' if cls else ""
-        return f'<span{cls_attr} data-i18n-ru="{ru_attr}" data-i18n-en="{en_attr}">{text}</span>'
-
-    def i18n_aria(ru_text: str, en_text: str, attr_name: str = "aria-label") -> str:
-        ru_attr = html.escape(ru_text, quote=True)
-        en_attr = html.escape(en_text, quote=True)
-        current = html.escape(en_text if lang == "en" else ru_text, quote=True)
-        return f'{attr_name}="{current}" data-i18n-aria-ru="{ru_attr}" data-i18n-aria-en="{en_attr}"'
-
-    def i18n_attr(key: str, attr_name: str) -> str:
-        ru = html.escape(str(i18n["ru"].get(key, key)), quote=True)
-        en = html.escape(str(i18n["en"].get(key, key)), quote=True)
-        return f'data-i18n-{attr_name}-ru="{ru}" data-i18n-{attr_name}-en="{en}"'
-
-    def i18n_placeholder_text(ru_text: str, en_text: str) -> str:
-        current = html.escape(en_text if lang == "en" else ru_text, quote=True)
-        return (
-            f'placeholder="{current}" data-i18n-placeholder-ru="{html.escape(ru_text, quote=True)}" '
-            f'data-i18n-placeholder-en="{html.escape(en_text, quote=True)}"'
-        )
-
-    def title_attrs(ru_text: str, en_text: str) -> str:
-        return f'data-title-ru="{html.escape(ru_text, quote=True)}" data-title-en="{html.escape(en_text, quote=True)}"'
-
-    def title_text(ru_text: str, en_text: str) -> str:
-        return html.escape(en_text if lang == "en" else ru_text)
-
-    def format_duration_pair(seconds: float | None) -> tuple[str, str]:
-        if seconds is None or seconds < 0:
-            return "-", "-"
-        total = int(round(seconds))
-        minutes, secs = divmod(total, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            return f"{hours}ч {minutes:02d}м {secs:02d}с", f"{hours}h {minutes:02d}m {secs:02d}s"
-        if minutes:
-            return f"{minutes}м {secs:02d}с", f"{minutes}m {secs:02d}s"
-        return f"{secs}с", f"{secs}s"
-
-    emit(2, t["progress_prepare_bundle"])
-    bundle_dir = report_dir(run_dir)
-    if bundle_dir.exists():
-        shutil.rmtree(bundle_dir)
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-
-    pages_root = find_pages_dir(run_dir)
-    if not pages_root.exists():
-        raise RuntimeError(f"Не найдена папка страниц: {pages_root}")
-    thumbs_dir = bundle_dir / "assets" / "thumbs"
-    thumbs_dir.mkdir(parents=True, exist_ok=True)
-
-    with fitz.open(file_a) as da, fitz.open(file_b) as db:
-        page_count_a = len(da)
-        page_count_b = len(db)
-
+    progress_cb(done, total) is called once per processed row, so the caller
+    can map row indices into its global progress percent space.
+    """
     pages_records: list[dict] = []
     total_details = max(1, len(details))
     for row_idx, row in enumerate(details, start=1):
@@ -1623,7 +1070,112 @@ def generate_html_report(
                 },
             }
         )
-        emit(6 + 58 * (row_idx / total_details), t["progress_prepare_pages"].format(idx=row_idx, total=total_details))
+        if progress_cb is not None:
+            progress_cb(row_idx, total_details)
+    return pages_records
+
+
+
+def generate_html_report(
+    run_dir: Path,
+    file_a: Path,
+    file_b: Path,
+    details: Sequence[dict],
+    high_dpi: int,
+    stroke_tol_px: float,
+    report_lang: str = "ru",
+    progress_cb: Callable[[float, str], None] | None = None,
+) -> Path:
+    def emit(pct: float, msg: str) -> None:
+        if progress_cb is not None:
+            progress_cb(float(max(0.0, min(100.0, pct))), msg)
+
+    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
+    i18n = HTML_REPORT_I18N
+    t = i18n[lang]
+
+    def tr(key: str) -> str:
+        return html.escape(str(t.get(key, key)))
+
+    def tr_attr(key: str) -> str:
+        return html.escape(str(t.get(key, key)), quote=True)
+
+    def i18n_span(key: str, cls: str | None = None) -> str:
+        ru = html.escape(str(i18n["ru"].get(key, key)), quote=True)
+        en = html.escape(str(i18n["en"].get(key, key)), quote=True)
+        text = html.escape(str(i18n[lang].get(key, key)))
+        cls_attr = f' class="{html.escape(cls, quote=True)}"' if cls else ""
+        return f'<span{cls_attr} data-i18n-ru="{ru}" data-i18n-en="{en}">{text}</span>'
+
+    def i18n_span_text(ru_text: str, en_text: str, cls: str | None = None) -> str:
+        ru_attr = html.escape(ru_text, quote=True)
+        en_attr = html.escape(en_text, quote=True)
+        text = html.escape(en_text if lang == "en" else ru_text)
+        cls_attr = f' class="{html.escape(cls, quote=True)}"' if cls else ""
+        return f'<span{cls_attr} data-i18n-ru="{ru_attr}" data-i18n-en="{en_attr}">{text}</span>'
+
+    def i18n_aria(ru_text: str, en_text: str, attr_name: str = "aria-label") -> str:
+        ru_attr = html.escape(ru_text, quote=True)
+        en_attr = html.escape(en_text, quote=True)
+        current = html.escape(en_text if lang == "en" else ru_text, quote=True)
+        return f'{attr_name}="{current}" data-i18n-aria-ru="{ru_attr}" data-i18n-aria-en="{en_attr}"'
+
+    def i18n_attr(key: str, attr_name: str) -> str:
+        ru = html.escape(str(i18n["ru"].get(key, key)), quote=True)
+        en = html.escape(str(i18n["en"].get(key, key)), quote=True)
+        return f'data-i18n-{attr_name}-ru="{ru}" data-i18n-{attr_name}-en="{en}"'
+
+    def i18n_placeholder_text(ru_text: str, en_text: str) -> str:
+        current = html.escape(en_text if lang == "en" else ru_text, quote=True)
+        return (
+            f'placeholder="{current}" data-i18n-placeholder-ru="{html.escape(ru_text, quote=True)}" '
+            f'data-i18n-placeholder-en="{html.escape(en_text, quote=True)}"'
+        )
+
+    def title_attrs(ru_text: str, en_text: str) -> str:
+        return f'data-title-ru="{html.escape(ru_text, quote=True)}" data-title-en="{html.escape(en_text, quote=True)}"'
+
+    def title_text(ru_text: str, en_text: str) -> str:
+        return html.escape(en_text if lang == "en" else ru_text)
+
+    def format_duration_pair(seconds: float | None) -> tuple[str, str]:
+        if seconds is None or seconds < 0:
+            return "-", "-"
+        total = int(round(seconds))
+        minutes, secs = divmod(total, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours}ч {minutes:02d}м {secs:02d}с", f"{hours}h {minutes:02d}m {secs:02d}s"
+        if minutes:
+            return f"{minutes}м {secs:02d}с", f"{minutes}m {secs:02d}s"
+        return f"{secs}с", f"{secs}s"
+
+    emit(2, t["progress_prepare_bundle"])
+    bundle_dir = report_dir(run_dir)
+    if bundle_dir.exists():
+        shutil.rmtree(bundle_dir)
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    pages_root = find_pages_dir(run_dir)
+    if not pages_root.exists():
+        raise RuntimeError(f"Не найдена папка страниц: {pages_root}")
+    thumbs_dir = bundle_dir / "assets" / "thumbs"
+    thumbs_dir.mkdir(parents=True, exist_ok=True)
+
+    with fitz.open(file_a) as da, fitz.open(file_b) as db:
+        page_count_a = len(da)
+        page_count_b = len(db)
+
+    pages_records = _prepare_pages_records(
+        details,
+        file_a,
+        file_b,
+        pages_root,
+        bundle_dir,
+        thumbs_dir,
+        t,
+        progress_cb=lambda done, total: emit(6 + 58 * (done / total), t["progress_prepare_pages"].format(idx=done, total=total)),
+    )
 
     pages_records.sort(key=lambda x: (x["b_index"] is None, x["b_index"] or 0, x["seq"]))
     for idx, p in enumerate(pages_records):
