@@ -13,6 +13,12 @@ from .contracts import AppProtocol
 
 
 class StatePersistenceMixin:
+    # Class-level annotation: mypy would otherwise infer "None" from
+    # `self.last_run_dir = None` below, conflicting with PDFCompareApp's init.
+    last_run_dir: Path | None
+    last_inputs: dict[str, Any]
+    history_records: list[dict[str, Any]]
+
     def _capture_inputs(self: AppProtocol) -> dict[str, Any]:
         return {
             "old_pdf": self.old_pdf.get().strip(),

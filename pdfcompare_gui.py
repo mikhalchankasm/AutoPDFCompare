@@ -113,14 +113,17 @@ class PDFCompareApp(
         self.last_run_dir: Path | None = None
         self._drop_hook: Any | None = None
         self._history_by_iid: dict[str, dict[str, Any]] = {}
+        # Widget refs created by _build_ui (called at end of __init__).
+        # run_btn is unguarded in many places; the others are guarded with
+        # `is not None` so they keep Optional.
         self.run_btn: tk.Button | None = None
         self.open_report_btn: ttk.Button | None = None
         self.open_run_btn: ttk.Button | None = None
-        self.options_body: ttk.Frame | None = None
+        self.options_body: tk.Frame | None = None
         self.options_toggle_btn: ttk.Button | None = None
-        self.drop_canvas: tk.Canvas | None = None
-        self.lang_ru_btn: ttk.Button | None = None
-        self.lang_en_btn: ttk.Button | None = None
+        self.drop_canvas: tk.Frame | None = None
+        self.lang_ru_btn: tk.Label | None = None
+        self.lang_en_btn: tk.Label | None = None
         self.subtitle_label: ttk.Label | None = None
         self.tabs: ttk.Notebook | None = None
         self.compare_tab: ttk.Frame | None = None
@@ -129,8 +132,10 @@ class PDFCompareApp(
         self.old_label: ttk.Label | None = None
         self.new_label: ttk.Label | None = None
         self.out_label: ttk.Label | None = None
-        self.old_entry: ttk.Entry | None = None
-        self.new_entry: ttk.Entry | None = None
+        # old_entry / new_entry are file-card containers (tk.Frame returned
+        # by _build_file_card); only out_entry is a real Entry widget.
+        self.old_entry: tk.Frame | None = None
+        self.new_entry: tk.Frame | None = None
         self.out_entry: ttk.Entry | None = None
         self.old_pick_btn: ttk.Button | None = None
         self.new_pick_btn: ttk.Button | None = None
@@ -161,7 +166,7 @@ class PDFCompareApp(
         self.rerender_reload_btn: ttk.Button | None = None
         self.rerender_dpi_label: ttk.Label | None = None
         self.rerender_workers_label: ttk.Label | None = None
-        self.rerender_start_btn: ttk.Button | None = None
+        self.rerender_start_btn: tk.Button | None = None
         self.rerender_open_report_btn: ttk.Button | None = None
         self.history_filter_buttons: dict[str, tk.Label] = {}
         self.worker_chips: dict[str, tk.Label] = {}
@@ -496,7 +501,7 @@ class PDFCompareApp(
             text = self._tr(label_key) if label_key else value
             chip = tk.Label(chips, text=text, padx=12, pady=4, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
             chip.pack(side=tk.LEFT, padx=(0, 6))
-            chip.bind("<Button-1>", lambda _e, v=value: self.workers.set(v))
+            chip.bind("<Button-1>", lambda _e, v=value: self.workers.set(v))  # type: ignore[misc]
             self.worker_chips[value] = chip
         self.options_workers_hint_label = ttk.Label(worker_frame, text=self._tr("opts_workers_hint"), style="Hint.TLabel", background=BG_SOFT)
         self.options_workers_hint_label.pack(anchor="w", pady=(8, 0))
@@ -530,8 +535,9 @@ class PDFCompareApp(
 
         status_panel = tk.Frame(self.compare_tab, bg=BG_INFO, padx=12, pady=10)
         status_panel.pack(fill=tk.X)
-        tk.Canvas(status_panel, width=8, height=8, bg=BG_INFO, highlightthickness=0).pack(side=tk.LEFT, padx=(0, 10))
-        status_panel.children[list(status_panel.children.keys())[0]].create_oval(1, 1, 7, 7, fill=ACCENT, outline=ACCENT)
+        ok_dot = tk.Canvas(status_panel, width=8, height=8, bg=BG_INFO, highlightthickness=0)
+        ok_dot.pack(side=tk.LEFT, padx=(0, 10))
+        ok_dot.create_oval(1, 1, 7, 7, fill=ACCENT, outline=ACCENT)
         self.status_text_label = tk.Label(status_panel, textvariable=self.status, bg=BG_INFO, fg=ACCENT_DARK, anchor="w", font=("Segoe UI", 9))
         self.status_text_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.progress = ttk.Progressbar(status_panel, mode="determinate", maximum=100, style="Horizontal.TProgressbar")
@@ -559,7 +565,7 @@ class PDFCompareApp(
         for value, key in (("all", "hist_filter_all"), ("done", "hist_filter_done"), ("cancelled", "hist_filter_cancelled")):
             btn = tk.Label(hist_tools, text=self._tr(key), padx=12, pady=6, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
             btn.pack(side=tk.LEFT, padx=(8, 0))
-            btn.bind("<Button-1>", lambda _e, v=value: self._set_history_filter(v))
+            btn.bind("<Button-1>", lambda _e, v=value: self._set_history_filter(v))  # type: ignore[misc]
             self.history_filter_buttons[value] = btn
         self.hist_refresh_btn = ttk.Button(hist_tools, text=f"↻ {self._tr('hist_refresh')}", style="Small.TButton", command=self._refresh_history_table)
         self.hist_refresh_btn.pack(side=tk.LEFT, padx=(10, 0))
@@ -653,8 +659,8 @@ class PDFCompareApp(
             cursor="hand2",
             font=("Segoe UI", 10 if compact else 11, "bold"),
         )
-        button.bind("<Enter>", lambda _e, w=button: self._set_primary_hover(w, True))
-        button.bind("<Leave>", lambda _e, w=button: self._set_primary_hover(w, False))
+        button.bind("<Enter>", lambda _e, w=button: self._set_primary_hover(w, True))  # type: ignore[misc]
+        button.bind("<Leave>", lambda _e, w=button: self._set_primary_hover(w, False))  # type: ignore[misc]
         return button
 
     def _set_primary_hover(self, button: tk.Button, active: bool) -> None:
@@ -770,7 +776,7 @@ class PDFCompareApp(
             to=to_value,
             resolution=resolution,
             orient=tk.HORIZONTAL,
-            variable=var,
+            variable=var,  # type: ignore[arg-type]
             showvalue=False,
             bg=BG_SOFT,
             troughcolor=BG_CARD,
@@ -1124,7 +1130,7 @@ class PDFCompareApp(
                     self._set_status("status_error", error=err)
                     messagebox.showerror(self._tr("dlg_error_title"), f"{err}\n\n{tb}")
                 elif kind == "done":
-                    run_dir: Path = event[1]
+                    run_dir = event[1]
                     old, new, out_dir, dpi, stroke_tol, workers = event[2], event[3], event[4], event[5], event[6], event[7]
                     self.last_run_dir = run_dir
                     self._set_running(False)
@@ -1208,6 +1214,8 @@ class PDFCompareApp(
 
     def _set_running(self, running: bool) -> None:
         self.running = running
+        # run_btn is always created in _build_ui before _set_running can fire.
+        assert self.run_btn is not None
         if running:
             self.progress.configure(value=0.0)
             self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))

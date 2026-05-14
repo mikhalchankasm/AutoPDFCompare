@@ -67,9 +67,12 @@ class AppProtocol(Protocol):
     _drop_hook: Any | None
 
     # --- Compare-tab widgets (created lazily in _build_ui) -------------- #
-    drop_canvas: tk.Canvas | None
-    old_entry: ttk.Entry | None
-    new_entry: ttk.Entry | None
+    # drop_canvas is a tk.Frame styled as a drop zone (not an actual Canvas).
+    drop_canvas: tk.Frame | None
+    # old_entry/new_entry are file-card Frames returned by _build_file_card,
+    # despite the name. Only out_entry is a real ttk.Entry.
+    old_entry: tk.Frame | None
+    new_entry: tk.Frame | None
     out_entry: ttk.Entry | None
     progress: ttk.Progressbar
     run_btn: tk.Button | None
@@ -90,7 +93,7 @@ class AppProtocol(Protocol):
     rerender_reload_btn: ttk.Button | None
     rerender_dpi_label: ttk.Label | None
     rerender_workers_label: ttk.Label | None
-    rerender_start_btn: ttk.Button | None
+    rerender_start_btn: tk.Button | None  # _primary_button returns tk.Button
     rerender_open_report_btn: ttk.Button | None
 
     # --- Methods that mixins call across boundaries -------------------- #

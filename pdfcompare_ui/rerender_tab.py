@@ -24,6 +24,23 @@ class RerenderTabMixin:
     _primary_button, _open_report) — i.e. PDFCompareApp.
     """
 
+    # Class-level annotations for attributes written by this mixin.
+    # Without these mypy would infer the narrow concrete type from the first
+    # `self.X = ...` assignment, which then conflicts with PDFCompareApp's
+    # Optional `__init__` declarations.
+    last_run_dir: Path | None
+    rerender_tree: ttk.Treeview | None
+    rerender_title_label: ttk.Label | None
+    rerender_hint_label: ttk.Label | None
+    rerender_run_label: ttk.Label | None
+    rerender_load_current_btn: ttk.Button | None
+    rerender_pick_btn: ttk.Button | None
+    rerender_reload_btn: ttk.Button | None
+    rerender_dpi_label: ttk.Label | None
+    rerender_workers_label: ttk.Label | None
+    rerender_start_btn: tk.Button | None  # _primary_button returns tk.Button, not ttk.Button
+    rerender_open_report_btn: ttk.Button | None
+
     def _build_rerender_tab(self: AppProtocol) -> None:
         if self.rerender_tab is None:
             return
@@ -133,9 +150,9 @@ class RerenderTabMixin:
             pixels = row.get("pixel_count")
             pixels_text = f"{int(pixels):,}".replace(",", " ") if pixels else ""
             elapsed = row.get("elapsed_sec")
-            elapsed_text = f"{float(elapsed):.1f}s" if elapsed not in (None, "") else ""
+            elapsed_text = f"{float(elapsed):.1f}s" if elapsed not in (None, "") else ""  # type: ignore[arg-type]
             diff = row.get("diff_percent")
-            diff_text = "" if diff in (None, "") else f"{float(diff):.3f}"
+            diff_text = "" if diff in (None, "") else f"{float(diff):.3f}"  # type: ignore[arg-type]
             level = str(row.get("change_level") or row.get("status") or "")
             iid = str(seq)
             self.rerender_tree.insert(
