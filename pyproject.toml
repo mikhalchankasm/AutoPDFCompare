@@ -1,0 +1,32 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "build", "dist", "runs", "TestDocs", "report_bundle"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "B",   # bugbear (real-bug patterns)
+    "UP",  # pyupgrade (modern syntax)
+]
+ignore = [
+    "E501",  # line-too-long — handled by formatter when we adopt it
+    "E741",  # ambiguous variable name (l/I/O) — legitimate in image code (i, j loops)
+    "B008",  # function call in default argument — Path() defaults are fine
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]  # allow `assert False` in tests
+"scripts/*" = ["E402"]  # path-insert before imports is legitimate in standalone scripts
+"compare_pdfs.py" = ["F401"]  # facade module re-exports pdfcompare_core symbols
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = false
+exclude = '(^|/)(\.venv|build|dist|runs|TestDocs|report_bundle)(/|$)'

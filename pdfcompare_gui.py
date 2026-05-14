@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import ctypes
 import json
 import multiprocessing
 import os
 import queue
-import re
 import threading
 import time
 import traceback
@@ -13,7 +11,8 @@ import tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Iterable
 
 from compare_pdfs import (
     APP_NAME,
@@ -24,26 +23,34 @@ from compare_pdfs import (
     find_summary_json_path,
     regenerate_report_pages,
 )
-
-BG_WINDOW = "#ECEBE5"
-BG_CARD = "#FFFFFF"
-BG_SOFT = "#F5F4EE"
-BG_INFO = "#E6F1FB"
-TEXT_PRIMARY = "#141413"
-TEXT_SECONDARY = "#6E6D68"
-TEXT_TERTIARY = "#999791"
-BORDER_THIN = "#E0DFDB"
-BORDER_STRONG = "#C9C8C2"
-ACCENT = "#185FA5"
-ACCENT_DARK = "#0C447C"
-OLD_DOT = "#E24B4A"
-OLD_BORDER = "#B5D4F4"
-NEW_DOT = "#639922"
-NEW_BORDER = "#C0DD97"
-PILL_OK_BG = "#EAF3DE"
-PILL_OK_TEXT = "#3B6D11"
-PILL_CANCEL_BG = "#F1EFE8"
-PILL_CANCEL_TEXT = "#5F5E5A"
+from pdfcompare_ui.i18n import I18N
+from pdfcompare_ui.utils import (
+    count_pdf_pages_pair,
+    extract_revision_label,
+    format_duration_mmss,
+    parse_dnd_filelist,
+)
+from pdfcompare_ui.styles import (
+    ACCENT,
+    ACCENT_DARK,
+    BG_CARD,
+    BG_INFO,
+    BG_SOFT,
+    BG_WINDOW,
+    BORDER_STRONG,
+    BORDER_THIN,
+    NEW_BORDER,
+    NEW_DOT,
+    OLD_BORDER,
+    OLD_DOT,
+    PILL_CANCEL_BG,
+    PILL_CANCEL_TEXT,
+    PILL_OK_BG,
+    PILL_OK_TEXT,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    TEXT_TERTIARY,
+)
 
 # Try to import tkinterdnd2 for drag & drop support
 try:
@@ -55,274 +62,6 @@ except ImportError:
     DND_FILES = None
 
 
-I18N: dict[str, dict[str, str]] = {
-    "ru": {
-        "window_title": "PDFCompare Local",
-        "app_title": "PDFCompare Local",
-        "app_subtitle": "Локальное сравнение PDF · без облака",
-        "tab_compare": "Сравнение",
-        "tab_history": "История",
-        "tab_rerender": "Перегенерация",
-        "drop_primary": "Перетащите 2 файла PDF сюда",
-        "drop_secondary": "или используйте кнопки ниже",
-        "path_old": "● Старый PDF",
-        "path_new": "● Новый PDF",
-        "path_out": "Папка вывода",
-        "btn_select": "Выбрать...",
-        "btn_swap": "⇅ Поменять местами",
-        "opts_collapsed": "Параметры ▾",
-        "opts_expanded": "Параметры ▴",
-        "opts_group": "Параметры сравнения",
-        "opts_dpi": "Разрешение (DPI):",
-        "opts_dpi_hint": "Выше = точнее, но медленнее",
-        "opts_stroke": "Допуск штриха (px):",
-        "opts_stroke_hint": "Игнорирует различия тоньше указанного размера",
-        "opts_workers": "Процессы:",
-        "opts_workers_hint": "0 = авто, 1 = без параллельной обработки",
-        "opts_default": "по умолчанию",
-        "workers_auto": "Авто",
-        "drop_hint": "⤓  Перетащите 2 PDF-файла прямо сюда — они автоматически попадут в «Старый» и «Новый»",
-        "file_not_selected": "Файл не выбран",
-        "file_path_hint": "Выберите PDF или перетащите его в карточку",
-        "btn_compare_short": "Сравнить ⏎",
-        "status_ready": "Готово к запуску. Нажмите Enter, чтобы начать сравнение.",
-        "status_live_report": "Live-отчёт уже доступен. Его можно открыть во время сравнения.",
-        "status_open_report_link": "Открыть отчёт →",
-        "status_open_folder_link": "Открыть папку →",
-        "history_search_placeholder": "Поиск по имени файла, папке…",
-        "hist_filter_all": "Все",
-        "hist_filter_done": "Готово",
-        "hist_filter_cancelled": "Отменено",
-        "btn_run": "Сравнить (Enter)",
-        "btn_cancel": "Отменить",
-        "btn_cancelling": "Отмена...",
-        "btn_clear": "Очистить",
-        "btn_from_history": "Из истории",
-        "btn_open_report": "Открыть отчёт",
-        "btn_open_folder": "Открыть папку",
-        "hist_restore": "Восстановить",
-        "hist_snapshot": "Сохранить снимок",
-        "hist_open_folder": "Открыть папку",
-        "hist_refresh": "Обновить",
-        "hist_col_time": "Дата/время",
-        "hist_col_duration": "Время",
-        "hist_col_pages": "Страницы",
-        "hist_col_result": "Результат",
-        "hist_col_old": "Старый PDF",
-        "hist_col_new": "Новый PDF",
-        "hist_col_out": "Папка вывода",
-        "hist_col_run": "Папка запуска",
-        "hist_hint": "Двойной клик по строке восстанавливает файлы, папку вывода и параметры.",
-        "rerender_title": "Перегенерация выбранных листов с повышенным DPI",
-        "rerender_hint": "Загрузите готовый отчёт, выделите строки и пересчитайте только эти листы. Карта соответствия PDF не меняется.",
-        "rerender_run": "Папка отчёта",
-        "rerender_load_current": "Текущий отчёт",
-        "rerender_pick": "Выбрать папку...",
-        "rerender_reload": "Загрузить",
-        "rerender_dpi": "Новый DPI:",
-        "rerender_workers": "Процессы:",
-        "rerender_start": "Перегенерировать выбранные",
-        "rerender_col_seq": "#",
-        "rerender_col_a": "A",
-        "rerender_col_b": "B",
-        "rerender_col_level": "Статус",
-        "rerender_col_diff": "Diff %",
-        "rerender_col_boxes": "Bbox",
-        "rerender_col_pixels": "Пиксели",
-        "rerender_col_time": "Время",
-        "status_rerender_loaded": "Загружено листов: {count}. Выделите нужные строки для перегенерации.",
-        "status_rerender_empty": "В отчёте нет данных по листам.",
-        "status_rerender_select": "Выделите один или несколько листов.",
-        "status_rerender_running": "Перегенерация выбранных листов запущена...",
-        "status_rerender_done": "Перегенерация завершена. Отчёт обновлён.",
-        "dlg_rerender_done_body": "Перегенерация выбранных листов завершена.\n\nОтчёт обновлён:\n{report}",
-        "err_rerender_busy": "Дождитесь завершения текущей операции.",
-        "err_invalid_rerender_dpi": "DPI должен быть целым числом не меньше 72.",
-        "badge_old": "Старый",
-        "badge_new": "Новый",
-        "badge_not_selected": "не выбран",
-        "status_initial": "Перетащите 2 PDF-файла и нажмите Enter для запуска.",
-        "status_no_saved": "Сохраненных данных пока нет.",
-        "status_restored_startup": "Предыдущие параметры восстановлены из локальной истории.",
-        "status_restored": "Восстановлены последние сохраненные параметры.",
-        "status_select_history_first": "Сначала выберите строку в истории.",
-        "status_history_restored": "Данные из истории восстановлены.",
-        "status_history_missing_files": "Внимание: один или оба PDF-файла не найдены.",
-        "status_history_no_run": "Для выбранной строки нет папки запуска.",
-        "status_snapshot_saved": "Текущие параметры сохранены в историю.",
-        "status_drag_unavailable": "Перетаскивание недоступно ({error}). Используйте кнопки «Выбрать...».",
-        "status_drop_no_pdf": "В перетаскиваемых элементах нет PDF-файлов.",
-        "status_drop_loaded_two": "Загружены 2 PDF-файла. Нажмите Enter для запуска.",
-        "status_drop_set_old": "Выбран старый PDF. Добавьте новый PDF или нажмите «Выбрать...».",
-        "status_drop_set_new": "Выбран новый PDF. Нажмите Enter для запуска.",
-        "status_drop_replaced_new": "Новый PDF заменен. Нажмите Enter для запуска.",
-        "dlg_pick_old": "Выберите старый PDF",
-        "dlg_pick_new": "Выберите новый PDF",
-        "dlg_pick_out": "Выберите папку вывода",
-        "status_cleared": "Поля очищены.",
-        "err_file_missing_title": "Файл не найден",
-        "err_old_missing": "Выберите корректный старый PDF-файл.",
-        "err_new_missing": "Выберите корректный новый PDF-файл.",
-        "err_invalid_input_title": "Некорректный ввод",
-        "err_same_files": "Старый и новый PDF-файлы должны отличаться.",
-        "status_run_cancel_no_out": "Запуск отменен: не выбрана папка вывода.",
-        "err_invalid_option_title": "Некорректный параметр",
-        "err_invalid_option_parse": "DPI и процессы должны быть целыми числами, допуск штриха - числом.",
-        "err_invalid_option_dpi": "DPI должен быть не меньше 72.",
-        "err_invalid_option_stroke": "Допуск штриха должен быть не меньше 0.",
-        "err_invalid_option_workers": "Количество процессов должно быть 0 или больше.",
-        "status_running": "Сравнение запущено... Это может занять несколько минут.",
-        "status_cancel_requested": "Запрошена отмена. Ожидайте завершения текущего шага...",
-        "status_cancelled": "Сравнение отменено пользователем.",
-        "btn_running": "Сравнение... {pct:.0f}%",
-        "status_done": "Готово. Отчет: {path}",
-        "dlg_done_title": "Готово",
-        "dlg_done_body": "Сравнение завершено.\n\nПапка запуска:\n{run_dir}",
-        "status_error": "Ошибка: {error}",
-        "dlg_error_title": "Ошибка",
-        "err_folder_missing_title": "Папка не найдена",
-        "err_not_found": "Не найдено:\n{path}",
-        "hist_result_done": "Готово",
-        "hist_result_error": "Ошибка",
-        "hist_result_snapshot": "Снимок",
-        "hist_result_cancelled": "Отменено",
-        "lang_ru": "Русский",
-        "lang_en": "English",
-    },
-    "en": {
-        "window_title": "PDFCompare Local",
-        "app_title": "PDFCompare Local",
-        "app_subtitle": "Local PDF comparison · no cloud",
-        "tab_compare": "Compare",
-        "tab_history": "History",
-        "tab_rerender": "Re-render",
-        "drop_primary": "Drop 2 PDF files here",
-        "drop_secondary": "or use the buttons below",
-        "path_old": "● Old PDF",
-        "path_new": "● New PDF",
-        "path_out": "Output folder",
-        "btn_select": "Select...",
-        "btn_swap": "⇅ Swap files",
-        "opts_collapsed": "Options ▾",
-        "opts_expanded": "Options ▴",
-        "opts_group": "Comparison options",
-        "opts_dpi": "Resolution (DPI):",
-        "opts_dpi_hint": "Higher = more precise but slower",
-        "opts_stroke": "Stroke tolerance (px):",
-        "opts_stroke_hint": "Ignores differences thinner than this threshold",
-        "opts_workers": "Workers:",
-        "opts_workers_hint": "0 = auto, 1 = no parallel page processing",
-        "opts_default": "default",
-        "workers_auto": "Auto",
-        "drop_hint": "⤓  Drop 2 PDF files here — they will be assigned to Old and New",
-        "file_not_selected": "No file selected",
-        "file_path_hint": "Select a PDF or drop it onto this card",
-        "btn_compare_short": "Compare ⏎",
-        "status_ready": "Ready. Press Enter to start comparison.",
-        "status_live_report": "Live report is available. You can open it while comparison continues.",
-        "status_open_report_link": "Open report →",
-        "status_open_folder_link": "Open folder →",
-        "history_search_placeholder": "Search by file name or folder…",
-        "hist_filter_all": "All",
-        "hist_filter_done": "Done",
-        "hist_filter_cancelled": "Cancelled",
-        "btn_run": "Compare (Enter)",
-        "btn_cancel": "Cancel",
-        "btn_cancelling": "Cancelling...",
-        "btn_clear": "Clear",
-        "btn_from_history": "From history",
-        "btn_open_report": "Open report",
-        "btn_open_folder": "Open folder",
-        "hist_restore": "Restore",
-        "hist_snapshot": "Save snapshot",
-        "hist_open_folder": "Open folder",
-        "hist_refresh": "Refresh",
-        "hist_col_time": "Date/time",
-        "hist_col_duration": "Duration",
-        "hist_col_pages": "Pages",
-        "hist_col_result": "Result",
-        "hist_col_old": "Old PDF",
-        "hist_col_new": "New PDF",
-        "hist_col_out": "Output folder",
-        "hist_col_run": "Run folder",
-        "hist_hint": "Double-click a row to restore files, output folder, and options.",
-        "rerender_title": "Re-render selected pages with higher DPI",
-        "rerender_hint": "Load a finished report, select rows, and recompute only those pages. PDF page mapping is preserved.",
-        "rerender_run": "Report folder",
-        "rerender_load_current": "Current report",
-        "rerender_pick": "Select folder...",
-        "rerender_reload": "Load",
-        "rerender_dpi": "New DPI:",
-        "rerender_workers": "Workers:",
-        "rerender_start": "Re-render selected",
-        "rerender_col_seq": "#",
-        "rerender_col_a": "A",
-        "rerender_col_b": "B",
-        "rerender_col_level": "Status",
-        "rerender_col_diff": "Diff %",
-        "rerender_col_boxes": "Bbox",
-        "rerender_col_pixels": "Pixels",
-        "rerender_col_time": "Time",
-        "status_rerender_loaded": "Loaded pages: {count}. Select rows to re-render.",
-        "status_rerender_empty": "The report has no page details.",
-        "status_rerender_select": "Select one or more pages.",
-        "status_rerender_running": "Selected page re-rendering started...",
-        "status_rerender_done": "Re-rendering finished. Report updated.",
-        "dlg_rerender_done_body": "Selected page re-rendering is complete.\n\nReport updated:\n{report}",
-        "err_rerender_busy": "Wait until the current operation is finished.",
-        "err_invalid_rerender_dpi": "DPI must be an integer >= 72.",
-        "badge_old": "Old",
-        "badge_new": "New",
-        "badge_not_selected": "not selected",
-        "status_initial": "Drop 2 PDF files and press Enter to start.",
-        "status_no_saved": "No saved values yet.",
-        "status_restored_startup": "Previous settings restored from local history.",
-        "status_restored": "Last saved settings restored.",
-        "status_select_history_first": "Select a history row first.",
-        "status_history_restored": "History row restored.",
-        "status_history_missing_files": "Warning: one or both PDF files are missing.",
-        "status_history_no_run": "Selected row has no run folder.",
-        "status_snapshot_saved": "Current settings saved to history.",
-        "status_drag_unavailable": "Drag-and-drop unavailable ({error}). Use Select buttons.",
-        "status_drop_no_pdf": "Dropped items contain no PDF files.",
-        "status_drop_loaded_two": "Loaded 2 PDFs. Press Enter to start.",
-        "status_drop_set_old": "Old PDF set. Add new PDF or click Select...",
-        "status_drop_set_new": "New PDF set. Press Enter to start.",
-        "status_drop_replaced_new": "New PDF replaced. Press Enter to start.",
-        "dlg_pick_old": "Select old PDF",
-        "dlg_pick_new": "Select new PDF",
-        "dlg_pick_out": "Select output folder",
-        "status_cleared": "Inputs cleared.",
-        "err_file_missing_title": "Missing file",
-        "err_old_missing": "Select a valid old PDF file.",
-        "err_new_missing": "Select a valid new PDF file.",
-        "err_invalid_input_title": "Invalid input",
-        "err_same_files": "Old and new PDF files must be different.",
-        "status_run_cancel_no_out": "Run canceled: output folder not selected.",
-        "err_invalid_option_title": "Invalid option",
-        "err_invalid_option_parse": "DPI and workers must be integers; stroke tolerance must be numeric.",
-        "err_invalid_option_dpi": "DPI must be >= 72.",
-        "err_invalid_option_stroke": "Stroke tolerance must be >= 0.",
-        "err_invalid_option_workers": "Workers must be 0 or greater.",
-        "status_running": "Comparison started... This may take a few minutes.",
-        "status_cancel_requested": "Cancellation requested. Waiting for current step to finish...",
-        "status_cancelled": "Comparison cancelled by user.",
-        "btn_running": "Comparing... {pct:.0f}%",
-        "status_done": "Done. Report: {path}",
-        "dlg_done_title": "Done",
-        "dlg_done_body": "Comparison complete.\n\nRun folder:\n{run_dir}",
-        "status_error": "Error: {error}",
-        "dlg_error_title": "Error",
-        "err_folder_missing_title": "Missing folder",
-        "err_not_found": "Not found:\n{path}",
-        "hist_result_done": "Done",
-        "hist_result_error": "Error",
-        "hist_result_snapshot": "Snapshot",
-        "hist_result_cancelled": "Cancelled",
-        "lang_ru": "Russian",
-        "lang_en": "English",
-    },
-}
 
 
 
@@ -367,7 +106,7 @@ class PDFCompareApp:
         self._run_started_monotonic = 0.0
         self._timer_job: str | None = None
         self.last_run_dir: Path | None = None
-        self._drop_hook: WindowsDropHook | None = None
+        self._drop_hook: Any | None = None
         self._history_by_iid: dict[str, dict[str, Any]] = {}
         self.run_btn: tk.Button | None = None
         self.open_report_btn: ttk.Button | None = None
@@ -1130,9 +869,7 @@ class PDFCompareApp:
         return f"{self._tr('tab_history')} · {len(self.history_records)}"
 
     def _extract_revision(self, path_text: str) -> str:
-        name = Path(path_text).name
-        m = re.search(r"r[Cc](\d{2,3})", name)
-        return f"v.C{m.group(1)}" if m else ""
+        return extract_revision_label(path_text)
 
     def _clear_old_pdf(self) -> None:
         if not self.running:
@@ -1269,30 +1006,10 @@ class PDFCompareApp:
     # Options are now always visible - toggle removed
 
     def _format_duration(self, seconds: float) -> str:
-        """Format duration as MM:SS"""
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins:02d}:{secs:02d}"
+        return format_duration_mmss(seconds)
 
     def _get_pages_str(self, old_pdf: Path, new_pdf: Path) -> str:
-        """Get page counts from PDFs as 'old/new' format"""
-        try:
-            import fitz  # PyMuPDF
-            old_count = 0
-            new_count = 0
-            try:
-                with fitz.open(old_pdf) as doc:
-                    old_count = len(doc)
-            except Exception:
-                pass
-            try:
-                with fitz.open(new_pdf) as doc:
-                    new_count = len(doc)
-            except Exception:
-                pass
-            return f"{old_count}/{new_count}"
-        except ImportError:
-            return ""
+        return count_pdf_pages_pair(old_pdf, new_pdf)
 
     def _start_timer(self) -> None:
         """Start the elapsed time timer"""
@@ -1625,54 +1342,41 @@ class PDFCompareApp:
             self._set_status("status_drag_unavailable", error=str(exc))
 
     def _on_tkdnd_drop(self, event) -> None:
-        """Handle drop event from tkinterdnd2 (main canvas)"""
+        """Main canvas: route into the general dropped-files handler."""
         try:
-            files = self.root.tk.splitlist(event.data)
-            paths = [Path(f) for f in files if Path(f).exists()]
-            self._handle_dropped_files(paths)
+            self._handle_dropped_files(parse_dnd_filelist(self.root, event.data))
         except Exception:
             pass
         return event.action
 
     def _on_tkdnd_drop_old(self, event) -> None:
-        """Handle drop to Old PDF field"""
         try:
-            files = self.root.tk.splitlist(event.data)
-            if files:
-                path = Path(files[0])
-                if path.exists() and path.suffix.lower() == '.pdf':
-                    self.old_pdf.set(str(path))
-                    self._save_state()
+            paths = parse_dnd_filelist(self.root, event.data)
+            if paths and paths[0].suffix.lower() == ".pdf":
+                self.old_pdf.set(str(paths[0]))
+                self._save_state()
         except Exception:
             pass
         return event.action
 
     def _on_tkdnd_drop_new(self, event) -> None:
-        """Handle drop to New PDF field"""
         try:
-            files = self.root.tk.splitlist(event.data)
-            if files:
-                path = Path(files[0])
-                if path.exists() and path.suffix.lower() == '.pdf':
-                    self.new_pdf.set(str(path))
-                    self._save_state()
+            paths = parse_dnd_filelist(self.root, event.data)
+            if paths and paths[0].suffix.lower() == ".pdf":
+                self.new_pdf.set(str(paths[0]))
+                self._save_state()
         except Exception:
             pass
         return event.action
 
     def _on_tkdnd_drop_out(self, event) -> None:
-        """Handle drop to Output folder field"""
+        """Accept both folders and files (use the file's parent folder if a file is dropped)."""
         try:
-            files = self.root.tk.splitlist(event.data)
-            if files:
-                path = Path(files[0])
-                # Accept both folders and files (use parent folder if file dropped)
-                if path.exists():
-                    if path.is_dir():
-                        self.out_dir.set(str(path))
-                    else:
-                        self.out_dir.set(str(path.parent))
-                    self._save_state()
+            paths = parse_dnd_filelist(self.root, event.data)
+            if paths:
+                path = paths[0]
+                self.out_dir.set(str(path if path.is_dir() else path.parent))
+                self._save_state()
         except Exception:
             pass
         return event.action
