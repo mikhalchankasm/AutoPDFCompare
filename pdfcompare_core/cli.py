@@ -29,6 +29,7 @@ def main() -> None:
         help="Folder with two PDFs (used if --old/--new omitted)",
     )
     parser.add_argument("--out-dir", type=Path, default=Path("runs"), help="Output runs folder")
+    parser.add_argument("--run-name", type=str, default="", help="Optional exact result folder name inside --out-dir")
     parser.add_argument("--dpi", type=int, default=250, help="High DPI for final page diff rendering")
     parser.add_argument("--stroke-tol", type=float, default=2.0, help="Tolerance in pixels for line-thickness jitter")
     parser.add_argument("--lang", type=str, default="ru", choices=["ru", "en"], help="Report language")
@@ -53,6 +54,7 @@ def main() -> None:
         high_dpi=args.dpi,
         stroke_tol_px=args.stroke_tol,
         report_lang=args.lang,
+        run_name=args.run_name or None,
         keep_debug_images=args.keep_debug_images,
         workers=args.workers,
     )

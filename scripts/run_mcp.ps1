@@ -7,7 +7,7 @@ $python = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 Push-Location $repo
 try {
-    & $python -m pytest
+    & $python (Join-Path $repo "scripts/pdfcompare_mcp.py")
 }
 finally {
     Pop-Location

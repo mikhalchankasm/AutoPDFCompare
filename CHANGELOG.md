@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Local stdio MCP server scripts and agent documentation for background PDF comparison jobs.
+- Optional named result folders via `--run-name`, GUI report-name field, and shared run-name sanitization.
+- Tests for named result folder sanitization and path construction.
+- Copy-paste agent prompts for connecting PDFCompare MCP and starting comparisons.
+
+### Changed
+- Portable ZIP packaging now ships a runtime-focused set: core/UI modules, GUI/MCP launch scripts, and short user/agent docs.
+- MCP dependencies are split into `requirements-mcp.txt`; base desktop installs stay lightweight.
+- `pytest` is scoped to `tests/` so generated portable builds do not create duplicate test collection.
+
+### Fixed
+- OpenCV typing noise in lint/mypy checks for normalization and ECC calls.
+
 ## v0.1.1 - 2026-05-12
 
 ### Added

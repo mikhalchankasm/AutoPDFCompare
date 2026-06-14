@@ -11,7 +11,48 @@ try {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $OutputPath) | Out-Null
 
     $status = git status --short
-    $diff = git diff -- compare_pdfs.py pdfcompare_gui.py README.md tests scripts
+    $diff = git diff -- `
+        .gitignore `
+        CHANGELOG.md `
+        README.md `
+        compare_pdfs.py `
+        pdfcompare_gui.py `
+        pdfcompare_core `
+        pdfcompare_ui `
+        .github `
+        pyproject.toml `
+        requirements.txt `
+        requirements-dev.txt `
+        requirements-mcp.txt `
+        tests `
+        scripts `
+        docs
+    $untrackedFiles = git ls-files --others --exclude-standard -- docs scripts tests requirements-mcp.txt
+    $untrackedContent = foreach ($file in $untrackedFiles) {
+        if (Test-Path -LiteralPath $file -PathType Leaf) {
+            @"
+
+### $file
+
+````text
+$(Get-Content -LiteralPath $file -Raw)
+````
+"@
+        }
+    }
+    $referenceFiles = @("requirements.txt", "requirements-dev.txt")
+    $referenceContent = foreach ($file in $referenceFiles) {
+        if (Test-Path -LiteralPath $file -PathType Leaf) {
+            @"
+
+### $file
+
+````text
+$(Get-Content -LiteralPath $file -Raw)
+````
+"@
+        }
+    }
 
     $prompt = @"
 # PDFCompare AI Review Context
@@ -41,6 +82,18 @@ $status
 ````diff
 $diff
 ````
+
+## Untracked Files
+
+````text
+$($untrackedFiles -join "`n")
+````
+
+$($untrackedContent -join "`n")
+
+## Reference Files
+
+$($referenceContent -join "`n")
 "@
 
     $prompt | Set-Content -Path $OutputPath -Encoding UTF8

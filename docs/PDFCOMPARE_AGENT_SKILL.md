@@ -1,0 +1,42 @@
+# PDFCompare Agent Skill
+
+Use this instruction block for local agents that support custom skills or reusable rules.
+
+## Goal
+
+Compare two local PDF files through the PDFCompare MCP server. Always prepare first, ask for the result folder name, then start a background job and monitor it by `job_id`.
+
+## Required Flow
+
+1. Call `prepare_pdf_comparison` with:
+   - `old_path`: old/base PDF;
+   - `new_path`: new/target PDF;
+   - `out_dir`: folder for result runs, usually `D:\GitHub\PDFCompare\runs`.
+2. Report page counts and similar previous comparisons.
+3. Offer the suggested names from `suggested_run_names`.
+4. Ask the user for the final folder name.
+5. Call `start_pdf_comparison` using the selected `run_name`.
+6. Tell the user the `job_id`, `run_dir`, and `report_path`.
+7. Use `get_pdf_comparison_status(job_id)` for progress and final counts.
+
+## Response Style
+
+Keep responses short and operational:
+
+- page counts;
+- similar existing runs, if any;
+- selected or suggested run folder;
+- current progress;
+- final report path.
+
+Do not invent comparison results. Use `summary.counts` from the completed job status.
+
+## Fallback
+
+If MCP is unavailable, run the CLI:
+
+```powershell
+python D:\GitHub\PDFCompare\compare_pdfs.py --old "<old.pdf>" --new "<new.pdf>" --out-dir "D:\GitHub\PDFCompare\runs" --run-name "<folder>"
+```
+
+The CLI fallback is blocking and should only be used when background MCP execution is unavailable.

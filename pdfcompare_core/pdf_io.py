@@ -214,7 +214,7 @@ def build_page_info(
         for i in range(total):
             gray = render_page_gray(doc, i, thumb_dpi)
             thumb_u8 = cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
-            thumb = cv2.normalize(thumb_u8, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
+            thumb = cv2.normalize(thumb_u8, np.empty_like(thumb_u8), 0, 255, cv2.NORM_MINMAX).astype(np.float32)
             text = doc[i].get_text("text") or ""
             rect = doc[i].rect
             infos.append(

@@ -1,5 +1,9 @@
 __pycache__/
 .claude/
+.codex/
+.mcp.json
+.pdfcompare_mcp/
+.pdfcompare_mcp_*/
 *.pyc
 *.pyo
 *.pyd
@@ -28,3 +32,4 @@ NANOBANA_UI_PROMPTS.md
 REPORT_DESIGN_UI.md
 REPORT_RULES.md
 UI_REDESIGN_BRIEF.md
+REPORT_REDESIGN_AGENT_PROMPT*.md

@@ -14,8 +14,8 @@ def visual_similarity(a: np.ndarray, b: np.ndarray) -> float:
     if a.shape != b.shape:
         return 0.0
     # Robust to brightness shifts: compare normalized images.
-    a_n = a if a.dtype == np.float32 else cv2.normalize(a, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
-    b_n = b if b.dtype == np.float32 else cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX).astype(np.float32)
+    a_n = a if a.dtype == np.float32 else cv2.normalize(a, np.empty_like(a), 0, 255, cv2.NORM_MINMAX).astype(np.float32)
+    b_n = b if b.dtype == np.float32 else cv2.normalize(b, np.empty_like(b), 0, 255, cv2.NORM_MINMAX).astype(np.float32)
     mse = float(np.mean((a_n - b_n) ** 2))
     return max(0.0, 1.0 - mse / (255.0 * 255.0))
 
@@ -335,7 +335,7 @@ def alignment_quality(pairs: Sequence[MatchPair], n_a: int, n_b: int) -> float:
         sim_avg = 0.0
     gap_count = sum(1 for p in pairs if p.status in {"added", "removed"})
     gap_ratio = gap_count / max(1, n_a + n_b)
-    b_seq = [int(p.b_idx) for p in matched]
+    b_seq = [p.b_idx for p in matched if p.b_idx is not None]
     inv = count_inversions(b_seq)
     total = (len(b_seq) * (len(b_seq) - 1)) // 2
     cross_ratio = (inv / total) if total else 0.0
@@ -361,7 +361,8 @@ def align_ecc(base_bgr: np.ndarray, moving_bgr: np.ndarray) -> tuple[np.ndarray,
     warp = np.eye(2, 3, dtype=np.float32)
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 80, 1e-6)
     try:
-        cv2.findTransformECC(base_gray, moving_gray, warp, cv2.MOTION_AFFINE, criteria, None, 5)
+        # OpenCV's default inputMask=None and gaussFiltSize=5 matches the previous explicit call.
+        cv2.findTransformECC(base_gray, moving_gray, warp, cv2.MOTION_AFFINE, criteria)
         aligned = cv2.warpAffine(
             moving_bgr,
             warp,

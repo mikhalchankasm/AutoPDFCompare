@@ -37,6 +37,7 @@ class AppProtocol(Protocol):
     old_pdf: tk.StringVar
     new_pdf: tk.StringVar
     out_dir: tk.StringVar
+    run_name: tk.StringVar
     dpi: tk.StringVar
     stroke_tol: tk.StringVar
     workers: tk.StringVar

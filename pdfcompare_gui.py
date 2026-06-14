@@ -19,6 +19,7 @@ from compare_pdfs import (
     LIVE_REPORT_EVENT_PREFIX,
     START_REPORT_FILE,
     compare_pdfs,
+    sanitize_run_folder_name,
 )
 from pdfcompare_ui.dnd import DragDropMixin
 from pdfcompare_ui.history_tab import HistoryTabMixin
@@ -82,6 +83,7 @@ class PDFCompareApp(
         self.old_pdf = tk.StringVar()
         self.new_pdf = tk.StringVar()
         self.out_dir = tk.StringVar()
+        self.run_name = tk.StringVar()
         self.dpi = tk.StringVar(value="250")
         self.stroke_tol = tk.StringVar(value="2.0")
         self.workers = tk.StringVar(value="0")
@@ -132,6 +134,7 @@ class PDFCompareApp(
         self.old_label: ttk.Label | None = None
         self.new_label: ttk.Label | None = None
         self.out_label: ttk.Label | None = None
+        self.run_name_label: ttk.Label | None = None
         # old_entry / new_entry are file-card containers (tk.Frame returned
         # by _build_file_card); only out_entry is a real Entry widget.
         self.old_entry: tk.Frame | None = None
@@ -246,6 +249,8 @@ class PDFCompareApp(
             self.new_label.configure(text=self._tr("path_new").replace("● ", ""))
         if self.out_label is not None:
             self.out_label.configure(text=self._tr("path_out"))
+        if self.run_name_label is not None:
+            self.run_name_label.configure(text=self._tr("path_run_name"))
         if self.old_pick_btn is not None:
             self.old_pick_btn.configure(text=self._tr("btn_select"))
         if self.swap_btn is not None:
@@ -478,6 +483,12 @@ class PDFCompareApp(
         self.out_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
         self.out_pick_btn = ttk.Button(out_fields, text=self._tr("btn_select"), style="Small.TButton", command=self._pick_out_dir)
         self.out_pick_btn.pack(side=tk.LEFT, padx=(8, 0))
+        run_name_wrap = tk.Frame(out_wrap, bg=BG_WINDOW)
+        run_name_wrap.pack(fill=tk.X, pady=(8, 0))
+        self.run_name_label = ttk.Label(run_name_wrap, text=self._tr("path_run_name"), style="Hint.TLabel")
+        self.run_name_label.pack(side=tk.LEFT, padx=(0, 8))
+        self.run_name_entry = ttk.Entry(run_name_wrap, textvariable=self.run_name, style="Path.TEntry")
+        self.run_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
 
         self.options_body = tk.Frame(self.compare_tab, bg=BG_SOFT, padx=14, pady=14)
         self.options_body.pack(fill=tk.X, pady=(0, 14))
@@ -896,7 +907,7 @@ class PDFCompareApp(
         self._update_worker_chips()
 
     def _bind_input_tracking(self) -> None:
-        for var in (self.old_pdf, self.new_pdf, self.out_dir, self.dpi, self.stroke_tol, self.workers):
+        for var in (self.old_pdf, self.new_pdf, self.out_dir, self.run_name, self.dpi, self.stroke_tol, self.workers):
             var.trace_add("write", self._on_inputs_changed)
         self.history_search.trace_add("write", lambda *_: self._refresh_history_table())
 
@@ -957,6 +968,7 @@ class PDFCompareApp(
         self.old_pdf.set("")
         self.new_pdf.set("")
         self.out_dir.set("")
+        self.run_name.set("")
         self.progress.configure(value=0.0)
         self.progress_pct.set("0%")
         self.last_run_dir = None
@@ -1030,6 +1042,20 @@ class PDFCompareApp(
         if workers < 0:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_workers"))
             return
+        run_name = self.run_name.get().strip() or None
+        if run_name is not None:
+            try:
+                run_name = sanitize_run_folder_name(run_name)
+            except ValueError as exc:
+                messagebox.showerror(self._tr("err_invalid_option_title"), str(exc))
+                return
+            self.run_name.set(run_name)
+            if (out_path / run_name).exists():
+                messagebox.showerror(
+                    self._tr("err_invalid_option_title"),
+                    self._tr("err_run_exists", path=out_path / run_name),
+                )
+                return
 
         self.last_inputs = self._capture_inputs()
         self._save_state()
@@ -1040,13 +1066,23 @@ class PDFCompareApp(
         self._set_status("status_running")
         t = threading.Thread(
             target=self._run_worker,
-            args=(old, new, out_path, dpi, stroke_tol, workers, self.lang.get()),
+            args=(old, new, out_path, dpi, stroke_tol, workers, self.lang.get(), run_name),
             daemon=True,
         )
         self.worker_thread = t
         t.start()
 
-    def _run_worker(self, old: Path, new: Path, out_path: Path, dpi: int, stroke_tol: float, workers: int, report_lang: str) -> None:
+    def _run_worker(
+        self,
+        old: Path,
+        new: Path,
+        out_path: Path,
+        dpi: int,
+        stroke_tol: float,
+        workers: int,
+        report_lang: str,
+        run_name: str | None,
+    ) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
                 if self.cancel_requested.is_set():
@@ -1060,6 +1096,7 @@ class PDFCompareApp(
                 high_dpi=dpi,
                 stroke_tol_px=stroke_tol,
                 report_lang=report_lang,
+                run_name=run_name,
                 workers=workers,
                 progress_cb=report_progress,
             )
@@ -1164,6 +1201,8 @@ class PDFCompareApp(
                             "run_dir": str(run_dir),
                         }
                     )
+                    self.run_name.set("")
+                    self._save_state()
                     self._load_rerender_report(run_dir, quiet=True)
                     messagebox.showinfo(self._tr("dlg_done_title"), self._tr("dlg_done_body", run_dir=run_dir))
                 elif kind == "cancelled":

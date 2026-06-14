@@ -159,21 +159,74 @@ class FinalReportTests(unittest.TestCase):
                         "ecc_failed": False,
                     }
                 )
+            added_dir = pages_dir / "003__A_NA__B_3"
+            added_dir.mkdir(parents=True)
+            (added_dir / "b.png").write_bytes(self.PNG_1X1)
+            details.append(
+                {
+                    "seq": 3,
+                    "a_page": None,
+                    "b_page": 3,
+                    "pair_dir": added_dir.name,
+                    "status": "added",
+                    "score": 0.0,
+                    "diff_percent": None,
+                    "change_level": None,
+                    "bboxes_count": None,
+                    "ecc_failed": False,
+                }
+            )
+            removed_dir = pages_dir / "004__A_3__B_NA"
+            removed_dir.mkdir(parents=True)
+            (removed_dir / "a.png").write_bytes(self.PNG_1X1)
+            details.append(
+                {
+                    "seq": 4,
+                    "a_page": 3,
+                    "b_page": None,
+                    "pair_dir": removed_dir.name,
+                    "status": "removed",
+                    "score": 0.0,
+                    "diff_percent": None,
+                    "change_level": None,
+                    "bboxes_count": None,
+                    "ecc_failed": False,
+                }
+            )
 
             generate_html_report(run_dir, old_pdf, new_pdf, details, high_dpi=72, stroke_tol_px=2.0, report_lang="ru")
 
+            index_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "index.html").read_text(encoding="utf-8")
             slider_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "cmp_001.html").read_text(
                 encoding="utf-8"
             )
             detail_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "001.html").read_text(encoding="utf-8")
-            self.assertIn("следующий слайдер", slider_html)
-            self.assertIn("Слайдеры листов", slider_html)
-            self.assertIn("sliderNavSearch", slider_html)
+            self.assertIn('class="matrix-tools"', index_html)
+            self.assertNotIn('class="filters"', index_html)
+            self.assertNotIn('class="chip"', index_html)
             self.assertIn("cmp_002.html", slider_html)
-            self.assertIn("Сохранить РАЗНИЦУ как", slider_html)
-            self.assertIn('download="PDFCompare_A1_B1_diff.png"', slider_html)
-            self.assertIn("box-shadow:inset 4px 0 0 #1fa463", detail_html)
-            self.assertIn("Сохранить РАЗНИЦУ как", detail_html)
+            self.assertIn('class="sheet-drawer"', slider_html)
+            self.assertIn("const allSheets", slider_html)
+            self.assertIn("disabled-slider", slider_html)
+            self.assertIn('href=\'003.html\'', slider_html)
+            self.assertIn('id="bboxToggle"', slider_html)
+            self.assertIn('id="oneBtn"', slider_html)
+            self.assertIn('data-bbox="off"', slider_html)
+            self.assertIn('data-color="yellow"', slider_html)
+            self.assertIn("pdfcompare.bbox", slider_html)
+            self.assertIn("data-bbox-enabled", slider_html)
+            self.assertIn("sliderNavSearch", slider_html)
+            self.assertIn("Home", slider_html)
+            self.assertNotIn("Все листы", slider_html)
+            self.assertIn("К матрице изменений", detail_html)
+            self.assertIn("Открыть внешне", detail_html)
+            self.assertIn("Открыть в слайдере", detail_html)
+            self.assertIn("side-summary", detail_html)
+            self.assertNotIn('data-mode="slider"', detail_html)
+            self.assertNotIn('?embed=1"', detail_html)
+            self.assertNotIn("bottom-bar", detail_html)
+            self.assertIn("box-shadow: inset 4px 0 0 var(--brand)", detail_html)
+            self.assertNotIn("Summary preview", detail_html)
 
 
 if __name__ == "__main__":

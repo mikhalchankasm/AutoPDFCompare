@@ -24,6 +24,7 @@ class StatePersistenceMixin:
             "old_pdf": self.old_pdf.get().strip(),
             "new_pdf": self.new_pdf.get().strip(),
             "out_dir": self.out_dir.get().strip(),
+            "run_name": self.run_name.get().strip(),
             "dpi": self.dpi.get().strip(),
             "stroke_tol": self.stroke_tol.get().strip(),
             "workers": self.workers.get().strip(),
@@ -34,6 +35,7 @@ class StatePersistenceMixin:
         self.old_pdf.set(str(data.get("old_pdf") or ""))
         self.new_pdf.set(str(data.get("new_pdf") or ""))
         self.out_dir.set(str(data.get("out_dir") or ""))
+        self.run_name.set(str(data.get("run_name") or ""))
         self.dpi.set(str(data.get("dpi") or "250"))
         self.stroke_tol.set(str(data.get("stroke_tol") or "2.0"))
         self.workers.set(str(data.get("workers") or "0"))

@@ -7,6 +7,7 @@ import csv
 import gc
 import json
 import os
+import re
 import shutil
 import time
 from collections.abc import Callable, Iterable, Sequence
@@ -37,6 +38,74 @@ from .pdf_io import (
     report_pages_dir,
     summary_json_path,
 )
+
+INVALID_RUN_NAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+MAX_RUN_FOLDER_NAME_LEN = 80
+WINDOWS_RESERVED_RUN_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
+}
+
+
+def sanitize_run_folder_name(raw_name: str) -> str:
+    raw = str(raw_name or "")
+    name = raw.strip()
+    if not name:
+        raise ValueError("Имя папки сравнения не может быть пустым")
+    if INVALID_RUN_NAME_CHARS_RE.search(name) or Path(name).name != name or Path(name).is_absolute():
+        raise ValueError(f"Имя папки сравнения должно быть одним именем, без пути: {raw_name}")
+    if name != name.rstrip(" ."):
+        raise ValueError("Имя папки сравнения не должно заканчиваться пробелом или точкой")
+
+    name = re.sub(r"\s+", "_", name, flags=re.UNICODE)
+    name = re.sub(r"_+", "_", name).strip(" ._")
+    if not name:
+        raise ValueError("Имя папки сравнения не может быть пустым")
+    if name in {".", ".."}:
+        raise ValueError(f"Имя папки сравнения должно быть одним именем, без пути: {raw_name}")
+    if name.split(".")[0].upper() in WINDOWS_RESERVED_RUN_NAMES:
+        raise ValueError(f"Зарезервированное имя папки Windows: {name}")
+    if len(name) > MAX_RUN_FOLDER_NAME_LEN:
+        raise ValueError(f"Имя папки сравнения не должно быть длиннее {MAX_RUN_FOLDER_NAME_LEN} символов")
+    return name
+
+
+def build_run_dir(out_dir: Path, report_lang: str, run_name: str | None = None) -> Path:
+    if run_name is not None and str(run_name).strip():
+        return out_dir / sanitize_run_folder_name(run_name)
+
+    # Generate human-readable folder name based on language.
+    # Add a unique suffix so multiple runs within the same second don't collide.
+    now = datetime.now()
+    unique_suffix = uuid4().hex[:4]
+    if report_lang == "ru":
+        date_str = now.strftime("%d-%m-%Y")
+        time_str = now.strftime("%H-%M-%S")
+        return out_dir / f"Сравнение_{date_str}_{time_str}_{unique_suffix}"
+
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H-%M-%S")
+    return out_dir / f"Comparison_{date_str}_{time_str}_{unique_suffix}"
 
 
 def resolve_worker_count(requested: int | None, total_pairs: int) -> int:
@@ -155,13 +224,23 @@ def process_pair_task(
         return finish()
 
 
-def _page_value_to_idx(value: object) -> int | None:
+def _value_to_int(value: object) -> int | None:
     if value in (None, "", "-"):
         return None
     try:
-        return int(value) - 1  # type: ignore[arg-type]
+        parsed = float(str(value))
     except (TypeError, ValueError):
         return None
+    if not parsed.is_integer():
+        return None
+    return int(parsed)
+
+
+def _page_value_to_idx(value: object) -> int | None:
+    parsed = _value_to_int(value)
+    if parsed is None:
+        return None
+    return parsed - 1
 
 
 def _details_to_pairs(details: Sequence[dict]) -> list[MatchPair]:
@@ -276,7 +355,13 @@ def regenerate_report_pages(
     if not selected:
         raise RuntimeError("Не выбраны листы для перегенерации")
 
-    by_seq = {int(row.get("seq")): row for row in details if row.get("seq") is not None}
+    def required_seq(row: dict) -> int:
+        seq = _value_to_int(row.get("seq"))
+        if seq is None:
+            raise RuntimeError(f"Некорректный номер листа в summary.json: {row.get('seq')!r}")
+        return seq
+
+    by_seq = {required_seq(row): row for row in details}
     missing = sorted(selected.difference(by_seq))
     if missing:
         raise RuntimeError(f"Не найдены листы в отчёте: {', '.join(map(str, missing))}")
@@ -326,10 +411,10 @@ def regenerate_report_pages(
                 )
 
     for idx, row in enumerate(details):
-        seq = int(row.get("seq"))
+        seq = required_seq(row)
         if seq in updated_rows:
             details[idx] = updated_rows[seq]
-    details.sort(key=lambda row: int(row["seq"]))
+    details.sort(key=required_seq)
 
     emit(75, "Обновление summary.json и CSV")
     _write_run_summary_files(run_dir, file_a, file_b, details, dpi, tol, report_lang)
@@ -355,6 +440,7 @@ def compare_pdfs(
     high_dpi: int = 250,
     stroke_tol_px: float = 2.0,
     report_lang: str = "ru",
+    run_name: str | None = None,
     keep_debug_images: bool = False,
     workers: int | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
@@ -363,18 +449,13 @@ def compare_pdfs(
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
-    # Generate human-readable folder name based on language.
-    # Add a unique suffix so multiple runs within the same second don't collide.
-    now = datetime.now()
-    unique_suffix = uuid4().hex[:4]
-    if report_lang == "ru":
-        date_str = now.strftime("%d-%m-%Y")
-        time_str = now.strftime("%H-%M-%S")
-        run_dir = out_dir / f"Сравнение_{date_str}_{time_str}_{unique_suffix}"
-    else:
-        date_str = now.strftime("%Y-%m-%d")
-        time_str = now.strftime("%H-%M-%S")
-        run_dir = out_dir / f"Comparison_{date_str}_{time_str}_{unique_suffix}"
+    run_dir = build_run_dir(out_dir, report_lang, run_name)
+    try:
+        run_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise RuntimeError(f"Папка результата уже существует: {run_dir}") from None
+    except OSError as exc:
+        raise RuntimeError(f"Не удалось создать папку результата: {run_dir}") from exc
     pages_dir = report_pages_dir(run_dir)
     pages_dir.mkdir(parents=True, exist_ok=True)
 

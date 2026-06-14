@@ -1,3 +1,7 @@
+param(
+    [switch]$WithMcp
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -13,6 +17,9 @@ try {
     $python = Join-Path $venv "Scripts/python.exe"
     & $python -m pip install --upgrade pip
     & $python -m pip install -r requirements.txt
+    if ($WithMcp) {
+        & $python -m pip install -r requirements-mcp.txt
+    }
 }
 finally {
     Pop-Location

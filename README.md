@@ -10,6 +10,8 @@ Local desktop tool for comparing two multi-page PDFs (drawings/specs) with HTML 
 - [PDFCompareLocal.exe](https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal.exe) — Windows EXE, Python не нужен.
 - [PDFCompareLocal-portable.zip](https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal-portable.zip) — portable-вариант для машины с Python 3.
 
+Для обычного пользователя самый простой вариант — скачать `PDFCompareLocal.exe` из Latest Release и запустить файл. Установка Python не требуется.
+
 ## Возможности / Features
 - Постраничный маппинг между ревизиями (учет вставленных/удаленных листов).
 - Визуальный diff с учетом допуска толщины линий.
@@ -30,6 +32,12 @@ Portable Python-вариант:
 ./scripts/run.ps1
 ```
 
+Если нужен агентский MCP-режим, установите дополнительные зависимости:
+```powershell
+./scripts/setup.ps1 -WithMcp
+```
+Готовые copy-paste prompts для агентов лежат в `docs/AGENT_PROMPTS.md`.
+
 Собрать ZIP с исходниками, скриптами запуска и зависимостями для установки:
 ```powershell
 ./scripts/package_portable.ps1
@@ -40,9 +48,38 @@ CLI режим:
 ```bash
 python compare_pdfs.py --version
 python compare_pdfs.py --input-dir TestDocs --out-dir runs --dpi 250 --stroke-tol 2.0
+python compare_pdfs.py --old old.pdf --new new.pdf --out-dir runs --run-name My_Comparison
 ```
 По умолчанию запуск не сохраняет лишние полноразмерные debug-копии (`b_raw.png`, `b_aligned.png`), чтобы уменьшить размер папки результата. Для отладки выравнивания добавьте `--keep-debug-images`.
 Сравнение листов выполняется параллельно: `--workers 0` означает авто-режим (до 4 процессов), `--workers 1` отключает параллелизм, большее число задает количество процессов явно.
+
+## Локальный MCP / Local MCP
+Репозиторий может запускаться как локальный stdio MCP-сервер для агентов. MCP-режим валидирует PDF, предлагает имя папки результата, запускает сравнение в фоне и хранит статус задач в `.pdfcompare_mcp/jobs/`.
+
+Основные инструменты MCP:
+- `prepare_pdf_comparison` — проверяет пути, считает страницы, ищет похожие прошлые сравнения и предлагает имена папки.
+- `start_pdf_comparison` — запускает фоновое сравнение и возвращает `job_id`, `run_dir`, `report_path`.
+- `get_pdf_comparison_status` — возвращает прогресс или финальную сводку.
+- `list_pdf_comparisons` — показывает завершенные сравнения.
+- `cancel_pdf_comparison` — останавливает активную задачу.
+
+Локальный запуск для проверки:
+```powershell
+./scripts/setup.ps1 -WithMcp
+./scripts/run_mcp.ps1
+```
+
+Пример MCP-конфигурации клиента:
+```json
+{
+  "mcpServers": {
+    "pdfcompare": {
+      "command": "D:\\GitHub\\PDFCompare\\.venv\\Scripts\\python.exe",
+      "args": ["D:\\GitHub\\PDFCompare\\scripts\\pdfcompare_mcp.py"]
+    }
+  }
+}
+```
 
 Полезные локальные проверки:
 ```powershell
@@ -63,7 +100,12 @@ EXE и portable-вариант лучше держать параллельно:
 
 ## Структура / Structure
 - `pdfcompare_gui.py` — Windows GUI.
-- `compare_pdfs.py` — движок сравнения и генератор отчетов.
+- `compare_pdfs.py` — совместимый facade и CLI entry point.
+- `pdfcompare_core/` — движок сравнения, маппинг страниц, HTML/Markdown отчеты.
+- `pdfcompare_ui/` — GUI mixins, состояние, история, drag-and-drop.
+- `docs/AGENT_PROMPTS.md` — короткие prompts для подключения MCP в локальном агенте.
+- `scripts/pdfcompare_mcp.py` — stdio MCP-сервер для локальных агентов.
+- `scripts/pdfcompare_worker.py` — фоновый worker MCP-задач.
 - `run_gui.bat` — быстрый запуск GUI.
 - `dist/` — локальные сборки (игнорируются в git).
 - `runs/` — результаты сравнений (игнорируются в git).

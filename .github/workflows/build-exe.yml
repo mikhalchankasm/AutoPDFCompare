@@ -10,11 +10,17 @@ on:
     paths:
       - "compare_pdfs.py"
       - "pdfcompare_gui.py"
+      - "pdfcompare_core/**"
+      - "pdfcompare_ui/**"
       - "PDFCompareLocal.spec"
       - "requirements.txt"
+      - "requirements-dev.txt"
+      - "requirements-mcp.txt"
       - "run_gui.bat"
       - "run_gui_silent.vbs"
       - "scripts/**"
+      - "tests/**"
+      - "pyproject.toml"
       - ".github/workflows/build-exe.yml"
 
 permissions:
@@ -35,9 +41,11 @@ jobs:
 
       - name: Install dependencies
         run: |
+          if (-not (Test-Path requirements-dev.txt)) { throw "requirements-dev.txt is missing" }
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install -r requirements-mcp.txt
 
       - name: Lint
         run: .\scripts\lint.ps1

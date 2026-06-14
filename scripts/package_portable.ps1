@@ -23,6 +23,7 @@ try {
         "run_gui.bat",
         "run_gui_silent.vbs",
         "requirements.txt",
+        "requirements-mcp.txt",
         "README.md",
         "CHANGELOG.md"
     )
@@ -30,14 +31,27 @@ try {
         Copy-Item -LiteralPath (Join-Path $repo $file) -Destination $stage
     }
 
+    foreach ($dir in @("pdfcompare_core", "pdfcompare_ui")) {
+        Copy-Item -LiteralPath (Join-Path $repo $dir) -Destination $stage -Recurse
+    }
+
+    $docsStage = Join-Path $stage "docs"
+    New-Item -ItemType Directory -Force -Path $docsStage | Out-Null
+    foreach ($doc in @("LOCAL_AGENT_MCP.md", "PDFCOMPARE_AGENT_SKILL.md", "AGENT_PROMPTS.md")) {
+        Copy-Item -LiteralPath (Join-Path $repo "docs/$doc") -Destination $docsStage
+    }
+
     New-Item -ItemType Directory -Force -Path (Join-Path $stage "scripts") | Out-Null
-    foreach ($script in @("setup.ps1", "run.ps1", "lint.ps1", "test.ps1", "ai_review_context.ps1")) {
+    foreach ($script in @(
+        "setup.ps1",
+        "run.ps1",
+        "run_mcp.ps1",
+        "pdfcompare_mcp.py",
+        "pdfcompare_worker.py"
+    )) {
         Copy-Item -LiteralPath (Join-Path $repo "scripts/$script") -Destination (Join-Path $stage "scripts")
     }
 
-    if (Test-Path (Join-Path $repo "tests")) {
-        Copy-Item -LiteralPath (Join-Path $repo "tests") -Destination $stage -Recurse
-    }
     Get-ChildItem -Path $stage -Directory -Recurse -Filter "__pycache__" | Remove-Item -Recurse -Force
 
     if (Test-Path $zip) {

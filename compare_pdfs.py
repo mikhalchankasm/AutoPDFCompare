@@ -85,13 +85,16 @@ from pdfcompare_core.pdf_io import (
     write_start_page,
 )
 from pdfcompare_core.runner import (
+    MAX_RUN_FOLDER_NAME_LEN,
     _details_to_pairs,
     _page_value_to_idx,
     _write_run_summary_files,
+    build_run_dir,
     compare_pdfs,
     process_pair_task,
     regenerate_report_pages,
     resolve_worker_count,
+    sanitize_run_folder_name,
 )
 
 
