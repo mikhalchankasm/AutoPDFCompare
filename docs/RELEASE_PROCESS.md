@@ -19,7 +19,7 @@ Expected local artifacts:
 
 ## Tagged Release
 
-1. Update `APP_VERSION` in `compare_pdfs.py`.
+1. Update `APP_VERSION` in `pdfcompare_core/constants.py`.
 2. Update `README.md`, `CHANGELOG.md`, and `docs/releases/v<version>.md`.
 3. Commit the release changes.
 4. Create and push a tag:

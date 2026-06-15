@@ -25,7 +25,8 @@ try {
         "requirements.txt",
         "requirements-mcp.txt",
         "README.md",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "SETUP_PROMPT.md"
     )
     foreach ($file in $files) {
         Copy-Item -LiteralPath (Join-Path $repo $file) -Destination $stage
@@ -46,6 +47,7 @@ try {
         "setup.ps1",
         "run.ps1",
         "run_mcp.ps1",
+        "run_mcp_bootstrap.ps1",
         "pdfcompare_mcp.py",
         "pdfcompare_worker.py"
     )) {

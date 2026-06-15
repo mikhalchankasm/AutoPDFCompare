@@ -2,7 +2,7 @@
 
 PDFCompare exposes a local MCP server so any local LLM agent with stdio MCP support can compare PDFs without knowing the internal Python API.
 
-For copy-paste setup prompts, see `docs/AGENT_PROMPTS.md`.
+For one-click setup buttons, see the repository `README.md`. For copy-paste setup prompts, see `SETUP_PROMPT.md` and `docs/AGENT_PROMPTS.md`.
 
 ## Tools
 
@@ -58,6 +58,16 @@ Start the MCP server manually for smoke testing:
 The server uses stdio, so it waits for an MCP client and does not print a web URL.
 Keep the server on stdio/local transport. Non-stdio transport is blocked unless `PDFCOMPARE_MCP_ALLOW_NETWORK=1` is set; do not enable it unless you also add an output-path allowlist for your environment.
 
+For installed MCP clients, prefer the bootstrap wrapper:
+
+```powershell
+./scripts/run_mcp_bootstrap.ps1
+```
+
+The bootstrap wrapper logs to `.pdfcompare_mcp/bootstrap.log`, installs missing MCP dependencies, and then starts the stdio MCP server. It does not auto-update by default. To opt in for a trusted private setup, run it with `-AutoUpdate` or set `PDFCOMPARE_MCP_AUTO_UPDATE=1`; auto-update only pulls `origin/master` when the checkout is clean and currently on `master`.
+
+The one-click clone phase logs to `%TEMP%\pdfcompare_mcp_bootstrap.log`; after the repository exists, bootstrap logs go to `.pdfcompare_mcp/bootstrap.log`.
+
 ## MCP Client Config
 
 Use the venv Python if available:
@@ -87,6 +97,25 @@ If there is no venv, use the system Python after installing both `requirements.t
 ```
 
 Most MCP clients, including Claude Desktop, Cursor, Open Code-style clients, and local Codex-compatible setups, use this same stdio shape: a command plus args.
+
+Bootstrap config for a user-level install:
+
+```json
+{
+  "mcpServers": {
+    "pdfcompare": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$ErrorActionPreference='Stop'; $repo=Join-Path $env:LOCALAPPDATA 'PDFCompareMCP\\AutoPDFCompare'; $log=Join-Path $env:TEMP 'pdfcompare_mcp_bootstrap.log'; if (!(Test-Path $repo)) { New-Item -ItemType Directory -Force -Path (Split-Path $repo) *> $log; git clone https://github.com/mikhalchankasm/AutoPDFCompare.git $repo *>> $log }; & (Join-Path $repo 'scripts\\run_mcp_bootstrap.ps1')"
+      ]
+    }
+  }
+}
+```
 
 ## Direct CLI Fallback
 
