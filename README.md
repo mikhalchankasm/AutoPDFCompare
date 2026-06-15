@@ -1,161 +1,63 @@
 # PDFCompare Local
 
+> Local Windows tool for comparing two PDF revisions and opening a visual HTML diff report.
+
 Current release: `v0.1.2`
 
-Локальный инструмент для сравнения двух многостраничных PDF (чертежи, схемы, рабочая документация) с генерацией HTML-отчета и режима визуального слайдера.
-
-Local desktop tool for comparing two multi-page PDFs (drawings/specs) with HTML report output and an interactive slider view.
-
-## Скачать / Download
 [![Download Windows EXE][download-exe-badge]][download-exe]
 [![Download portable ZIP][download-zip-badge]][download-zip]
 [![Latest Release][latest-release-badge]][latest-release]
 
-- [PDFCompareLocal.exe](https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal.exe) — Windows EXE, Python не нужен.
-- [PDFCompareLocal-portable.zip](https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal-portable.zip) — portable-вариант для машины с Python 3.
-
-Для обычного пользователя самый простой вариант — скачать `PDFCompareLocal.exe` из Latest Release и запустить файл. Установка Python не требуется.
-
-## MCP для агентов / MCP for agents
 [![Add to Cursor][cursor-badge]][cursor-install]
 [![Install in VS Code][vscode-badge]][vscode-install]
 
-Кнопки устанавливают локальный MCP-сервер `pdfcompare` через bootstrap-команду: она клонирует репозиторий в `%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare`, ставит зависимости и запускает stdio MCP. Для MCP-режима нужны Git, Python 3.10+ и доступ к GitHub.
+## AI Agent Setup
 
-Важно: MCP-кнопки запускают локальную PowerShell-команду и код из этого репозитория. Используйте их только если доверяете репозиторию; для обычного desktop-сценария безопаснее скачать готовый `PDFCompareLocal.exe`.
-
-Для установки через любого локального агента вставьте один prompt:
+Paste this into your local agent:
 
 ```text
 Прочитай https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/SETUP_PROMPT.md и выполни инструкцию по подключению PDFCompare MCP. Используй stdio transport, имя сервера pdfcompare.
 ```
 
-Чтобы позже подтянуть изменения, попросите агента: `Обнови PDFCompare MCP по инструкции из SETUP_PROMPT.md`.
+Update later:
 
-## Возможности / Features
-- Постраничный маппинг между ревизиями (учет вставленных/удаленных листов).
-- Визуальный diff с учетом допуска толщины линий.
-- Отчет: сводка, навигация по листам, детальный просмотр OLD/NEW/DIFF, режим слайдера с быстрым переходом между листами.
-- История запусков и восстановление последней конфигурации.
-- RU/EN локализация UI (переключатель языка в правом верхнем углу).
-
-## Демонстрация / Screenshots
-
-Скриншоты показывают интерфейс; содержимое чертежей и спецификаций намеренно размыто.
-
-### Change Matrix
-![Change Matrix overview](img/01_change_matrix.png)
-
-### Sheet Detail
-![Detailed sheet comparison](img/02_change_matrix_detail.png)
-
-### Slider Mode
-![Interactive slider mode](img/03_slider_mode.png)
-
-## Быстрый старт / Quick start
-```bash
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-python pdfcompare_gui.py
+```text
+Обнови PDFCompare MCP по инструкции из https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/SETUP_PROMPT.md
 ```
 
-Portable Python-вариант:
+Важно: MCP-кнопки запускают локальную PowerShell-команду и код из этого репозитория. Используйте их только если доверяете репозиторию и агенту.
+
+## Desktop Use
+
+Download `PDFCompareLocal.exe`, select OLD and NEW PDFs, then open the generated HTML report. Python is not required for the EXE.
+
+## Screenshots
+
+Скриншоты показывают интерфейс; содержимое чертежей и спецификаций может быть размыто.
+
+<p>
+  <img src="img/01_change_matrix.png" alt="Change Matrix" width="32%">
+  <img src="img/02_change_matrix_detail.png" alt="Sheet Detail" width="32%">
+  <img src="img/03_slider_mode.png" alt="Slider Mode" width="32%">
+</p>
+
+## CLI
+
 ```powershell
-./scripts/setup.ps1
-./scripts/run.ps1
-```
-
-Если нужен агентский MCP-режим, установите дополнительные зависимости:
-```powershell
-./scripts/setup.ps1 -WithMcp
-```
-Готовые copy-paste prompts для агентов лежат в `SETUP_PROMPT.md` и `docs/AGENT_PROMPTS.md`.
-
-Собрать ZIP с исходниками, скриптами запуска и зависимостями для установки:
-```powershell
-./scripts/package_portable.ps1
-```
-Архив будет создан в `dist_portable/PDFCompareLocal-portable.zip`. Он рассчитан на машину с установленным Python 3; если Python ставить нельзя, используйте EXE-сборку.
-
-CLI режим:
-```bash
-python compare_pdfs.py --version
-python compare_pdfs.py --input-dir TestDocs --out-dir runs --dpi 250 --stroke-tol 2.0
 python compare_pdfs.py --old old.pdf --new new.pdf --out-dir runs --run-name My_Comparison
 ```
-По умолчанию запуск не сохраняет лишние полноразмерные debug-копии (`b_raw.png`, `b_aligned.png`), чтобы уменьшить размер папки результата. Для отладки выравнивания добавьте `--keep-debug-images`.
-Сравнение листов выполняется параллельно: `--workers 0` означает авто-режим (до 4 процессов), `--workers 1` отключает параллелизм, большее число задает количество процессов явно.
 
-## Локальный MCP / Local MCP
-Репозиторий может запускаться как локальный stdio MCP-сервер для агентов. MCP-режим валидирует PDF, предлагает имя папки результата, запускает сравнение в фоне и хранит статус задач в `.pdfcompare_mcp/jobs/`.
+## Docs
 
-Основные инструменты MCP:
-- `prepare_pdf_comparison` — проверяет пути, считает страницы, ищет похожие прошлые сравнения и предлагает имена папки.
-- `start_pdf_comparison` — запускает фоновое сравнение и возвращает `job_id`, `run_dir`, `report_path`.
-- `get_pdf_comparison_status` — возвращает прогресс или финальную сводку.
-- `list_pdf_comparisons` — показывает завершенные сравнения.
-- `cancel_pdf_comparison` — останавливает активную задачу.
+- MCP setup and tools: [docs/LOCAL_AGENT_MCP.md](docs/LOCAL_AGENT_MCP.md)
+- Copy-paste agent prompts: [docs/AGENT_PROMPTS.md](docs/AGENT_PROMPTS.md)
+- Agent skill guide: [docs/PDFCOMPARE_AGENT_SKILL.md](docs/PDFCOMPARE_AGENT_SKILL.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Release process: [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)
 
-Локальный запуск для проверки:
-```powershell
-./scripts/setup.ps1 -WithMcp
-./scripts/run_mcp.ps1
-```
+## License
 
-Пример MCP-конфигурации клиента:
-```json
-{
-  "mcpServers": {
-    "pdfcompare": {
-      "command": "D:\\GitHub\\PDFCompare\\.venv\\Scripts\\python.exe",
-      "args": ["D:\\GitHub\\PDFCompare\\scripts\\pdfcompare_mcp.py"]
-    }
-  }
-}
-```
-
-Полезные локальные проверки:
-```powershell
-./scripts/lint.ps1
-./scripts/test.ps1
-./scripts/ai_review_context.ps1
-```
-
-## Сборка EXE / Build EXE
-```bash
-pyinstaller --noconfirm PDFCompareLocal.spec
-```
-Готовый файл: `dist/PDFCompareLocal.exe`.
-
-EXE и portable-вариант лучше держать параллельно:
-- EXE: удобен пользователю без Python, но сложнее отлаживать и пересобирать.
-- Portable Python: быстрее обновлять, проще диагностировать ошибки и лучше подходит для внутренних пользователей/инженеров.
-
-## Структура / Structure
-- `pdfcompare_gui.py` — Windows GUI.
-- `compare_pdfs.py` — совместимый facade и CLI entry point.
-- `pdfcompare_core/` — движок сравнения, маппинг страниц, HTML/Markdown отчеты.
-- `pdfcompare_ui/` — GUI mixins, состояние, история, drag-and-drop.
-- `SETUP_PROMPT.md` — один prompt для агента, который устанавливает и подключает MCP.
-- `docs/AGENT_PROMPTS.md` — короткие prompts для подключения MCP в локальном агенте.
-- `scripts/pdfcompare_mcp.py` — stdio MCP-сервер для локальных агентов.
-- `scripts/pdfcompare_worker.py` — фоновый worker MCP-задач.
-- `scripts/run_mcp_bootstrap.ps1` — MCP bootstrap с проверкой зависимостей и opt-in обновлением.
-- `run_gui.bat` — быстрый запуск GUI.
-- `dist/` — локальные сборки (игнорируются в git).
-- `runs/` — результаты сравнений (игнорируются в git).
-
-## CI/CD (GitHub Actions)
-- Workflow: `.github/workflows/build-exe.yml`
-- На `push` в `master` запускаются lint/test, собираются Windows EXE и portable ZIP, публикуются как artifacts.
-- На тегах `v*` EXE и portable ZIP прикрепляются к GitHub Release, release notes берутся из `docs/releases/<tag>.md`.
-
-## Релизы / Releases
-- История изменений: `CHANGELOG.md`.
-- Процесс выпуска: `docs/RELEASE_PROCESS.md`.
-
-## Лицензия / License
-Лицензия пока не указана. Перед приемом внешних contribution или объявлением проекта open-source нужно добавить `LICENSE`.
+No license is declared yet.
 
 [download-exe]: https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal.exe
 [download-zip]: https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal-portable.zip
