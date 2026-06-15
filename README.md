@@ -39,6 +39,19 @@ Local desktop tool for comparing two multi-page PDFs (drawings/specs) with HTML 
 - История запусков и восстановление последней конфигурации.
 - RU/EN локализация UI (переключатель языка в правом верхнем углу).
 
+## Демонстрация / Screenshots
+
+Скриншоты показывают интерфейс; содержимое чертежей и спецификаций намеренно размыто.
+
+### Change Matrix
+![Change Matrix overview](img/01_change_matrix.png)
+
+### Sheet Detail
+![Detailed sheet comparison](img/02_change_matrix_detail.png)
+
+### Slider Mode
+![Interactive slider mode](img/03_slider_mode.png)
+
 ## Быстрый старт / Quick start
 ```bash
 python -m pip install --upgrade pip
