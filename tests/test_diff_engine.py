@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from compare_pdfs import compute_diff, harmonize_canvas
+from pdfcompare_core.exclusions import exclusion_regions_to_pixel_boxes, normalize_exclude_regions
 
 
 def _white_canvas(h: int = 200, w: int = 200) -> np.ndarray:
@@ -113,6 +114,32 @@ class ComputeDiffTests(unittest.TestCase):
         # Some overlay pixels must differ from b (the colorization is applied to changed regions).
         changed_pixels = np.any(overlay != b, axis=-1)
         self.assertGreater(int(np.count_nonzero(changed_pixels)), 0)
+
+    def test_excluded_region_removes_change_from_diff(self) -> None:
+        a = _white_canvas()
+        b = _white_canvas()
+        _draw_filled_rect(b, x=140, y=150, w=40, h=30)
+
+        _, _, bboxes, diff_percent = compute_diff(a, b, exclude_regions=[{"x": 65, "y": 70, "w": 30, "h": 25}])
+
+        self.assertEqual(bboxes, [])
+        self.assertEqual(diff_percent, 0.0)
+
+    def test_loose_strictness_filters_small_bbox_more_than_normal(self) -> None:
+        a = _white_canvas()
+        b = _white_canvas()
+        _draw_filled_rect(b, x=90, y=90, w=18, h=18)
+
+        _, _, normal_bboxes, _ = compute_diff(a, b, diff_strictness="normal")
+        _, _, loose_bboxes, _ = compute_diff(a, b, diff_strictness="loose")
+
+        self.assertGreater(len(normal_bboxes), 0)
+        self.assertEqual(loose_bboxes, [])
+
+    def test_exclusion_parser_accepts_semicolon_percent_regions(self) -> None:
+        regions = normalize_exclude_regions("70,80,30,20; 0,0,10,5")
+        self.assertEqual(len(regions), 2)
+        self.assertEqual(exclusion_regions_to_pixel_boxes(regions, 200, 100), [(140, 80, 60, 20), (0, 0, 20, 5)])
 
     @staticmethod
     def _overlap_ratio(bbox: tuple[int, int, int, int], target: tuple[int, int, int, int]) -> float:

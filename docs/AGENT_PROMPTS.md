@@ -59,9 +59,11 @@ Required flow:
 1. Call prepare_pdf_comparison first.
 2. Show page counts, similar existing comparisons, and suggested_run_names.
 3. Ask me for the final report folder name.
-4. Call start_pdf_comparison with the selected run_name.
-5. Poll get_pdf_comparison_status until the job completes.
-6. Return the final report_path and summary.counts.
+4. Ask whether to ignore any title block/stamp/author areas. If yes, collect percent boxes as x,y,w,h from the top-left page corner.
+5. Ask for diff_strictness: strict, normal, or loose.
+6. Call start_pdf_comparison with the selected run_name, diff_strictness, and exclude_regions.
+7. Poll get_pdf_comparison_status until the job completes.
+8. Return the final report_path and summary.counts.
 ```
 
 ## 5. Check Job Status

@@ -40,6 +40,8 @@ class AppProtocol(Protocol):
     run_name: tk.StringVar
     dpi: tk.StringVar
     stroke_tol: tk.StringVar
+    diff_strictness: tk.StringVar
+    exclude_regions: tk.StringVar
     workers: tk.StringVar
     status: tk.StringVar
     progress_pct: tk.StringVar

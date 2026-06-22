@@ -22,7 +22,8 @@ import numpy as np
 from .alignment import align_ecc, align_pages_v1
 from .classification import classify
 from .constants import APP_NAME, APP_VERSION, LIVE_REPORT_EVENT_PREFIX
-from .diff_engine import compute_diff, harmonize_canvas
+from .diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, harmonize_canvas
+from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes, normalize_exclude_regions
 from .html_report import generate_html_report
 from .live_report import format_eta, write_live_detail_view, write_live_html_report
 from .markdown_report import write_engineer_report_md, write_summary_md
@@ -129,6 +130,8 @@ def process_pair_task(
     high_dpi: int,
     stroke_tol_px: float,
     keep_debug_images: bool,
+    exclude_regions: list[ExcludeRegion] | None = None,
+    diff_strictness: str = "normal",
     limit_cv_threads: bool = False,
 ) -> dict:
     started = time.monotonic()
@@ -165,6 +168,8 @@ def process_pair_task(
         "diff_percent": None,
         "change_level": None,
         "bboxes_count": None,
+        "excluded_regions_count": 0,
+        "diff_strictness": diff_strictness,
         "ecc_failed": False,
         "width_px": None,
         "height_px": None,
@@ -188,7 +193,14 @@ def process_pair_task(
             a_h, b_h = harmonized
             b_aligned, ecc_ok = align_ecc(a_h, b_h)
             entry["ecc_failed"] = not ecc_ok
-            mask, overlay, bboxes, diff_percent = compute_diff(a_h, b_aligned, stroke_tol_px=stroke_tol_px)
+            pixel_exclusions = exclusion_regions_to_pixel_boxes(exclude_regions or [], a_h.shape[1], a_h.shape[0])
+            mask, overlay, bboxes, diff_percent = compute_diff(
+                a_h,
+                b_aligned,
+                stroke_tol_px=stroke_tol_px,
+                exclude_regions=exclude_regions,
+                diff_strictness=diff_strictness,
+            )
             level = classify(diff_percent, len(bboxes))
 
             imwrite_compat(pair_dir / "a.png", a_h)
@@ -202,10 +214,19 @@ def process_pair_task(
                 json.dumps([{"x": x, "y": y, "w": w, "h": h} for x, y, w, h in bboxes], ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            (pair_dir / "excluded_regions.json").write_text(
+                json.dumps(
+                    [{"x": x, "y": y, "w": w, "h": h} for x, y, w, h in pixel_exclusions],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
 
             entry["diff_percent"] = float(diff_percent)
             entry["change_level"] = level
             entry["bboxes_count"] = len(bboxes)
+            entry["excluded_regions_count"] = len(pixel_exclusions)
             return finish()
 
         if a_idx is not None:
@@ -272,7 +293,10 @@ def _write_run_summary_files(
     high_dpi: int,
     stroke_tol_px: float,
     report_lang: str,
+    exclude_regions: list[ExcludeRegion] | None = None,
+    diff_strictness: str = "normal",
 ) -> None:
+    normalized_exclusions = normalize_exclude_regions(exclude_regions)
     pairs = _details_to_pairs(details)
     summary_json_path(run_dir).parent.mkdir(parents=True, exist_ok=True)
     summary_json_path(run_dir).write_text(
@@ -285,6 +309,8 @@ def _write_run_summary_files(
                 "created_at": datetime.now().isoformat(),
                 "high_dpi": int(high_dpi),
                 "stroke_tol_px": float(stroke_tol_px),
+                "diff_strictness": diff_strictness,
+                "exclude_regions": normalized_exclusions,
                 "pairs": list(details),
             },
             ensure_ascii=False,
@@ -303,6 +329,8 @@ def _write_run_summary_files(
             "diff_percent",
             "change_level",
             "bboxes_count",
+            "excluded_regions_count",
+            "diff_strictness",
             "ecc_failed",
             "width_px",
             "height_px",
@@ -325,6 +353,8 @@ def regenerate_report_pages(
     stroke_tol_px: float | None = None,
     report_lang: str = "ru",
     workers: int | None = None,
+    exclude_regions: list[ExcludeRegion] | None = None,
+    diff_strictness: str | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
 ) -> Path:
     """Re-render selected mapped pages in an existing run and rebuild the report."""
@@ -368,6 +398,8 @@ def regenerate_report_pages(
 
     dpi = int(high_dpi)
     tol = float(stroke_tol_px if stroke_tol_px is not None else payload.get("stroke_tol_px", 2.0))
+    exclusions = normalize_exclude_regions(exclude_regions if exclude_regions is not None else payload.get("exclude_regions"))
+    strictness = str(diff_strictness or payload.get("diff_strictness") or "normal")
     worker_count = resolve_worker_count(workers, len(selected))
     pages_root_resolved = pages_dir.resolve()
 
@@ -387,7 +419,9 @@ def regenerate_report_pages(
             if pages_root_resolved not in pair_dir.parents:
                 raise RuntimeError(f"Небезопасный путь листа: {pair_dir}")
             shutil.rmtree(pair_dir)
-        tasks.append((file_a, file_b, pages_dir, seq, a_idx, b_idx, status, score, dpi, tol, False, worker_count > 1))
+        tasks.append(
+            (file_a, file_b, pages_dir, seq, a_idx, b_idx, status, score, dpi, tol, False, exclusions, strictness, worker_count > 1)
+        )
 
     emit(5, f"Перегенерация листов: {len(tasks)}, DPI {dpi}, процессов {worker_count}")
     completed = 0
@@ -417,7 +451,7 @@ def regenerate_report_pages(
     details.sort(key=required_seq)
 
     emit(75, "Обновление summary.json и CSV")
-    _write_run_summary_files(run_dir, file_a, file_b, details, dpi, tol, report_lang)
+    _write_run_summary_files(run_dir, file_a, file_b, details, dpi, tol, report_lang, exclusions, strictness)
     emit(82, "Пересборка HTML отчёта")
     generate_html_report(
         run_dir,
@@ -443,6 +477,8 @@ def compare_pdfs(
     run_name: str | None = None,
     keep_debug_images: bool = False,
     workers: int | None = None,
+    exclude_regions: list[ExcludeRegion] | None = None,
+    diff_strictness: str = "normal",
     progress_cb: Callable[[float, str], None] | None = None,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
@@ -450,6 +486,10 @@ def compare_pdfs(
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
     run_dir = build_run_dir(out_dir, report_lang, run_name)
+    normalized_exclusions = normalize_exclude_regions(exclude_regions)
+    strictness = str(diff_strictness or "normal").strip().lower()
+    if strictness not in DIFF_STRICTNESS_CHOICES:
+        raise ValueError(f"Некорректная строгость сравнения: {diff_strictness}")
     try:
         run_dir.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -494,6 +534,8 @@ def compare_pdfs(
                 high_dpi,
                 stroke_tol_px,
                 keep_debug_images,
+                normalized_exclusions,
+                strictness,
                 worker_count > 1,
             )
             for idx, p in enumerate(pairs, start=1)
@@ -561,7 +603,17 @@ def compare_pdfs(
         )
 
         emit(87, "Подготовка сводки и CSV")
-        _write_run_summary_files(run_dir, file_a, file_b, details, high_dpi, stroke_tol_px, report_lang)
+        _write_run_summary_files(
+            run_dir,
+            file_a,
+            file_b,
+            details,
+            high_dpi,
+            stroke_tol_px,
+            report_lang,
+            normalized_exclusions,
+            strictness,
+        )
         emit(90, "Генерация HTML отчета")
         generate_html_report(
             run_dir,

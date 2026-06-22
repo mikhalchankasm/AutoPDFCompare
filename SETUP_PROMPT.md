@@ -11,7 +11,7 @@ MCP server name: pdfcompare
 
 Requirements:
 - Git must be available in PATH.
-- Python 3.10+ must be available in PATH.
+- Python 3.12+ must be available in PATH.
 - Use stdio transport only.
 - This setup runs local PowerShell and code from the repository's master branch. Continue only if the user trusts this repository.
 
@@ -48,7 +48,9 @@ For a trusted private setup that should update on each server start, add -AutoUp
 
 After connecting, use PDFCompare MCP tools:
 - prepare_pdf_comparison first;
-- then start_pdf_comparison with the selected run_name;
+- ask whether title blocks/stamps/author tables should be ignored; use percent boxes x,y,w,h from the top-left page corner;
+- ask whether strictness should be strict, normal, or loose;
+- then start_pdf_comparison with the selected run_name, diff_strictness, and exclude_regions;
 - poll get_pdf_comparison_status until completion;
 - return report_path and summary.counts to the user.
 ```

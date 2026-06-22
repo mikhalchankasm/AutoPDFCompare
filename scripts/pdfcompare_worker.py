@@ -146,6 +146,8 @@ def main() -> int:
             work_out_dir,
             high_dpi=int(request.get("dpi", 250)),
             stroke_tol_px=float(request.get("stroke_tol", 2.0)),
+            diff_strictness=str(request.get("diff_strictness") or "normal"),
+            exclude_regions=request.get("exclude_regions") or [],
             report_lang=str(request.get("lang", "ru")),
             run_name=run_name,
             keep_debug_images=bool(request.get("keep_debug_images", False)),

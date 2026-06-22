@@ -16,6 +16,8 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 - `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, workers = 0, lang = "ru", keep_debug_images = false)`
   - starts the comparison in a background Python process;
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
+  - optional `diff_strictness`: `strict`, `normal`, or `loose`;
+  - optional `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]`.
 
 - `get_pdf_comparison_status(job_id = "")`
   - with `job_id`: returns one job state, progress, live report path, and final summary when available;
@@ -35,9 +37,14 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - whether similar comparisons already exist;
    - suggested folder names.
 3. Ask the user what the result folder should be called.
-4. Call `start_pdf_comparison` with that `run_name`.
-5. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
-6. When completed, give the user `report_path` and summarize counts from `summary.counts`.
+4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. Use percent coordinates `x,y,w,h` from top-left of the page.
+5. Ask for strictness when it matters:
+   - `strict`: more sensitive to small differences;
+   - `normal`: default;
+   - `loose`: ignores more small jitter/noise.
+6. Call `start_pdf_comparison` with `run_name`, `diff_strictness`, and `exclude_regions`.
+7. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
+8. When completed, give the user `report_path` and summarize counts from `summary.counts`.
 
 Do not run `compare_pdfs.py` directly from an agent unless MCP is unavailable. The MCP server preserves background job state in `.pdfcompare_mcp/jobs/`.
 
@@ -123,6 +130,7 @@ If an agent cannot use MCP, it can still run:
 
 ```powershell
 python compare_pdfs.py --old "old.pdf" --new "new.pdf" --out-dir runs --run-name "My_Comparison"
+python compare_pdfs.py --old "old.pdf" --new "new.pdf" --exclude-region "70,80,30,20" --diff-strictness loose
 ```
 
 This fallback blocks the calling process and does not provide the MCP background job controls.

@@ -7,6 +7,8 @@ import multiprocessing
 from pathlib import Path
 
 from .constants import APP_NAME, APP_VERSION, START_REPORT_FILE
+from .diff_engine import DIFF_STRICTNESS_CHOICES
+from .exclusions import normalize_exclude_regions
 from .runner import compare_pdfs
 
 
@@ -32,6 +34,19 @@ def main() -> None:
     parser.add_argument("--run-name", type=str, default="", help="Optional exact result folder name inside --out-dir")
     parser.add_argument("--dpi", type=int, default=250, help="High DPI for final page diff rendering")
     parser.add_argument("--stroke-tol", type=float, default=2.0, help="Tolerance in pixels for line-thickness jitter")
+    parser.add_argument(
+        "--diff-strictness",
+        choices=DIFF_STRICTNESS_CHOICES,
+        default="normal",
+        help="Diff sensitivity preset: strict detects more, loose ignores more small jitter",
+    )
+    parser.add_argument(
+        "--exclude-region",
+        action="append",
+        default=[],
+        metavar="X,Y,W,H",
+        help="Exclude a page area from visual diff, in percent of page. Repeat for multiple areas.",
+    )
     parser.add_argument("--lang", type=str, default="ru", choices=["ru", "en"], help="Report language")
     parser.add_argument("--workers", type=int, default=0, help="Parallel page workers; 0 means auto")
     parser.add_argument(
@@ -53,6 +68,8 @@ def main() -> None:
         args.out_dir,
         high_dpi=args.dpi,
         stroke_tol_px=args.stroke_tol,
+        exclude_regions=normalize_exclude_regions(";".join(args.exclude_region)),
+        diff_strictness=args.diff_strictness,
         report_lang=args.lang,
         run_name=args.run_name or None,
         keep_debug_images=args.keep_debug_images,

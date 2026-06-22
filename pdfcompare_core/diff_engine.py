@@ -5,6 +5,16 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes
+
+
+DIFF_STRICTNESS_CHOICES = ("strict", "normal", "loose")
+STRICTNESS_PROFILES = {
+    "strict": {"tol_multiplier": 0.65, "min_area": 80},
+    "normal": {"tol_multiplier": 1.0, "min_area": 180},
+    "loose": {"tol_multiplier": 1.6, "min_area": 360},
+}
+
 
 def harmonize_canvas(
     a_bgr: np.ndarray,
@@ -28,11 +38,20 @@ def compute_diff(
     a_bgr: np.ndarray,
     b_bgr: np.ndarray,
     stroke_tol_px: float = 2.0,
+    exclude_regions: list[ExcludeRegion] | None = None,
+    diff_strictness: str = "normal",
 ) -> tuple[np.ndarray, np.ndarray, list[tuple[int, int, int, int]], float]:
     hb, wb = b_bgr.shape[:2]
     ha, wa = a_bgr.shape[:2]
     if (ha, wa) != (hb, wb):
         raise ValueError(f"Разные размеры растра: A={wa}x{ha}, B={wb}x{hb}")
+
+    strictness = str(diff_strictness or "normal").strip().lower()
+    if strictness not in STRICTNESS_PROFILES:
+        raise ValueError(f"Некорректная строгость сравнения: {diff_strictness}")
+    profile = STRICTNESS_PROFILES[strictness]
+    effective_stroke_tol_px = max(0.0, float(stroke_tol_px) * float(profile["tol_multiplier"]))
+    min_contour_area = float(profile["min_area"])
 
     # Robust comparison for engineering drawings:
     # ignore tiny raster/antialias thickness differences by tolerance in pixels.
@@ -54,18 +73,23 @@ def compute_diff(
 
     dt_to_b = cv2.distanceTransform(cv2.bitwise_not(fg_b), cv2.DIST_L2, 3)
     dt_to_a = cv2.distanceTransform(cv2.bitwise_not(fg_a), cv2.DIST_L2, 3)
-    mask_del = cv2.bitwise_and(fg_a, (dt_to_b > stroke_tol_px).astype(np.uint8) * 255)
-    mask_add = cv2.bitwise_and(fg_b, (dt_to_a > stroke_tol_px).astype(np.uint8) * 255)
+    mask_del = cv2.bitwise_and(fg_a, (dt_to_b > effective_stroke_tol_px).astype(np.uint8) * 255)
+    mask_add = cv2.bitwise_and(fg_b, (dt_to_a > effective_stroke_tol_px).astype(np.uint8) * 255)
     mask = cv2.bitwise_or(mask_del, mask_add)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
 
+    for x, y, w, h in exclusion_regions_to_pixel_boxes(exclude_regions or [], wb, hb):
+        mask[y : y + h, x : x + w] = 0
+        mask_del[y : y + h, x : x + w] = 0
+        mask_add[y : y + h, x : x + w] = 0
+
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     bboxes: list[tuple[int, int, int, int]] = []
     for c in contours:
         area = cv2.contourArea(c)
-        if area >= 180:
+        if area >= min_contour_area:
             x, y, w, h = cv2.boundingRect(c)
             bboxes.append((int(x), int(y), int(w), int(h)))
 

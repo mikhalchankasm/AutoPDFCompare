@@ -16,9 +16,11 @@ from collections.abc import Callable
 from compare_pdfs import (
     APP_NAME,
     APP_VERSION,
+    DIFF_STRICTNESS_CHOICES,
     LIVE_REPORT_EVENT_PREFIX,
     START_REPORT_FILE,
     compare_pdfs,
+    normalize_exclude_regions,
     sanitize_run_folder_name,
 )
 from pdfcompare_ui.dnd import DragDropMixin
@@ -86,6 +88,8 @@ class PDFCompareApp(
         self.run_name = tk.StringVar()
         self.dpi = tk.StringVar(value="250")
         self.stroke_tol = tk.StringVar(value="2.0")
+        self.diff_strictness = tk.StringVar(value="normal")
+        self.exclude_regions = tk.StringVar(value="")
         self.workers = tk.StringVar(value="0")
         self.status = tk.StringVar(value="")
         self.progress_pct = tk.StringVar(value="0%")
@@ -147,6 +151,10 @@ class PDFCompareApp(
         self.options_dpi_hint_label: ttk.Label | None = None
         self.options_stroke_label: ttk.Label | None = None
         self.options_stroke_hint_label: ttk.Label | None = None
+        self.options_strictness_label: ttk.Label | None = None
+        self.options_strictness_hint_label: ttk.Label | None = None
+        self.options_exclude_label: ttk.Label | None = None
+        self.options_exclude_hint_label: ttk.Label | None = None
         self.options_workers_label: ttk.Label | None = None
         self.options_workers_hint_label: ttk.Label | None = None
         self.clear_btn: ttk.Button | None = None
@@ -173,6 +181,7 @@ class PDFCompareApp(
         self.rerender_open_report_btn: ttk.Button | None = None
         self.history_filter_buttons: dict[str, tk.Label] = {}
         self.worker_chips: dict[str, tk.Label] = {}
+        self.strictness_chips: dict[str, tk.Label] = {}
         self.rerender_by_iid: dict[str, dict[str, Any]] = {}
         self.rerender_running = False
 
@@ -267,6 +276,14 @@ class PDFCompareApp(
             self.options_stroke_label.configure(text=self._option_label_text("opts_stroke"))
         if self.options_stroke_hint_label is not None:
             self.options_stroke_hint_label.configure(text=self._tr("opts_stroke_hint"))
+        if self.options_strictness_label is not None:
+            self.options_strictness_label.configure(text=self._tr("opts_strictness"))
+        if self.options_strictness_hint_label is not None:
+            self.options_strictness_hint_label.configure(text=self._tr("opts_strictness_hint"))
+        if self.options_exclude_label is not None:
+            self.options_exclude_label.configure(text=self._tr("opts_exclude"))
+        if self.options_exclude_hint_label is not None:
+            self.options_exclude_hint_label.configure(text=self._tr("opts_exclude_hint"))
         if self.options_workers_label is not None:
             self.options_workers_label.configure(text=self._tr("opts_workers"))
         if self.options_workers_hint_label is not None:
@@ -351,12 +368,15 @@ class PDFCompareApp(
                 self.history_filter_buttons[value].configure(text=self._tr(key))
         if "0" in self.worker_chips:
             self.worker_chips["0"].configure(text=self._tr("workers_auto"))
+        for value, widget in self.strictness_chips.items():
+            widget.configure(text=self._tr(f"strictness_{value}"))
         self._update_lang_buttons()
         self._draw_drop_zone()
         self._refresh_drop_badges()
         self._refresh_file_cards()
         self._refresh_option_values()
         self._update_history_filter_buttons()
+        self._update_strictness_chips()
         self._refresh_status_links()
         self._refresh_history_table()
 
@@ -516,6 +536,62 @@ class PDFCompareApp(
             self.worker_chips[value] = chip
         self.options_workers_hint_label = ttk.Label(worker_frame, text=self._tr("opts_workers_hint"), style="Hint.TLabel", background=BG_SOFT)
         self.options_workers_hint_label.pack(anchor="w", pady=(8, 0))
+
+        advanced_grid = tk.Frame(self.options_body, bg=BG_SOFT)
+        advanced_grid.pack(fill=tk.X, pady=(12, 0))
+        advanced_grid.columnconfigure(0, weight=1, uniform="advanced")
+        advanced_grid.columnconfigure(1, weight=2, uniform="advanced")
+        strict_frame = tk.Frame(advanced_grid, bg=BG_SOFT)
+        strict_frame.grid(row=0, column=0, sticky="ew", padx=(0, 12))
+        self.options_strictness_label = ttk.Label(
+            strict_frame,
+            text=self._tr("opts_strictness"),
+            style="SubHeader.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_strictness_label.pack(anchor="w", pady=(0, 6))
+        strict_chips = tk.Frame(strict_frame, bg=BG_SOFT)
+        strict_chips.pack(anchor="w")
+        for value in DIFF_STRICTNESS_CHOICES:
+            chip = tk.Label(
+                strict_chips,
+                text=self._tr(f"strictness_{value}"),
+                padx=12,
+                pady=4,
+                bg=BG_CARD,
+                fg=TEXT_SECONDARY,
+                relief="solid",
+                bd=1,
+                cursor="hand2",
+            )
+            chip.pack(side=tk.LEFT, padx=(0, 6))
+            chip.bind("<Button-1>", lambda _e, v=value: self.diff_strictness.set(v))  # type: ignore[misc]
+            self.strictness_chips[value] = chip
+        self.options_strictness_hint_label = ttk.Label(
+            strict_frame,
+            text=self._tr("opts_strictness_hint"),
+            style="Hint.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_strictness_hint_label.pack(anchor="w", pady=(8, 0))
+
+        exclude_frame = tk.Frame(advanced_grid, bg=BG_SOFT)
+        exclude_frame.grid(row=0, column=1, sticky="ew")
+        self.options_exclude_label = ttk.Label(
+            exclude_frame,
+            text=self._tr("opts_exclude"),
+            style="SubHeader.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_exclude_label.pack(anchor="w", pady=(0, 6))
+        ttk.Entry(exclude_frame, textvariable=self.exclude_regions, style="Path.TEntry").pack(fill=tk.X, ipady=4)
+        self.options_exclude_hint_label = ttk.Label(
+            exclude_frame,
+            text=self._tr("opts_exclude_hint"),
+            style="Hint.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_exclude_hint_label.pack(anchor="w", pady=(6, 0))
 
         actions = tk.Frame(self.compare_tab, bg=BG_WINDOW)
         actions.pack(fill=tk.X, pady=(0, 14))
@@ -829,6 +905,12 @@ class PDFCompareApp(
             active = value == current
             widget.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
 
+    def _update_strictness_chips(self) -> None:
+        current = self.diff_strictness.get().strip().lower() or "normal"
+        for value, widget in self.strictness_chips.items():
+            active = value == current
+            widget.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
+
     def _update_history_filter_buttons(self) -> None:
         current = self.history_filter.get()
         for value, widget in self.history_filter_buttons.items():
@@ -905,9 +987,20 @@ class PDFCompareApp(
         except ValueError:
             self.stroke_value.set(self.stroke_tol.get())
         self._update_worker_chips()
+        self._update_strictness_chips()
 
     def _bind_input_tracking(self) -> None:
-        for var in (self.old_pdf, self.new_pdf, self.out_dir, self.run_name, self.dpi, self.stroke_tol, self.workers):
+        for var in (
+            self.old_pdf,
+            self.new_pdf,
+            self.out_dir,
+            self.run_name,
+            self.dpi,
+            self.stroke_tol,
+            self.diff_strictness,
+            self.exclude_regions,
+            self.workers,
+        ):
             var.trace_add("write", self._on_inputs_changed)
         self.history_search.trace_add("write", lambda *_: self._refresh_history_table())
 
@@ -969,6 +1062,7 @@ class PDFCompareApp(
         self.new_pdf.set("")
         self.out_dir.set("")
         self.run_name.set("")
+        self.exclude_regions.set("")
         self.progress.configure(value=0.0)
         self.progress_pct.set("0%")
         self.last_run_dir = None
@@ -1025,9 +1119,11 @@ class PDFCompareApp(
             dpi = int(self.dpi.get().strip())
             stroke_tol = float(self.stroke_tol.get().strip())
             workers = int(self.workers.get().strip() or "0")
-        except ValueError:
-            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_parse"))
+            exclude_regions = normalize_exclude_regions(self.exclude_regions.get())
+        except ValueError as exc:
+            messagebox.showerror(self._tr("err_invalid_option_title"), f"{self._tr('err_invalid_option_parse')}\n\n{exc}")
             return
+        diff_strictness = self.diff_strictness.get().strip().lower() or "normal"
 
         if dpi < 72:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
@@ -1041,6 +1137,9 @@ class PDFCompareApp(
             return
         if workers < 0:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_workers"))
+            return
+        if diff_strictness not in DIFF_STRICTNESS_CHOICES:
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_strictness"))
             return
         run_name = self.run_name.get().strip() or None
         if run_name is not None:
@@ -1066,7 +1165,7 @@ class PDFCompareApp(
         self._set_status("status_running")
         t = threading.Thread(
             target=self._run_worker,
-            args=(old, new, out_path, dpi, stroke_tol, workers, self.lang.get(), run_name),
+            args=(old, new, out_path, dpi, stroke_tol, workers, self.lang.get(), run_name, exclude_regions, diff_strictness),
             daemon=True,
         )
         self.worker_thread = t
@@ -1082,6 +1181,8 @@ class PDFCompareApp(
         workers: int,
         report_lang: str,
         run_name: str | None,
+        exclude_regions: list[dict[str, float | str]],
+        diff_strictness: str,
     ) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
@@ -1098,17 +1199,19 @@ class PDFCompareApp(
                 report_lang=report_lang,
                 run_name=run_name,
                 workers=workers,
+                exclude_regions=exclude_regions,
+                diff_strictness=diff_strictness,
                 progress_cb=report_progress,
             )
             if self.cancel_requested.is_set():
-                self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers))
+                self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
                 return
-            self.worker_events.put(("done", run_dir, old, new, out_path, dpi, stroke_tol, workers))
+            self.worker_events.put(("done", run_dir, old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
         except Exception as exc:
             if str(exc) == "__CANCELLED__":
-                self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers))
+                self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
                 return
-            self.worker_events.put(("error", str(exc), traceback.format_exc(), old, new, out_path, dpi, stroke_tol, workers))
+            self.worker_events.put(("error", str(exc), traceback.format_exc(), old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
 
     def _poll_worker_events(self) -> None:
         has_more = False
@@ -1169,6 +1272,7 @@ class PDFCompareApp(
                 elif kind == "done":
                     run_dir = event[1]
                     old, new, out_dir, dpi, stroke_tol, workers = event[2], event[3], event[4], event[5], event[6], event[7]
+                    diff_strictness = event[8]
                     self.last_run_dir = run_dir
                     self._set_running(False)
                     self.progress.configure(value=100.0)
@@ -1197,6 +1301,8 @@ class PDFCompareApp(
                             "out_dir": str(out_dir),
                             "dpi": str(dpi),
                             "stroke_tol": str(stroke_tol),
+                            "diff_strictness": str(diff_strictness),
+                            "exclude_regions": self.exclude_regions.get().strip(),
                             "workers": str(workers),
                             "run_dir": str(run_dir),
                         }
@@ -1207,6 +1313,7 @@ class PDFCompareApp(
                     messagebox.showinfo(self._tr("dlg_done_title"), self._tr("dlg_done_body", run_dir=run_dir))
                 elif kind == "cancelled":
                     old, new, out_dir, dpi, stroke_tol, workers = event[1], event[2], event[3], event[4], event[5], event[6]
+                    diff_strictness = event[7] if len(event) > 7 else self.diff_strictness.get()
                     self._set_running(False)
                     self.progress.configure(value=0.0)
                     self.progress_pct.set("0%")
@@ -1220,6 +1327,8 @@ class PDFCompareApp(
                             "out_dir": str(out_dir),
                             "dpi": str(dpi),
                             "stroke_tol": str(stroke_tol),
+                            "diff_strictness": str(diff_strictness),
+                            "exclude_regions": self.exclude_regions.get().strip(),
                             "workers": str(workers),
                             "run_dir": "",
                         }
@@ -1229,6 +1338,7 @@ class PDFCompareApp(
                     err = event[1]
                     tb = event[2]
                     old, new, out_dir, dpi, stroke_tol, workers = event[3], event[4], event[5], event[6], event[7], event[8]
+                    diff_strictness = event[9] if len(event) > 9 else self.diff_strictness.get()
                     self._set_status("status_error", error=err)
                     self._add_history_record(
                         {
@@ -1239,6 +1349,8 @@ class PDFCompareApp(
                             "out_dir": str(out_dir),
                             "dpi": str(dpi),
                             "stroke_tol": str(stroke_tol),
+                            "diff_strictness": str(diff_strictness),
+                            "exclude_regions": self.exclude_regions.get().strip(),
                             "workers": str(workers),
                             "run_dir": "",
                             "error": err,

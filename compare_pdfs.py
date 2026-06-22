@@ -48,7 +48,11 @@ from pdfcompare_core.constants import (
     TOKEN_RE,
     UNCHANGED_DIFF_PERCENT,
 )
-from pdfcompare_core.diff_engine import compute_diff, harmonize_canvas
+from pdfcompare_core.diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, harmonize_canvas
+from pdfcompare_core.exclusions import (
+    exclusion_regions_to_pixel_boxes,
+    normalize_exclude_regions,
+)
 from pdfcompare_core.html_css import REPORT_CSS_TOKENS
 from pdfcompare_core.html_icons import REPORT_ICON_SVGS, report_icon
 from pdfcompare_core.html_report import generate_html_report

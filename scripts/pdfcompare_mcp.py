@@ -22,7 +22,14 @@ if str(REPO_ROOT) not in sys.path:
 import fitz
 from mcp.server.fastmcp import FastMCP
 
-from compare_pdfs import MAX_RUN_FOLDER_NAME_LEN, START_REPORT_FILE, find_summary_json_path, sanitize_run_folder_name
+from compare_pdfs import (
+    DIFF_STRICTNESS_CHOICES,
+    MAX_RUN_FOLDER_NAME_LEN,
+    START_REPORT_FILE,
+    find_summary_json_path,
+    normalize_exclude_regions,
+    sanitize_run_folder_name,
+)
 
 
 def env_int(name: str, default: int) -> int:
@@ -501,7 +508,9 @@ def prepare_pdf_comparison(old_path: str, new_path: str, out_dir: str = "runs", 
             "requires_user_choice": True,
             "prompt_for_agent": (
                 "Скажи пользователю количество листов и найденные похожие сравнения. "
-                "Затем предложи варианты из suggested_run_names и спроси, как назвать папку результата."
+                "Затем предложи варианты из suggested_run_names, спроси имя папки результата, "
+                "нужно ли исключить области из сравнения в формате процентов x,y,w,h, "
+                "и какую строгость сравнения использовать: strict, normal или loose."
             ),
             "lang": lang,
         }
@@ -517,6 +526,8 @@ def start_pdf_comparison(
     run_name: str,
     dpi: int = 250,
     stroke_tol: float = 2.0,
+    diff_strictness: str = "normal",
+    exclude_regions: list[dict[str, Any]] | None = None,
     workers: int = 0,
     lang: str = "ru",
     keep_debug_images: bool = False,
@@ -537,6 +548,10 @@ def start_pdf_comparison(
         new_pdf = resolve_path(new_path, must_exist=True)
         output_dir = resolve_path(out_dir, must_exist=False)
         safe_run_name = sanitize_run_folder_name(run_name)
+        strictness = str(diff_strictness or "normal").strip().lower()
+        if strictness not in DIFF_STRICTNESS_CHOICES:
+            return {"ok": False, "error": f"Некорректная строгость сравнения: {diff_strictness}"}
+        normalized_exclusions = normalize_exclude_regions(exclude_regions)
         run_dir = output_dir / safe_run_name
         if run_dir.exists():
             return {"ok": False, "error": f"Папка результата уже существует: {run_dir}"}
@@ -552,6 +567,8 @@ def start_pdf_comparison(
             "run_name": safe_run_name,
             "dpi": int(dpi),
             "stroke_tol": float(stroke_tol),
+            "diff_strictness": strictness,
+            "exclude_regions": normalized_exclusions,
             "workers": int(workers),
             "lang": lang,
             "keep_debug_images": bool(keep_debug_images),
@@ -570,6 +587,8 @@ def start_pdf_comparison(
             "run_name": safe_run_name,
             "run_dir": str(run_dir),
             "report_path": str(run_dir / START_REPORT_FILE),
+            "diff_strictness": strictness,
+            "exclude_regions": normalized_exclusions,
         }
         atomic_write_json(current_job_dir / "status.json", status_payload)
 
@@ -616,6 +635,8 @@ def start_pdf_comparison(
             "pid": process.pid,
             "run_dir": str(run_dir),
             "report_path": str(run_dir / START_REPORT_FILE),
+            "diff_strictness": strictness,
+            "exclude_regions": normalized_exclusions,
             "status_path": str(current_job_dir / "status.json"),
             "events_path": str(current_job_dir / "events.jsonl"),
             "worker_log": str(current_job_dir / "worker.log"),

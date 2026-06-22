@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+- Excluded page regions for ignoring title blocks, stamps, or author tables during visual diff.
+- Diff strictness presets (`strict`, `normal`, `loose`) across CLI, GUI, and MCP.
 
 ## v0.1.2 - 2026-06-15
 
