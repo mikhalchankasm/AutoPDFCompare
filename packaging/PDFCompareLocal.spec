@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(SPECPATH).resolve().parent.parent
+ROOT = Path(SPECPATH).resolve().parent
 
 # Locate tkinterdnd2 package data
 tkdnd_data = []
