@@ -68,6 +68,11 @@ class ChangeClassificationTests(unittest.TestCase):
         self.assertEqual(classify(MODERATE_DIFF_PERCENT, bboxes_count=0), "major")
         self.assertEqual(classify(UNCHANGED_DIFF_PERCENT - 0.000001, bboxes_count=1), "minor")
 
+    def test_foreground_percent_can_raise_change_level(self) -> None:
+        self.assertEqual(classify(0.02, bboxes_count=0, diff_foreground_percent=1.5), "minor")
+        self.assertEqual(classify(0.02, bboxes_count=0, diff_foreground_percent=8.0), "moderate")
+        self.assertEqual(classify(0.02, bboxes_count=0, diff_foreground_percent=20.0), "major")
+
 
 class LiveReportTests(unittest.TestCase):
     def test_live_report_lists_completed_and_pending_pages(self) -> None:

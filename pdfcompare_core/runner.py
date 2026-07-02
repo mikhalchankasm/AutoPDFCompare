@@ -22,7 +22,7 @@ import numpy as np
 from .alignment import align_ecc, align_pages_v1
 from .classification import classify
 from .constants import APP_NAME, APP_VERSION, LIVE_REPORT_EVENT_PREFIX
-from .diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, harmonize_canvas
+from .diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff_detailed, harmonize_canvas
 from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes, normalize_exclude_regions
 from .html_report import generate_html_report
 from .live_report import format_eta, write_live_detail_view, write_live_html_report
@@ -182,6 +182,14 @@ def process_pair_task(
         "height_px": None,
         "pixel_count": None,
         "diff_area_px": None,
+        "diff_area_mm2": None,
+        "diff_foreground_percent": None,
+        "foreground_px": None,
+        "added_px": None,
+        "removed_px": None,
+        "added_area_mm2": None,
+        "removed_area_mm2": None,
+        "max_region_area_mm2": None,
         "elapsed_sec": None,
     }
 
@@ -205,7 +213,7 @@ def process_pair_task(
                 exclude_regions or [], a_h.shape[1], a_h.shape[0], dpi=high_dpi
             )
             bbox_merge_gap_px = int(round(max(0.0, float(bbox_merge_gap_mm)) * float(high_dpi) / 25.4))
-            mask, overlay, bboxes, diff_percent = compute_diff(
+            mask, overlay, bboxes, metrics = compute_diff_detailed(
                 a_h,
                 b_aligned,
                 stroke_tol_px=stroke_tol_px,
@@ -215,7 +223,12 @@ def process_pair_task(
                 bbox_merge_gap_px=bbox_merge_gap_px,
                 bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
             )
-            level = classify(diff_percent, len(bboxes))
+            diff_percent = float(metrics["diff_percent"])
+            level = classify(
+                diff_percent,
+                len(bboxes),
+                diff_foreground_percent=float(metrics["diff_foreground_percent"]),
+            )
 
             imwrite_compat(pair_dir / "a.png", a_h)
             imwrite_compat(pair_dir / "b.png", b_aligned)
@@ -241,7 +254,15 @@ def process_pair_task(
             entry["change_level"] = level
             entry["bboxes_count"] = len(bboxes)
             entry["excluded_regions_count"] = len(pixel_exclusions)
-            entry["diff_area_px"] = int(cv2.countNonZero(mask))
+            entry["diff_area_px"] = int(metrics["changed_px"])
+            entry["diff_area_mm2"] = float(metrics["diff_area_mm2"])
+            entry["diff_foreground_percent"] = float(metrics["diff_foreground_percent"])
+            entry["foreground_px"] = int(metrics["foreground_px"])
+            entry["added_px"] = int(metrics["added_px"])
+            entry["removed_px"] = int(metrics["removed_px"])
+            entry["added_area_mm2"] = float(metrics["added_area_mm2"])
+            entry["removed_area_mm2"] = float(metrics["removed_area_mm2"])
+            entry["max_region_area_mm2"] = float(metrics["max_region_area_mm2"])
             return finish()
 
         if a_idx is not None:
@@ -362,6 +383,14 @@ def _write_run_summary_files(
             "height_px",
             "pixel_count",
             "diff_area_px",
+            "diff_area_mm2",
+            "diff_foreground_percent",
+            "foreground_px",
+            "added_px",
+            "removed_px",
+            "added_area_mm2",
+            "removed_area_mm2",
+            "max_region_area_mm2",
             "elapsed_sec",
         ]
         w = csv.DictWriter(f, fieldnames=csv_fields)

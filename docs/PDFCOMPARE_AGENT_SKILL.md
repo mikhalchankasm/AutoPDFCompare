@@ -18,7 +18,7 @@ Compare two local PDF files through the PDFCompare MCP server. Always prepare fi
 5. Ask about optional comparison settings if the user did not provide them:
    - whether to ignore title blocks/stamps/author tables;
    - `diff_strictness`: `strict`, `normal`, or `loose`;
-   - whether to merge nearby bbox regions. Current default is disabled with `bbox_merge_gap_mm=0`; a typical trial value is `5`; `bbox_merge_max_area_ratio=16` plus a page-area guard limits over-merging.
+   - whether to enable experimental merge of nearby bbox regions. Recommend disabled unless the user explicitly wants grouped boxes. Current default is disabled with `bbox_merge_gap_mm=0`; a typical trial value is `5`; `bbox_merge_max_area_ratio=16` plus page-area/sparse-fill guards limit over-merging.
 6. Call `start_pdf_comparison` using the selected `run_name` and selected settings.
 7. Tell the user the `job_id`, `run_dir`, and `report_path`.
 8. Use `get_pdf_comparison_status(job_id)` for progress and final counts.
@@ -32,6 +32,8 @@ Keep responses short and operational:
 - selected or suggested run folder;
 - current progress;
 - final report path.
+
+When discussing change amount, prefer the report's `FG %` and `mm²` metrics over page-level `Diff %` for engineering significance. `Diff %` is still useful as a whole-sheet pixel ratio.
 
 Do not invent comparison results. Use `summary.counts` from the completed job status.
 

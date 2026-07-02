@@ -18,7 +18,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
   - optional `diff_strictness`: `strict`, `normal`, or `loose`;
   - optional `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]`;
-  - optional `bbox_merge_gap_mm`: merge nearby/overlapping change boxes within this distance; default is `0` mm, meaning disabled;
+  - optional `bbox_merge_gap_mm`: experimental merge of nearby/overlapping change boxes within this distance; default is `0` mm, meaning disabled;
   - optional `bbox_merge_max_area_ratio`: prevents distant thin changes from becoming one huge empty rectangle; default is `16`, with an additional page-area guard.
 
 - `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...])`
@@ -54,10 +54,10 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - `strict`: more sensitive to small differences;
    - `normal`: default;
    - `loose`: ignores more small jitter/noise.
-6. If the user did not already mention bbox merging, ask whether to merge nearby bbox regions. Offer the current limits: disabled by default with `bbox_merge_gap_mm=0`; a typical trial value is `5` mm; `bbox_merge_max_area_ratio=16` plus a page-area guard limits over-merging.
+6. If the user did not already mention bbox merging, ask whether to enable experimental merging of nearby bbox regions. Recommend keeping it disabled unless the user explicitly wants grouped boxes. Offer the current limits: disabled by default with `bbox_merge_gap_mm=0`; a typical trial value is `5` mm; `bbox_merge_max_area_ratio=16` plus a page-area/sparse-fill guard limits over-merging.
 7. Call `start_pdf_comparison` with `run_name`, `diff_strictness`, `exclude_regions`, and the selected bbox merge settings.
 8. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
-9. When completed, give the user `report_path` and summarize counts from `summary.counts`.
+9. When completed, give the user `report_path` and summarize counts from `summary.counts`. The HTML report shows both page-level `Diff %` and content-relative `FG %`, plus physical changed area in `mm²`.
 10. If a specific report row needs higher precision, call `rerender_pdf_comparison_pages` with the existing `run_dir` and target `seq`; the report is rebuilt in place.
 
 Do not run `compare_pdfs.py` directly from an agent unless MCP is unavailable. The MCP server preserves background job state in `.pdfcompare_mcp/jobs/`.

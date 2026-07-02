@@ -18,6 +18,22 @@ STRICTNESS_PROFILES = {
 type BBox = tuple[int, int, int, int]
 
 
+def _empty_metrics() -> dict[str, float | int]:
+    return {
+        "changed_px": 0,
+        "added_px": 0,
+        "removed_px": 0,
+        "foreground_px": 0,
+        "diff_percent": 0.0,
+        "diff_foreground_percent": 0.0,
+        "diff_area_mm2": 0.0,
+        "added_area_mm2": 0.0,
+        "removed_area_mm2": 0.0,
+        "max_region_changed_px": 0,
+        "max_region_area_mm2": 0.0,
+    }
+
+
 def harmonize_canvas(
     a_bgr: np.ndarray,
     b_bgr: np.ndarray,
@@ -36,81 +52,10 @@ def harmonize_canvas(
     return a_bgr, b_bgr
 
 
-def _boxes_touch_or_nearly_touch(left: BBox, right: BBox, gap_px: int) -> bool:
+def _bboxes_overlap(left: BBox, right: BBox) -> bool:
     lx, ly, lw, lh = left
     rx, ry, rw, rh = right
-    return not (
-        lx + lw + gap_px < rx
-        or rx + rw + gap_px < lx
-        or ly + lh + gap_px < ry
-        or ry + rh + gap_px < ly
-    )
-
-
-def _union_box(boxes: list[BBox]) -> BBox:
-    x0 = min(x for x, _, _, _ in boxes)
-    y0 = min(y for _, y, _, _ in boxes)
-    x1 = max(x + w for x, _, w, _ in boxes)
-    y1 = max(y + h for _, y, _, h in boxes)
-    return int(x0), int(y0), int(x1 - x0), int(y1 - y0)
-
-
-def _merge_nearby_bboxes(
-    bboxes: list[BBox],
-    gap_px: int,
-    max_area_ratio: float,
-    page_area: int,
-    max_page_area_ratio: float = 0.25,
-) -> list[BBox]:
-    if len(bboxes) <= 1 or gap_px <= 0:
-        return bboxes
-
-    parent = list(range(len(bboxes)))
-
-    def find(idx: int) -> int:
-        while parent[idx] != idx:
-            parent[idx] = parent[parent[idx]]
-            idx = parent[idx]
-        return idx
-
-    def union(left_idx: int, right_idx: int) -> None:
-        left_root = find(left_idx)
-        right_root = find(right_idx)
-        if left_root != right_root:
-            parent[right_root] = left_root
-
-    for i, left in enumerate(bboxes):
-        for j in range(i + 1, len(bboxes)):
-            right = bboxes[j]
-            if not _boxes_touch_or_nearly_touch(left, right, gap_px):
-                continue
-            union_candidate = _union_box([left, right])
-            union_area = max(1, union_candidate[2] * union_candidate[3])
-            source_area = max(1, left[2] * left[3] + right[2] * right[3])
-            # Avoid turning two thin, distant strokes into one giant empty rectangle.
-            if union_area / source_area <= max(1.0, float(max_area_ratio)):
-                union(i, j)
-
-    groups: dict[int, list[BBox]] = {}
-    for idx, box in enumerate(bboxes):
-        groups.setdefault(find(idx), []).append(box)
-
-    merged: list[BBox] = []
-    for boxes in groups.values():
-        if len(boxes) == 1:
-            merged.append(boxes[0])
-            continue
-        candidate = _union_box(boxes)
-        candidate_area = max(1, candidate[2] * candidate[3])
-        source_area = max(1, sum(w * h for _, _, w, h in boxes))
-        page_area_ok = candidate_area <= max(1, int(page_area * max_page_area_ratio))
-        if page_area_ok and candidate_area / source_area <= max(1.0, float(max_area_ratio)):
-            merged.append(candidate)
-        else:
-            merged.extend(boxes)
-
-    merged.sort(key=lambda box: (box[1], box[0], box[2] * box[3]))
-    return merged
+    return lx < rx + rw and rx < lx + lw and ly < ry + rh and ry < ly + lh
 
 
 def _is_sparse_page_bbox(
@@ -128,7 +73,102 @@ def _is_sparse_page_bbox(
     return (changed_px / float(bbox_area)) < min_fill_ratio
 
 
-def compute_diff(
+def _find_base_bboxes(mask: np.ndarray, min_contour_area: float) -> list[BBox]:
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    bboxes: list[BBox] = []
+    page_area = int(mask.size)
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area >= min_contour_area:
+            x, y, w, h = cv2.boundingRect(c)
+            bbox = (int(x), int(y), int(w), int(h))
+            if not _is_sparse_page_bbox(mask, bbox, page_area=page_area):
+                bboxes.append(bbox)
+    bboxes.sort(key=lambda box: (box[1], box[0], box[2] * box[3]))
+    return bboxes
+
+
+def _merge_bboxes_from_mask(
+    mask: np.ndarray,
+    base_bboxes: list[BBox],
+    gap_px: int,
+    max_area_ratio: float,
+    max_page_area_ratio: float = 0.25,
+    min_fill_ratio: float = 0.01,
+) -> list[BBox]:
+    if len(base_bboxes) <= 1 or gap_px <= 0:
+        return base_bboxes
+
+    kernel_size = max(3, int(gap_px) * 2 + 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    grouped_mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    contours, _ = cv2.findContours(grouped_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    page_area = int(mask.size)
+    consumed: set[int] = set()
+    merged: list[BBox] = []
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        candidate = (int(x), int(y), int(w), int(h))
+        overlaps = [idx for idx, box in enumerate(base_bboxes) if _bboxes_overlap(candidate, box)]
+        if len(overlaps) <= 1:
+            continue
+        candidate_area = max(1, candidate[2] * candidate[3])
+        source_area = max(1, sum(base_bboxes[idx][2] * base_bboxes[idx][3] for idx in overlaps))
+        changed_px = cv2.countNonZero(mask[y : y + h, x : x + w])
+        fill_ratio = changed_px / float(candidate_area)
+        page_area_ok = candidate_area <= max(1, int(page_area * max_page_area_ratio))
+        ratio_ok = candidate_area / source_area <= max(1.0, float(max_area_ratio))
+        fill_ok = fill_ratio >= min_fill_ratio
+        if page_area_ok and ratio_ok and fill_ok:
+            merged.append(candidate)
+            consumed.update(overlaps)
+
+    for idx, box in enumerate(base_bboxes):
+        if idx not in consumed:
+            merged.append(box)
+    merged.sort(key=lambda box: (box[1], box[0], box[2] * box[3]))
+    return merged
+
+
+def _calculate_metrics(
+    mask: np.ndarray,
+    mask_add: np.ndarray,
+    mask_del: np.ndarray,
+    fg_a: np.ndarray,
+    fg_b: np.ndarray,
+    bboxes: list[BBox],
+    render_dpi: float,
+) -> dict[str, float | int]:
+    metrics = _empty_metrics()
+    changed_px = int(cv2.countNonZero(mask))
+    added_px = int(cv2.countNonZero(mask_add))
+    removed_px = int(cv2.countNonZero(mask_del))
+    foreground = cv2.bitwise_or(fg_a, fg_b)
+    foreground_px = int(cv2.countNonZero(foreground))
+    px_to_mm2 = (25.4 / float(render_dpi)) ** 2 if float(render_dpi) > 0 else 0.0
+    max_region_changed_px = 0
+    for x, y, w, h in bboxes:
+        max_region_changed_px = max(max_region_changed_px, int(cv2.countNonZero(mask[y : y + h, x : x + w])))
+    metrics.update(
+        {
+            "changed_px": changed_px,
+            "added_px": added_px,
+            "removed_px": removed_px,
+            "foreground_px": foreground_px,
+            "diff_percent": (changed_px / mask.size) * 100.0,
+            "diff_foreground_percent": (changed_px / foreground_px) * 100.0 if foreground_px else 0.0,
+            "diff_area_mm2": changed_px * px_to_mm2,
+            "added_area_mm2": added_px * px_to_mm2,
+            "removed_area_mm2": removed_px * px_to_mm2,
+            "max_region_changed_px": max_region_changed_px,
+            "max_region_area_mm2": max_region_changed_px * px_to_mm2,
+        }
+    )
+    return metrics
+
+
+def compute_diff_detailed(
     a_bgr: np.ndarray,
     b_bgr: np.ndarray,
     stroke_tol_px: float = 2.0,
@@ -137,7 +177,7 @@ def compute_diff(
     render_dpi: float = 72.0,
     bbox_merge_gap_px: int = 0,
     bbox_merge_max_area_ratio: float = 16.0,
-) -> tuple[np.ndarray, np.ndarray, list[BBox], float]:
+) -> tuple[np.ndarray, np.ndarray, list[BBox], dict[str, float | int]]:
     hb, wb = b_bgr.shape[:2]
     ha, wa = a_bgr.shape[:2]
     if (ha, wa) != (hb, wb):
@@ -176,29 +216,24 @@ def compute_diff(
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask_del = cv2.bitwise_and(mask_del, mask)
+    mask_add = cv2.bitwise_and(mask_add, mask)
 
     for x, y, w, h in exclusion_regions_to_pixel_boxes(exclude_regions or [], wb, hb, dpi=render_dpi):
         mask[y : y + h, x : x + w] = 0
         mask_del[y : y + h, x : x + w] = 0
         mask_add[y : y + h, x : x + w] = 0
+        fg_a[y : y + h, x : x + w] = 0
+        fg_b[y : y + h, x : x + w] = 0
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    bboxes: list[BBox] = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area >= min_contour_area:
-            x, y, w, h = cv2.boundingRect(c)
-            bbox = (int(x), int(y), int(w), int(h))
-            if not _is_sparse_page_bbox(mask, bbox, page_area=int(mask.size)):
-                bboxes.append(bbox)
-    bboxes = _merge_nearby_bboxes(
-        bboxes,
+    base_bboxes = _find_base_bboxes(mask, min_contour_area)
+    bboxes = _merge_bboxes_from_mask(
+        mask,
+        base_bboxes,
         int(round(bbox_merge_gap_px)),
         bbox_merge_max_area_ratio,
-        page_area=int(mask.size),
     )
-
-    diff_percent = (cv2.countNonZero(mask) / mask.size) * 100.0
+    metrics = _calculate_metrics(mask, mask_add, mask_del, fg_a, fg_b, bboxes, render_dpi)
 
     overlay = b_bgr.copy()
     # Two-color semi-transparent overlay: removed → pale blue, added → bright red.
@@ -215,4 +250,27 @@ def compute_diff(
         src = overlay[mask_add_idx].astype(np.float32)
         overlay[mask_add_idx] = np.clip(src * (1.0 - alpha_new) + add_color * alpha_new, 0, 255).astype(np.uint8)
 
-    return mask, overlay, bboxes, float(diff_percent)
+    return mask, overlay, bboxes, metrics
+
+
+def compute_diff(
+    a_bgr: np.ndarray,
+    b_bgr: np.ndarray,
+    stroke_tol_px: float = 2.0,
+    exclude_regions: list[ExcludeRegion] | None = None,
+    diff_strictness: str = "normal",
+    render_dpi: float = 72.0,
+    bbox_merge_gap_px: int = 0,
+    bbox_merge_max_area_ratio: float = 16.0,
+) -> tuple[np.ndarray, np.ndarray, list[BBox], float]:
+    mask, overlay, bboxes, metrics = compute_diff_detailed(
+        a_bgr,
+        b_bgr,
+        stroke_tol_px=stroke_tol_px,
+        exclude_regions=exclude_regions,
+        diff_strictness=diff_strictness,
+        render_dpi=render_dpi,
+        bbox_merge_gap_px=bbox_merge_gap_px,
+        bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
+    )
+    return mask, overlay, bboxes, float(metrics["diff_percent"])

@@ -2,9 +2,18 @@
 
 ## Unreleased
 
+## v0.1.3 - 2026-07-03
+
 ### Added
 - Excluded page regions for ignoring title blocks, stamps, or author tables during visual diff.
 - Diff strictness presets (`strict`, `normal`, `loose`) across CLI, GUI, and MCP.
+- Content-relative `FG %` and physical `mm²` change metrics in report data and HTML.
+- Safe per-page rerendering through MCP with visible custom-precision markers.
+
+### Changed
+- Bbox merging remains disabled by default and is documented as experimental.
+- Optional bbox merging now groups from the diff mask and rejects sparse, page-sized groups.
+- Change severity can use content-relative foreground percentage when available, not only whole-sheet page percentage.
 
 ## v0.1.2 - 2026-06-15
 

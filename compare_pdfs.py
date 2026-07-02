@@ -48,7 +48,7 @@ from pdfcompare_core.constants import (
     TOKEN_RE,
     UNCHANGED_DIFF_PERCENT,
 )
-from pdfcompare_core.diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, harmonize_canvas
+from pdfcompare_core.diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, compute_diff_detailed, harmonize_canvas
 from pdfcompare_core.exclusions import (
     exclusion_regions_to_pixel_boxes,
     normalize_exclude_regions,

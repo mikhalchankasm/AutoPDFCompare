@@ -7,7 +7,7 @@ import unittest
 import cv2
 import numpy as np
 
-from compare_pdfs import compute_diff, harmonize_canvas
+from compare_pdfs import compute_diff, compute_diff_detailed, harmonize_canvas
 from pdfcompare_core.exclusions import exclusion_regions_to_pixel_boxes, normalize_exclude_regions
 
 
@@ -195,6 +195,33 @@ class ComputeDiffTests(unittest.TestCase):
 
         self.assertGreater(diff_percent, 0.0)
         self.assertEqual(bboxes, [])
+
+    def test_detailed_metrics_include_foreground_percent_and_mm2(self) -> None:
+        a = _white_canvas(300, 300)
+        b = _white_canvas(300, 300)
+        cv2.line(a, (20, 20), (280, 20), (0, 0, 0), thickness=2)
+        cv2.line(b, (20, 20), (280, 20), (0, 0, 0), thickness=2)
+        _draw_filled_rect(b, x=130, y=130, w=20, h=20)
+
+        _, _, bboxes, metrics = compute_diff_detailed(a, b, render_dpi=254)
+
+        self.assertGreater(len(bboxes), 0)
+        self.assertGreater(metrics["diff_percent"], 0.0)
+        self.assertGreater(metrics["diff_foreground_percent"], metrics["diff_percent"])
+        self.assertGreater(metrics["diff_area_mm2"], 0.0)
+        self.assertEqual(metrics["changed_px"], metrics["added_px"])
+
+    def test_diff_area_mm2_is_stable_across_dpi_for_same_physical_change(self) -> None:
+        a_100 = _white_canvas(100, 100)
+        b_100 = _white_canvas(100, 100)
+        _draw_filled_rect(b_100, x=40, y=40, w=10, h=10)
+        a_200 = cv2.resize(a_100, (200, 200), interpolation=cv2.INTER_NEAREST)
+        b_200 = cv2.resize(b_100, (200, 200), interpolation=cv2.INTER_NEAREST)
+
+        _, _, _, metrics_100 = compute_diff_detailed(a_100, b_100, render_dpi=100, diff_strictness="strict")
+        _, _, _, metrics_200 = compute_diff_detailed(a_200, b_200, render_dpi=200, diff_strictness="strict")
+
+        self.assertAlmostEqual(float(metrics_100["diff_area_mm2"]), float(metrics_200["diff_area_mm2"]), delta=1.0)
 
     @staticmethod
     def _overlap_ratio(bbox: tuple[int, int, int, int], target: tuple[int, int, int, int]) -> float:

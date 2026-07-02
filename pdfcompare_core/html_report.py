@@ -189,7 +189,7 @@ h1 { margin: 0; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spac
 }
 table {
   width: 100%;
-  min-width: 1060px;
+  min-width: 1160px;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -1056,6 +1056,11 @@ def _prepare_pages_records(
                 "moved": moved,
                 "diff_metric": row.get("diff_percent"),
                 "diff_area_px": row.get("diff_area_px"),
+                "diff_area_mm2": row.get("diff_area_mm2"),
+                "diff_foreground_metric": row.get("diff_foreground_percent"),
+                "added_area_mm2": row.get("added_area_mm2"),
+                "removed_area_mm2": row.get("removed_area_mm2"),
+                "max_region_area_mm2": row.get("max_region_area_mm2"),
                 "change_level": row.get("change_level"),
                 "bboxes_count": row.get("bboxes_count"),
                 "page_settings": {
@@ -1354,6 +1359,16 @@ def generate_html_report(
             "</div>"
         )
 
+    def metric_percent_html(value: float | None) -> str:
+        if value is None:
+            return '<span class="faint">—</span>'
+        return f'<span class="diff-num">{float(value):.2f}%</span>'
+
+    def metric_area_html(value: float | None) -> str:
+        if value is None:
+            return '<span class="faint">—</span>'
+        return f'<span class="diff-num">{float(value):.1f}</span>'
+
     def preview_tile(src: str | None, label: str, alt: str) -> str:
         label_html = i18n_span_text(label, label, "pv-label")
         if src:
@@ -1385,6 +1400,8 @@ def generate_html_report(
         b_idx = "—" if p["b_index"] is None else f"B{p['b_index']}"
         seq_txt = str(p["seq"])
         diff_val = None if p.get("diff_metric") is None else float(p["diff_metric"])
+        fg_diff_val = None if p.get("diff_foreground_metric") is None else float(p["diff_foreground_metric"])
+        area_mm2_val = None if p.get("diff_area_mm2") is None else float(p["diff_area_mm2"])
         boxes_txt = "—" if p.get("bboxes_count") is None else str(int(p["bboxes_count"]))
         href = f"views/{p['view_file']}"
 
@@ -1412,6 +1429,8 @@ def generate_html_report(
             f"<td class='td-status'>{status_badge_html(status_tag)}{precision_badge}</td>"
             f"<td class='td-level'>{level_badge_html(level_tag)}</td>"
             f"<td class='td-diff diff-cell'>{diff_meter_html(diff_val)}</td>"
+            f"<td class='td-fg'>{metric_percent_html(fg_diff_val)}</td>"
+            f"<td class='td-area'>{metric_area_html(area_mm2_val)}</td>"
             f"<td class='td-boxes'>{html.escape(boxes_txt)}</td>"
             f"<td class='td-preview'>{preview_html}</td>"
             f"<td class='td-open'><a class='open-link' href='{html.escape(href, quote=True)}' "
@@ -1562,6 +1581,8 @@ def generate_html_report(
             <th>{i18n_span_text("Статус", "Status")}</th>
             <th>{i18n_span_text("Уровень", "Level")}</th>
             <th>Diff %</th>
+            <th>FG %</th>
+            <th>mm²</th>
             <th>Δ</th>
             <th>{i18n_span_text("Превью", "Preview")}</th>
             <th>{i18n_span_text("Открыть", "Open")}</th>
@@ -1737,6 +1758,8 @@ def generate_html_report(
         a_idx = "-" if p["a_index"] is None else str(p["a_index"])
         b_idx = "-" if p["b_index"] is None else str(p["b_index"])
         diff_txt = "-" if p["diff_metric"] is None else f'{p["diff_metric"]:.3f}%'
+        fg_diff_txt = "-" if p.get("diff_foreground_metric") is None else f'{float(p["diff_foreground_metric"]):.2f}% FG'
+        area_txt = "-" if p.get("diff_area_mm2") is None else f'{float(p["diff_area_mm2"]):.1f} mm²'
         old_src = f"../{p['assets']['hires_old']}" if p["assets"]["hires_old"] else None
         new_src = f"../{p['assets']['hires_new']}" if p["assets"]["hires_new"] else None
         diff_src = f"../{p['assets']['hires_diff']}" if p["assets"]["hires_diff"] else None
@@ -1846,7 +1869,7 @@ def generate_html_report(
       {status_badge_html(status_tag)}
       {level_badge_html(level_tag) if level_tag else ""}
       {detail_precision_badge}
-      <span class="muted">{i18n_span_text(f"· {diff_txt} · {boxes_text} областей", f"· {diff_txt} · {boxes_text} areas")}</span>
+      <span class="muted">{i18n_span_text(f"· лист {diff_txt} · содержимое {fg_diff_txt} · {area_txt} · {boxes_text} областей", f"· page {diff_txt} · foreground {fg_diff_txt} · {area_txt} · {boxes_text} areas")}</span>
       {detail_precision_text}
     </div>
     <div class="toolbar-right">
