@@ -9,6 +9,7 @@ import shutil
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 import fitz
 
@@ -1054,8 +1055,17 @@ def _prepare_pages_records(
                 "match_confidence": conf,
                 "moved": moved,
                 "diff_metric": row.get("diff_percent"),
+                "diff_area_px": row.get("diff_area_px"),
                 "change_level": row.get("change_level"),
                 "bboxes_count": row.get("bboxes_count"),
+                "page_settings": {
+                    "high_dpi": row.get("high_dpi"),
+                    "stroke_tol_px": row.get("stroke_tol_px"),
+                    "diff_strictness": row.get("diff_strictness"),
+                    "bbox_merge_gap_mm": row.get("bbox_merge_gap_mm"),
+                    "bbox_merge_max_area_ratio": row.get("bbox_merge_max_area_ratio"),
+                    "mixed_settings": row.get("mixed_settings"),
+                },
                 "score": row.get("score"),
                 "notes": note,
                 "nav_label": nav_label,
@@ -1151,7 +1161,8 @@ def generate_html_report(
         return f"{secs}с", f"{secs}s"
 
     emit(2, t["progress_prepare_bundle"])
-    bundle_dir = report_dir(run_dir)
+    final_bundle_dir = report_dir(run_dir)
+    bundle_dir = internal_dir(run_dir) / f".report_{uuid4().hex}"
     if bundle_dir.exists():
         shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
@@ -1199,6 +1210,10 @@ def generate_html_report(
         "removed": sum(1 for p in pages_records if p["status_raw"] == "REMOVED"),
         "moved": sum(1 for p in pages_records if p["moved"]),
     }
+    mixed_precision_pages = [
+        p for p in pages_records if (p.get("page_settings") or {}).get("mixed_settings")
+    ]
+    mixed_precision_seqs = [int(p["seq"]) for p in mixed_precision_pages]
 
     report_model = {
         "documents": {
@@ -1221,6 +1236,8 @@ def generate_html_report(
             "bbox_detected_means_changed": True,
             "align_mode": "ECC_AFFINE",
             "report_lang": lang,
+            "is_mixed_precision": bool(mixed_precision_pages),
+            "mixed_precision_seqs": mixed_precision_seqs,
         },
         "summary": {"counts": counts},
         "pages": pages_records,
@@ -1273,6 +1290,40 @@ def generate_html_report(
         key = level_label_keys.get(level_tag)
         label = i18n_span(key) if key else html.escape(level_tag)
         return f'<span class="badge {cls}">{label}</span>'
+
+    def is_mixed_precision_page(page: dict) -> bool:
+        return bool((page.get("page_settings") or {}).get("mixed_settings"))
+
+    def page_precision_text(page: dict) -> tuple[str, str]:
+        settings = page.get("page_settings") or {}
+        mixed = settings.get("mixed_settings") or {}
+        dpi = settings.get("high_dpi") or mixed.get("dpi") or high_dpi
+        tol = settings.get("stroke_tol_px") if settings.get("stroke_tol_px") is not None else mixed.get("stroke_tol_px")
+        strictness = settings.get("diff_strictness") or mixed.get("diff_strictness") or "-"
+        merge_gap = settings.get("bbox_merge_gap_mm")
+        if merge_gap is None:
+            merge_gap = mixed.get("bbox_merge_gap_mm")
+        try:
+            merge_gap_num = float(merge_gap or 0.0)
+        except (TypeError, ValueError):
+            merge_gap_num = 0.0
+        tol_txt = "-" if tol is None else f"{float(tol):g}px"
+        merge_ru = "merge выкл." if merge_gap_num <= 0 else f"merge {merge_gap_num:g} мм"
+        merge_en = "merge off" if merge_gap_num <= 0 else f"merge {merge_gap_num:g} mm"
+        return (
+            f"DPI {dpi} · {strictness} · tol {tol_txt} · {merge_ru}",
+            f"DPI {dpi} · {strictness} · tol {tol_txt} · {merge_en}",
+        )
+
+    def precision_badge_html(page: dict) -> str:
+        if not is_mixed_precision_page(page):
+            return ""
+        ru_text, en_text = page_precision_text(page)
+        title = title_text(ru_text, en_text)
+        return (
+            f'<span class="badge precision-badge" title="{html.escape(title, quote=True)}">'
+            f'{i18n_span_text("Пересчитан", "Custom precision")}</span>'
+        )
 
     def badge_class(status: str) -> str:
         return {
@@ -1349,13 +1400,16 @@ def generate_html_report(
         )
         status_search = str(i18n[lang].get(status_label_keys.get(status_tag, ""), status_tag))
         level_search = str(i18n[lang].get(level_label_keys.get(level_tag, ""), level_tag))
-        row_search = f"{seq_txt} {a_idx} {b_idx} {status_tag} {level_tag} {status_search} {level_search}".lower()
+        precision_badge = precision_badge_html(p)
+        _precision_ru, precision_en = page_precision_text(p)
+        precision_search = "custom precision пересчитан " + (precision_en if is_mixed_precision_page(p) else "")
+        row_search = f"{seq_txt} {a_idx} {b_idx} {status_tag} {level_tag} {status_search} {level_search} {precision_search}".lower()
         matrix_rows.append(
             f"<tr class='mx-row' data-status='{status_tag}' data-level='{level_tag or 'NONE'}' "
             f"data-search='{html.escape(row_search, quote=True)}' data-href='{html.escape(href, quote=True)}'>"
             f"<td class='td-seq seq-col'>{html.escape(seq_txt)}</td>"
             f"<td class='td-map map-cell'>{html.escape(a_idx)}{report_icon('arrow-right', 'ic map-icon', 14)}{html.escape(b_idx)}</td>"
-            f"<td class='td-status'>{status_badge_html(status_tag)}</td>"
+            f"<td class='td-status'>{status_badge_html(status_tag)}{precision_badge}</td>"
             f"<td class='td-level'>{level_badge_html(level_tag)}</td>"
             f"<td class='td-diff diff-cell'>{diff_meter_html(diff_val)}</td>"
             f"<td class='td-boxes'>{html.escape(boxes_txt)}</td>"
@@ -1369,9 +1423,16 @@ def generate_html_report(
     run_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     elapsed_sum = sum(float(row.get("elapsed_sec") or 0.0) for row in details)
     duration_ru, duration_en = format_duration_pair(elapsed_sum if elapsed_sum > 0 else None)
+    if mixed_precision_seqs:
+        seqs_txt = ", ".join(map(str, mixed_precision_seqs))
+        dpi_meta_ru = f"DPI: {high_dpi} базовый · смешанная точность: листы {seqs_txt}"
+        dpi_meta_en = f"DPI: {high_dpi} base · mixed precision: sheets {seqs_txt}"
+    else:
+        dpi_meta_ru = f"DPI: {high_dpi}"
+        dpi_meta_en = f"DPI: {high_dpi}"
     run_meta = i18n_span_text(
-        f"Дата: {run_timestamp} · длительность: {duration_ru} · DPI: {high_dpi} · stroke tol: {stroke_tol_px:g}px",
-        f"Date: {run_timestamp} · duration: {duration_en} · DPI: {high_dpi} · stroke tol: {stroke_tol_px:g}px",
+        f"Дата: {run_timestamp} · длительность: {duration_ru} · {dpi_meta_ru} · stroke tol: {stroke_tol_px:g}px",
+        f"Date: {run_timestamp} · duration: {duration_en} · {dpi_meta_en} · stroke tol: {stroke_tol_px:g}px",
     )
     old_doc_meta = i18n_span_text(f"Doc A · {page_count_a} листов · ред. ?", f"Doc A · {page_count_a} sheets · rev. ?")
     new_doc_meta = i18n_span_text(f"Doc B · {page_count_b} листов · ред. ?", f"Doc B · {page_count_b} sheets · rev. ?")
@@ -1697,6 +1758,13 @@ def generate_html_report(
         status_tag = str(p.get("_status_tag") or "CHANGED")
         level_tag = str(p.get("_level_tag") or "")
         boxes_text = "—" if p.get("bboxes_count") is None else str(int(p["bboxes_count"]))
+        detail_precision_badge = precision_badge_html(p)
+        precision_ru, precision_en = page_precision_text(p)
+        detail_precision_text = (
+            f'<span class="muted">{i18n_span_text(precision_ru, precision_en)}</span>'
+            if is_mixed_precision_page(p)
+            else ""
+        )
 
         def figure_html(src: str | None, label: str, cls: str = "", bbox_off_src: str | None = None) -> str:
             data_attrs = ""
@@ -1777,7 +1845,9 @@ def generate_html_report(
       <span class="sheet-title">{i18n_span_text(f"Лист {view_idx} из {len(pages_records)}", f"Sheet {view_idx} of {len(pages_records)}")}</span>
       {status_badge_html(status_tag)}
       {level_badge_html(level_tag) if level_tag else ""}
+      {detail_precision_badge}
       <span class="muted">{i18n_span_text(f"· {diff_txt} · {boxes_text} областей", f"· {diff_txt} · {boxes_text} areas")}</span>
+      {detail_precision_text}
     </div>
     <div class="toolbar-right">
       {prev_top}
@@ -2573,6 +2643,22 @@ def generate_html_report(
 </html>"""
             (views_dir / slider_file).write_text(slider_html, encoding="utf-8")
         emit(66 + 32 * (view_idx / total_views), t["progress_generate_view"].format(idx=view_idx, total=total_views))
+
+    backup_bundle_dir = internal_dir(run_dir) / f".report_backup_{uuid4().hex}"
+    try:
+        if final_bundle_dir.exists():
+            final_bundle_dir.rename(backup_bundle_dir)
+        bundle_dir.rename(final_bundle_dir)
+        if backup_bundle_dir.exists():
+            shutil.rmtree(backup_bundle_dir)
+    except Exception:
+        if final_bundle_dir.exists():
+            shutil.rmtree(final_bundle_dir)
+        if backup_bundle_dir.exists() and not final_bundle_dir.exists():
+            backup_bundle_dir.rename(final_bundle_dir)
+        if bundle_dir.exists():
+            shutil.rmtree(bundle_dir)
+        raise
 
     write_start_page(run_dir, report_lang)
     emit(100, t["progress_ready"])

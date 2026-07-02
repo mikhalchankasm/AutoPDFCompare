@@ -13,11 +13,23 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - suggests result folder names;
   - tells the agent to ask the user which folder name to use.
 
-- `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, workers = 0, lang = "ru", keep_debug_images = false)`
+- `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, bbox_merge_gap_mm = 0, workers = 0, lang = "ru", keep_debug_images = false)`
   - starts the comparison in a background Python process;
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
   - optional `diff_strictness`: `strict`, `normal`, or `loose`;
-  - optional `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]`.
+  - optional `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]`;
+  - optional `bbox_merge_gap_mm`: merge nearby/overlapping change boxes within this distance; default is `0` mm, meaning disabled;
+  - optional `bbox_merge_max_area_ratio`: prevents distant thin changes from becoming one huge empty rectangle; default is `16`, with an additional page-area guard.
+
+- `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...])`
+  - re-renders selected rows of an existing report in place and rebuilds one combined report;
+  - use after a full compare when a user says "recalculate sheet 4 with higher precision";
+  - `page_settings` can provide different settings per row, e.g. `[{"seq":4,"dpi":500,"stroke_tol":0,"diff_strictness":"strict"},{"seq":7,"dpi":300,"diff_strictness":"loose"}]`.
+
+- `pick_pdf_exclude_region(pdf_path, page_number = 1, unit = "percent", anchor = "top_left")`
+  - opens a local window where the user draws an exclusion rectangle;
+  - returns one `exclude_region` object that can be passed to `start_pdf_comparison` or `rerender_pdf_comparison_pages`;
+  - supports `unit: "percent"`, `"px"`, or `"mm"` and anchors such as `bottom_right`.
 
 - `get_pdf_comparison_status(job_id = "")`
   - with `job_id`: returns one job state, progress, live report path, and final summary when available;
@@ -37,14 +49,16 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - whether similar comparisons already exist;
    - suggested folder names.
 3. Ask the user what the result folder should be called.
-4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. Use percent coordinates `x,y,w,h` from top-left of the page.
+4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. Use percent coordinates `x,y,w,h` from top-left of the page, or call `pick_pdf_exclude_region` when the user wants to draw the area.
 5. Ask for strictness when it matters:
    - `strict`: more sensitive to small differences;
    - `normal`: default;
    - `loose`: ignores more small jitter/noise.
-6. Call `start_pdf_comparison` with `run_name`, `diff_strictness`, and `exclude_regions`.
-7. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
-8. When completed, give the user `report_path` and summarize counts from `summary.counts`.
+6. If the user did not already mention bbox merging, ask whether to merge nearby bbox regions. Offer the current limits: disabled by default with `bbox_merge_gap_mm=0`; a typical trial value is `5` mm; `bbox_merge_max_area_ratio=16` plus a page-area guard limits over-merging.
+7. Call `start_pdf_comparison` with `run_name`, `diff_strictness`, `exclude_regions`, and the selected bbox merge settings.
+8. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
+9. When completed, give the user `report_path` and summarize counts from `summary.counts`.
+10. If a specific report row needs higher precision, call `rerender_pdf_comparison_pages` with the existing `run_dir` and target `seq`; the report is rebuilt in place.
 
 Do not run `compare_pdfs.py` directly from an agent unless MCP is unavailable. The MCP server preserves background job state in `.pdfcompare_mcp/jobs/`.
 

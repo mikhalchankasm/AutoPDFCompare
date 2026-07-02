@@ -15,9 +15,13 @@ Compare two local PDF files through the PDFCompare MCP server. Always prepare fi
 2. Report page counts and similar previous comparisons.
 3. Offer the suggested names from `suggested_run_names`.
 4. Ask the user for the final folder name.
-5. Call `start_pdf_comparison` using the selected `run_name`.
-6. Tell the user the `job_id`, `run_dir`, and `report_path`.
-7. Use `get_pdf_comparison_status(job_id)` for progress and final counts.
+5. Ask about optional comparison settings if the user did not provide them:
+   - whether to ignore title blocks/stamps/author tables;
+   - `diff_strictness`: `strict`, `normal`, or `loose`;
+   - whether to merge nearby bbox regions. Current default is disabled with `bbox_merge_gap_mm=0`; a typical trial value is `5`; `bbox_merge_max_area_ratio=16` plus a page-area guard limits over-merging.
+6. Call `start_pdf_comparison` using the selected `run_name` and selected settings.
+7. Tell the user the `job_id`, `run_dir`, and `report_path`.
+8. Use `get_pdf_comparison_status(job_id)` for progress and final counts.
 
 ## Response Style
 

@@ -123,6 +123,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .lv-moderate { background: var(--warn-bg); color: var(--warn-text); }
 .lv-minor { background: var(--minor-bg); color: var(--minor-text); }
 .lv-empty { background: var(--surface-2); color: var(--text-faint); }
+.precision-badge { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 .btn {
   min-height: 32px;
   display: inline-flex;

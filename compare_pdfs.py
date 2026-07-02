@@ -97,6 +97,7 @@ from pdfcompare_core.runner import (
     compare_pdfs,
     process_pair_task,
     regenerate_report_pages,
+    regenerate_report_pages_mixed,
     resolve_worker_count,
     sanitize_run_folder_name,
 )

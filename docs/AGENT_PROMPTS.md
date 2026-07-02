@@ -61,9 +61,10 @@ Required flow:
 3. Ask me for the final report folder name.
 4. Ask whether to ignore any title block/stamp/author areas. If yes, collect percent boxes as x,y,w,h from the top-left page corner.
 5. Ask for diff_strictness: strict, normal, or loose.
-6. Call start_pdf_comparison with the selected run_name, diff_strictness, and exclude_regions.
-7. Poll get_pdf_comparison_status until the job completes.
-8. Return the final report_path and summary.counts.
+6. If I did not already say whether to merge nearby bbox regions, ask me. Explain the available limits: bbox_merge_gap_mm defaults to 0 mm (disabled); a typical trial value is 5 mm; bbox_merge_max_area_ratio defaults to 16, with an additional page-area guard to avoid huge empty merged rectangles.
+7. Call start_pdf_comparison with the selected run_name, diff_strictness, exclude_regions, and bbox merge settings.
+8. Poll get_pdf_comparison_status until the job completes.
+9. Return the final report_path and summary.counts.
 ```
 
 ## 5. Check Job Status

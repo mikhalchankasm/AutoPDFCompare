@@ -141,6 +141,61 @@ class ComputeDiffTests(unittest.TestCase):
         self.assertEqual(len(regions), 2)
         self.assertEqual(exclusion_regions_to_pixel_boxes(regions, 200, 100), [(140, 80, 60, 20), (0, 0, 20, 5)])
 
+    def test_exclusion_parser_accepts_mm_bottom_right_anchor(self) -> None:
+        regions = normalize_exclude_regions(
+            [{"x": 10, "y": 20, "w": 30, "h": 40, "unit": "mm", "anchor": "bottom_right"}]
+        )
+
+        self.assertEqual(exclusion_regions_to_pixel_boxes(regions, 1000, 800, dpi=254), [(600, 200, 300, 400)])
+
+    def test_mm_exclusion_removes_change_from_diff(self) -> None:
+        a = _white_canvas(800, 1000)
+        b = _white_canvas(800, 1000)
+        _draw_filled_rect(b, x=650, y=250, w=50, h=50)
+
+        _, _, bboxes, diff_percent = compute_diff(
+            a,
+            b,
+            render_dpi=254,
+            exclude_regions=[{"x": 10, "y": 20, "w": 30, "h": 40, "unit": "mm", "anchor": "bottom_right"}],
+        )
+
+        self.assertEqual(bboxes, [])
+        self.assertEqual(diff_percent, 0.0)
+
+    def test_nearby_bboxes_can_be_merged(self) -> None:
+        a = _white_canvas()
+        b = _white_canvas()
+        _draw_filled_rect(b, x=40, y=80, w=25, h=25)
+        _draw_filled_rect(b, x=80, y=80, w=25, h=25)
+
+        _, _, unmerged, _ = compute_diff(a, b, bbox_merge_gap_px=0)
+        _, _, merged, _ = compute_diff(a, b, bbox_merge_gap_px=20)
+
+        self.assertEqual(len(unmerged), 2)
+        self.assertEqual(len(merged), 1)
+
+    def test_bbox_merge_area_ratio_prevents_giant_empty_box(self) -> None:
+        a = _white_canvas(300, 300)
+        b = _white_canvas(300, 300)
+        _draw_filled_rect(b, x=20, y=20, w=10, h=100)
+        _draw_filled_rect(b, x=120, y=120, w=100, h=10)
+
+        _, _, bboxes, _ = compute_diff(a, b, bbox_merge_gap_px=120, bbox_merge_max_area_ratio=2.0)
+
+        self.assertEqual(len(bboxes), 2)
+
+    def test_sparse_page_sized_contour_does_not_create_giant_bbox(self) -> None:
+        a = _white_canvas(1200, 1200)
+        b = _white_canvas(1200, 1200)
+        cv2.line(b, (20, 20), (1180, 1180), (0, 0, 0), thickness=1)
+        cv2.line(b, (20, 1180), (1180, 1180), (0, 0, 0), thickness=1)
+
+        _, _, bboxes, diff_percent = compute_diff(a, b, diff_strictness="strict", stroke_tol_px=0)
+
+        self.assertGreater(diff_percent, 0.0)
+        self.assertEqual(bboxes, [])
+
     @staticmethod
     def _overlap_ratio(bbox: tuple[int, int, int, int], target: tuple[int, int, int, int]) -> float:
         bx, by, bw, bh = bbox

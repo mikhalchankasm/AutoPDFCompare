@@ -21,6 +21,7 @@ from compare_pdfs import (
     START_REPORT_FILE,
     compare_pdfs,
     find_summary_json_path,
+    regenerate_report_pages_mixed,
     sanitize_run_folder_name,
 )
 
@@ -82,19 +83,31 @@ def main() -> int:
 
     request = load_json(args.request)
     job_id = str(request["job_id"])
-    run_name = sanitize_run_folder_name(str(request["run_name"]))
-    output_dir = Path(request["out_dir"])
-    expected_run_dir = output_dir / run_name
-    work_out_dir = output_dir / f".pdfcompare_mcp_{job_id}"
+    operation = str(request.get("operation") or "compare")
+    if operation == "rerender":
+        expected_run_dir = Path(str(request["run_dir"]))
+        run_name = expected_run_dir.name
+        output_dir = expected_run_dir.parent
+        work_out_dir = output_dir / f".pdfcompare_mcp_{job_id}"
+        old_path = str(request.get("old_path") or "")
+        new_path = str(request.get("new_path") or "")
+    else:
+        run_name = sanitize_run_folder_name(str(request["run_name"]))
+        output_dir = Path(request["out_dir"])
+        expected_run_dir = output_dir / run_name
+        work_out_dir = output_dir / f".pdfcompare_mcp_{job_id}"
+        old_path = str(request["old_path"])
+        new_path = str(request["new_path"])
     status: dict[str, Any] = {
         "job_id": job_id,
         "state": "running",
         "pid": os.getpid(),
         "progress": 0.0,
-        "message": "Запуск сравнения",
-        "old_path": request["old_path"],
-        "new_path": request["new_path"],
-        "out_dir": request["out_dir"],
+        "message": "Запуск перегенерации листов" if operation == "rerender" else "Запуск сравнения",
+        "operation": operation,
+        "old_path": old_path,
+        "new_path": new_path,
+        "out_dir": str(output_dir),
         "run_name": run_name,
         "created_at": request.get("created_at"),
         "started_at": now_iso(),
@@ -140,34 +153,57 @@ def main() -> int:
         )
 
     try:
-        run_dir = compare_pdfs(
-            Path(request["old_path"]),
-            Path(request["new_path"]),
-            work_out_dir,
-            high_dpi=int(request.get("dpi", 250)),
-            stroke_tol_px=float(request.get("stroke_tol", 2.0)),
-            diff_strictness=str(request.get("diff_strictness") or "normal"),
-            exclude_regions=request.get("exclude_regions") or [],
-            report_lang=str(request.get("lang", "ru")),
-            run_name=run_name,
-            keep_debug_images=bool(request.get("keep_debug_images", False)),
-            workers=int(request.get("workers", 0)),
-            progress_cb=update_progress,
-        )
-        expected_run_dir.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.replace(run_dir, expected_run_dir)
-        except FileExistsError as exc:
-            raise RuntimeError(f"Папка результата уже существует: {expected_run_dir}") from exc
-        except OSError as exc:
-            if expected_run_dir.exists():
+        if operation == "rerender":
+            run_dir = regenerate_report_pages_mixed(
+                expected_run_dir,
+                request.get("page_settings") or [],
+                high_dpi=int(request.get("dpi", 500)),
+                stroke_tol_px=float(request["stroke_tol"]) if request.get("stroke_tol") is not None else None,
+                diff_strictness=request.get("diff_strictness"),
+                exclude_regions=request.get("exclude_regions"),
+                bbox_merge_gap_mm=(
+                    float(request["bbox_merge_gap_mm"]) if request.get("bbox_merge_gap_mm") is not None else None
+                ),
+                bbox_merge_max_area_ratio=(
+                    float(request["bbox_merge_max_area_ratio"])
+                    if request.get("bbox_merge_max_area_ratio") is not None
+                    else None
+                ),
+                report_lang=str(request.get("lang", "ru")),
+                workers=int(request.get("workers", 0)),
+                progress_cb=update_progress,
+            )
+        else:
+            run_dir = compare_pdfs(
+                Path(request["old_path"]),
+                Path(request["new_path"]),
+                work_out_dir,
+                high_dpi=int(request.get("dpi", 250)),
+                stroke_tol_px=float(request.get("stroke_tol", 2.0)),
+                diff_strictness=str(request.get("diff_strictness") or "normal"),
+                exclude_regions=request.get("exclude_regions") or [],
+                report_lang=str(request.get("lang", "ru")),
+                run_name=run_name,
+                keep_debug_images=bool(request.get("keep_debug_images", False)),
+                workers=int(request.get("workers", 0)),
+                bbox_merge_gap_mm=float(request.get("bbox_merge_gap_mm", 0.0)),
+                bbox_merge_max_area_ratio=float(request.get("bbox_merge_max_area_ratio", 16.0)),
+                progress_cb=update_progress,
+            )
+            expected_run_dir.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.replace(run_dir, expected_run_dir)
+            except FileExistsError as exc:
                 raise RuntimeError(f"Папка результата уже существует: {expected_run_dir}") from exc
-            raise
-        try:
-            work_out_dir.rmdir()
-        except OSError:
-            pass
-        run_dir = expected_run_dir
+            except OSError as exc:
+                if expected_run_dir.exists():
+                    raise RuntimeError(f"Папка результата уже существует: {expected_run_dir}") from exc
+                raise
+            try:
+                work_out_dir.rmdir()
+            except OSError:
+                pass
+            run_dir = expected_run_dir
         status.update(
             {
                 "state": "completed",

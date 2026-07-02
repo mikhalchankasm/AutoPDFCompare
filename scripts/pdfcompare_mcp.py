@@ -509,8 +509,12 @@ def prepare_pdf_comparison(old_path: str, new_path: str, out_dir: str = "runs", 
             "prompt_for_agent": (
                 "Скажи пользователю количество листов и найденные похожие сравнения. "
                 "Затем предложи варианты из suggested_run_names, спроси имя папки результата, "
-                "нужно ли исключить области из сравнения в формате процентов x,y,w,h, "
-                "и какую строгость сравнения использовать: strict, normal или loose."
+                "нужно ли исключить области из сравнения в формате процентов x,y,w,h или через pick_pdf_exclude_region, "
+                "какую строгость сравнения использовать: strict, normal или loose, "
+                "и нужно ли объединять близкие bbox. Если пользователь не сказал про объединение, "
+                "спроси явно; по умолчанию объединение выключено: bbox_merge_gap_mm=0. "
+                "Для пробного объединения обычно предлагай bbox_merge_gap_mm=5; "
+                "bbox_merge_max_area_ratio=16 и дополнительный page-area guard защищают от огромных пустых прямоугольников."
             ),
             "lang": lang,
         }
@@ -528,6 +532,8 @@ def start_pdf_comparison(
     stroke_tol: float = 2.0,
     diff_strictness: str = "normal",
     exclude_regions: list[dict[str, Any]] | None = None,
+    bbox_merge_gap_mm: float = 0.0,
+    bbox_merge_max_area_ratio: float = 16.0,
     workers: int = 0,
     lang: str = "ru",
     keep_debug_images: bool = False,
@@ -569,6 +575,8 @@ def start_pdf_comparison(
             "stroke_tol": float(stroke_tol),
             "diff_strictness": strictness,
             "exclude_regions": normalized_exclusions,
+            "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
+            "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
             "workers": int(workers),
             "lang": lang,
             "keep_debug_images": bool(keep_debug_images),
@@ -589,6 +597,8 @@ def start_pdf_comparison(
             "report_path": str(run_dir / START_REPORT_FILE),
             "diff_strictness": strictness,
             "exclude_regions": normalized_exclusions,
+            "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
+            "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
         }
         atomic_write_json(current_job_dir / "status.json", status_payload)
 
@@ -637,10 +647,336 @@ def start_pdf_comparison(
             "report_path": str(run_dir / START_REPORT_FILE),
             "diff_strictness": strictness,
             "exclude_regions": normalized_exclusions,
+            "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
+            "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
             "status_path": str(current_job_dir / "status.json"),
             "events_path": str(current_job_dir / "events.jsonl"),
             "worker_log": str(current_job_dir / "worker.log"),
             "next_step": "Вызови get_pdf_comparison_status с этим job_id, чтобы увидеть прогресс.",
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool()
+def rerender_pdf_comparison_pages(
+    run_dir: str,
+    seqs: list[int] | None = None,
+    page_settings: list[dict[str, Any]] | None = None,
+    dpi: int = 250,
+    stroke_tol: float | None = None,
+    diff_strictness: str | None = None,
+    exclude_regions: list[dict[str, Any]] | None = None,
+    bbox_merge_gap_mm: float | None = None,
+    bbox_merge_max_area_ratio: float | None = None,
+    workers: int = 0,
+    lang: str = "ru",
+) -> dict[str, Any]:
+    """Re-render selected rows of an existing report with new precision and rebuild the same report."""
+    try:
+        cleanup_stale_job_artifacts()
+        max_active_jobs = max(1, env_int("PDFCOMPARE_MCP_MAX_JOBS", 1))
+        active_jobs = active_job_statuses()
+        if len(active_jobs) >= max_active_jobs:
+            return {
+                "ok": False,
+                "error": f"Достигнут лимит активных MCP-сравнений: {max_active_jobs}",
+                "active_jobs": active_jobs,
+            }
+
+        report_dir = resolve_path(run_dir, must_exist=True)
+        summary_path = find_summary_json_path(report_dir)
+        if not summary_path.exists():
+            return {"ok": False, "error": f"Не найден summary.json в отчёте: {report_dir}"}
+        summary = load_json(summary_path)
+
+        settings = page_settings
+        if settings is None:
+            settings = []
+        if not settings:
+            if not seqs:
+                return {"ok": False, "error": "Передайте seqs или page_settings"}
+            settings = [{"seqs": [int(seq) for seq in seqs]}]
+        if not isinstance(settings, list):
+            return {"ok": False, "error": "page_settings должен быть списком объектов"}
+
+        strictness = None
+        if diff_strictness is not None:
+            strictness = str(diff_strictness or "").strip().lower()
+            if strictness not in DIFF_STRICTNESS_CHOICES:
+                return {"ok": False, "error": f"Некорректная строгость сравнения: {diff_strictness}"}
+        normalized_exclusions = normalize_exclude_regions(exclude_regions) if exclude_regions is not None else None
+
+        job_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
+        current_job_dir = job_dir(job_id)
+        request = {
+            "operation": "rerender",
+            "job_id": job_id,
+            "created_at": now_iso(),
+            "run_dir": str(report_dir),
+            "old_path": summary.get("file_a"),
+            "new_path": summary.get("file_b"),
+            "page_settings": settings,
+            "dpi": int(dpi),
+            "stroke_tol": None if stroke_tol is None else float(stroke_tol),
+            "diff_strictness": strictness,
+            "exclude_regions": normalized_exclusions,
+            "bbox_merge_gap_mm": None if bbox_merge_gap_mm is None else float(bbox_merge_gap_mm),
+            "bbox_merge_max_area_ratio": (
+                None if bbox_merge_max_area_ratio is None else float(bbox_merge_max_area_ratio)
+            ),
+            "workers": int(workers),
+            "lang": lang,
+        }
+        current_job_dir.mkdir(parents=True, exist_ok=False)
+        atomic_write_json(current_job_dir / "request.json", request)
+        status_payload = {
+            "job_id": job_id,
+            "operation": "rerender",
+            "state": "queued",
+            "progress": 0.0,
+            "message": "Ожидает запуска worker-а",
+            "created_at": request["created_at"],
+            "old_path": summary.get("file_a"),
+            "new_path": summary.get("file_b"),
+            "out_dir": str(report_dir.parent),
+            "run_name": report_dir.name,
+            "run_dir": str(report_dir),
+            "report_path": str(report_dir / START_REPORT_FILE),
+            "page_settings": settings,
+        }
+        atomic_write_json(current_job_dir / "status.json", status_payload)
+
+        command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "pdfcompare_worker.py"),
+            "--request",
+            str(current_job_dir / "request.json"),
+            "--status",
+            str(current_job_dir / "status.json"),
+            "--events",
+            str(current_job_dir / "events.jsonl"),
+        ]
+        creationflags = 0
+        if os.name == "nt":
+            creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        popen_kwargs: dict[str, Any] = {"creationflags": creationflags}
+        if os.name != "nt":
+            popen_kwargs["start_new_session"] = True
+        with (current_job_dir / "worker.log").open("ab") as log_handle:
+            process = subprocess.Popen(
+                command,
+                cwd=str(REPO_ROOT),
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                **popen_kwargs,
+            )
+        status_payload.update(
+            {
+                "state": "running",
+                "pid": process.pid,
+                "message": "Worker process launched",
+                "started_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+        )
+        atomic_write_json(current_job_dir / "status.json", status_payload)
+
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "pid": process.pid,
+            "run_dir": str(report_dir),
+            "report_path": str(report_dir / START_REPORT_FILE),
+            "page_settings": settings,
+            "status_path": str(current_job_dir / "status.json"),
+            "events_path": str(current_job_dir / "events.jsonl"),
+            "worker_log": str(current_job_dir / "worker.log"),
+            "next_step": "Вызови get_pdf_comparison_status с этим job_id, чтобы увидеть прогресс.",
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool()
+def pick_pdf_exclude_region(
+    pdf_path: str,
+    page_number: int = 1,
+    dpi: int = 120,
+    unit: str = "percent",
+    anchor: str = "top_left",
+    label: str = "exclude_region",
+) -> dict[str, Any]:
+    """Open a local window to select one rectangular exclude region on a PDF page."""
+    try:
+        import tempfile
+        import tkinter as tk
+        from tkinter import messagebox
+
+        pdf = resolve_path(pdf_path, must_exist=True)
+        page_index = int(page_number) - 1
+        if page_index < 0:
+            return {"ok": False, "error": "page_number должен быть >= 1"}
+
+        with fitz.open(pdf) as doc:
+            if page_index >= doc.page_count:
+                return {"ok": False, "error": f"В PDF только {doc.page_count} листов"}
+            page = doc[page_index]
+            pix = page.get_pixmap(matrix=fitz.Matrix(float(dpi) / 72.0, float(dpi) / 72.0), alpha=False)
+            image_width = int(pix.width)
+            image_height = int(pix.height)
+            tmp_dir = Path(tempfile.mkdtemp(prefix="pdfcompare_region_"))
+            image_path = tmp_dir / "page.png"
+            pix.save(image_path)
+
+        result: dict[str, Any] = {}
+        root = tk.Tk()
+        root.title("PDFCompare: выбрать исключаемую область")
+        root.geometry("1200x860")
+
+        info = tk.Label(
+            root,
+            text=(
+                "Выделите область мышкой и нажмите OK. "
+                "Esc - отмена. Координаты вернутся агенту как exclude_region."
+            ),
+            anchor="w",
+        )
+        info.pack(fill="x", padx=8, pady=(8, 4))
+
+        image = tk.PhotoImage(file=str(image_path))
+        max_w, max_h = 1160, 760
+        scale = min(max_w / image_width, max_h / image_height, 1.0)
+        display_w = max(1, int(image_width * scale))
+        display_h = max(1, int(image_height * scale))
+        canvas = tk.Canvas(root, width=display_w, height=display_h, bg="white", cursor="crosshair")
+        canvas.pack(padx=8, pady=4)
+        if scale < 1.0:
+            subsample = max(1, round(1.0 / scale))
+            display_image = image.subsample(subsample, subsample)
+            scale = display_image.width() / image_width
+            canvas.configure(width=display_image.width(), height=display_image.height())
+        else:
+            display_image = image
+        canvas.create_image(0, 0, image=display_image, anchor="nw")
+
+        selection = {"start": None, "rect_id": None, "coords": None}
+
+        def clamp(value: float, low: float, high: float) -> float:
+            return max(low, min(high, value))
+
+        def on_press(event: tk.Event) -> None:
+            selection["start"] = (clamp(event.x, 0, display_image.width()), clamp(event.y, 0, display_image.height()))
+            if selection["rect_id"] is not None:
+                canvas.delete(selection["rect_id"])
+            selection["rect_id"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#ff2d2d", width=2)
+
+        def on_drag(event: tk.Event) -> None:
+            if selection["start"] is None or selection["rect_id"] is None:
+                return
+            x0, y0 = selection["start"]
+            x1 = clamp(event.x, 0, display_image.width())
+            y1 = clamp(event.y, 0, display_image.height())
+            canvas.coords(selection["rect_id"], x0, y0, x1, y1)
+
+        def on_release(event: tk.Event) -> None:
+            if selection["start"] is None:
+                return
+            x0, y0 = selection["start"]
+            x1 = clamp(event.x, 0, display_image.width())
+            y1 = clamp(event.y, 0, display_image.height())
+            left, right = sorted((x0, x1))
+            top, bottom = sorted((y0, y1))
+            selection["coords"] = (left / scale, top / scale, right / scale, bottom / scale)
+
+        def convert_region() -> dict[str, Any] | None:
+            coords = selection.get("coords")
+            if coords is None:
+                messagebox.showwarning("PDFCompare", "Сначала выделите область.")
+                return None
+            left, top, right, bottom = (float(value) for value in coords)
+            if right - left < 2 or bottom - top < 2:
+                messagebox.showwarning("PDFCompare", "Область слишком маленькая.")
+                return None
+
+            normalized_unit = str(unit or "percent").strip().lower()
+            normalized_anchor = str(anchor or "top_left").strip().lower().replace("-", "_")
+            if normalized_anchor in {"top_left", "left_top", "tl"}:
+                x_raw, y_raw = left, top
+            elif normalized_anchor in {"top_right", "right_top", "tr"}:
+                x_raw, y_raw = image_width - right, top
+            elif normalized_anchor in {"bottom_left", "left_bottom", "bl"}:
+                x_raw, y_raw = left, image_height - bottom
+            elif normalized_anchor in {"bottom_right", "right_bottom", "br"}:
+                x_raw, y_raw = image_width - right, image_height - bottom
+            else:
+                raise ValueError(f"Некорректная anchor: {anchor}")
+
+            w_raw = right - left
+            h_raw = bottom - top
+            if normalized_unit in {"px", "pixel", "pixels"}:
+                x, y, w, h = x_raw, y_raw, w_raw, h_raw
+                out_unit = "px"
+            elif normalized_unit in {"mm", "millimeter", "millimeters"}:
+                px_per_mm = float(dpi) / 25.4
+                x, y, w, h = x_raw / px_per_mm, y_raw / px_per_mm, w_raw / px_per_mm, h_raw / px_per_mm
+                out_unit = "mm"
+            else:
+                x, y, w, h = (
+                    x_raw / image_width * 100.0,
+                    y_raw / image_height * 100.0,
+                    w_raw / image_width * 100.0,
+                    h_raw / image_height * 100.0,
+                )
+                out_unit = "percent"
+
+            return {
+                "x": round(x, 4),
+                "y": round(y, 4),
+                "w": round(w, 4),
+                "h": round(h, 4),
+                "unit": out_unit,
+                "anchor": normalized_anchor,
+                "label": str(label or "exclude_region"),
+            }
+
+        def accept() -> None:
+            region = convert_region()
+            if region is None:
+                return
+            result["region"] = region
+            root.destroy()
+
+        def cancel(_event: tk.Event | None = None) -> None:
+            result["cancelled"] = True
+            root.destroy()
+
+        buttons = tk.Frame(root)
+        buttons.pack(fill="x", padx=8, pady=(4, 8))
+        tk.Button(buttons, text="OK", command=accept, width=12).pack(side="right", padx=(6, 0))
+        tk.Button(buttons, text="Отмена", command=cancel, width=12).pack(side="right")
+
+        canvas.bind("<ButtonPress-1>", on_press)
+        canvas.bind("<B1-Motion>", on_drag)
+        canvas.bind("<ButtonRelease-1>", on_release)
+        root.bind("<Escape>", cancel)
+        root.mainloop()
+
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if result.get("cancelled"):
+            return {"ok": False, "cancelled": True}
+        region = result.get("region")
+        if not region:
+            return {"ok": False, "error": "Область не выбрана"}
+        return {
+            "ok": True,
+            "pdf_path": str(pdf),
+            "page_number": int(page_number),
+            "dpi": int(dpi),
+            "exclude_region": region,
+            "usage": "Передай exclude_region в start_pdf_comparison.exclude_regions или rerender_pdf_comparison_pages.exclude_regions.",
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}

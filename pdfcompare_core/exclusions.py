@@ -41,26 +41,56 @@ def normalize_exclude_regions(raw_regions: object) -> list[ExcludeRegion]:
     return regions
 
 
-def exclusion_regions_to_pixel_boxes(regions: object, width: int, height: int) -> list[PixelBox]:
+def exclusion_regions_to_pixel_boxes(regions: object, width: int, height: int, dpi: float = 72.0) -> list[PixelBox]:
     normalized = normalize_exclude_regions(regions)
     boxes: list[PixelBox] = []
     for region in normalized:
         unit = str(region.get("unit") or "percent").casefold()
+        anchor = str(region.get("anchor") or "top_left").strip().casefold().replace("-", "_")
         x = float(region["x"])
         y = float(region["y"])
         w = float(region["w"])
         h = float(region["h"])
         if unit in {"px", "pixel", "pixels"}:
-            left = round(x)
-            top = round(y)
-            right = round(x + w)
-            bottom = round(y + h)
+            x_px = x
+            y_px = y
+            w_px = w
+            h_px = h
+        elif unit in {"mm", "millimeter", "millimeters"}:
+            scale = float(dpi) / 25.4
+            x_px = x * scale
+            y_px = y * scale
+            w_px = w * scale
+            h_px = h * scale
         else:
             scale = 0.01 if unit in {"percent", "%"} else 1.0
-            left = round(width * x * scale)
-            top = round(height * y * scale)
-            right = round(width * (x + w) * scale)
-            bottom = round(height * (y + h) * scale)
+            x_px = width * x * scale
+            y_px = height * y * scale
+            w_px = width * w * scale
+            h_px = height * h * scale
+
+        if anchor in {"top_left", "left_top", "tl"}:
+            left = round(x_px)
+            top = round(y_px)
+            right = round(x_px + w_px)
+            bottom = round(y_px + h_px)
+        elif anchor in {"top_right", "right_top", "tr"}:
+            right = round(width - x_px)
+            left = round(right - w_px)
+            top = round(y_px)
+            bottom = round(y_px + h_px)
+        elif anchor in {"bottom_left", "left_bottom", "bl"}:
+            left = round(x_px)
+            right = round(x_px + w_px)
+            bottom = round(height - y_px)
+            top = round(bottom - h_px)
+        elif anchor in {"bottom_right", "right_bottom", "br"}:
+            right = round(width - x_px)
+            left = round(right - w_px)
+            bottom = round(height - y_px)
+            top = round(bottom - h_px)
+        else:
+            raise ValueError(f"Некорректная привязка исключаемой области: {anchor}")
 
         left = max(0, min(width, int(left)))
         top = max(0, min(height, int(top)))
@@ -87,12 +117,15 @@ def _normalize_region_item(item: object, idx: int) -> ExcludeRegion:
     if isinstance(item, dict):
         unit = str(item.get("unit") or "percent").strip().lower()
         label = str(item.get("label") or item.get("name") or f"region_{idx}").strip()
-        return _normalize_region_values(
+        region = _normalize_region_values(
             [item.get("x"), item.get("y"), item.get("w"), item.get("h")],
             idx,
             unit=unit,
             label=label,
         )
+        if item.get("anchor") is not None:
+            region["anchor"] = str(item.get("anchor") or "").strip().lower()
+        return region
     if isinstance(item, (list, tuple)) and len(item) == 4:
         return _normalize_region_values(list(item), idx, unit="percent")
     raise ValueError(f"Область #{idx}: нужен объект {{x,y,w,h}} или список из 4 чисел")
@@ -107,7 +140,7 @@ def _normalize_region_values(values: list[object], idx: int, *, unit: str, label
     unit = unit.casefold()
     if unit in {"ratio", "relative"}:
         limit = 1.0
-    elif unit in {"px", "pixel", "pixels"}:
+    elif unit in {"px", "pixel", "pixels", "mm", "millimeter", "millimeters"}:
         limit = None
     else:
         unit = "percent"
