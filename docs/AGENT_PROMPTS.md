@@ -5,7 +5,7 @@ Copy one of these prompts into a local agent when you want it to connect PDFComp
 ## 1. One-Prompt MCP Setup
 
 ```text
-Прочитай https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/SETUP_PROMPT.md и выполни инструкцию по подключению PDFCompare MCP. Используй stdio transport, имя сервера pdfcompare.
+Прочитай https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/docs/SETUP_PROMPT.md и выполни инструкцию по подключению PDFCompare MCP. Используй stdio transport, имя сервера pdfcompare.
 ```
 
 ## 2. Connect Local Checkout

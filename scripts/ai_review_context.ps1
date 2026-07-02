@@ -21,13 +21,11 @@ try {
         pdfcompare_ui `
         .github `
         pyproject.toml `
-        requirements.txt `
-        requirements-dev.txt `
-        requirements-mcp.txt `
+        requirements `
         tests `
         scripts `
         docs
-    $untrackedFiles = git ls-files --others --exclude-standard -- docs scripts tests requirements-mcp.txt
+    $untrackedFiles = git ls-files --others --exclude-standard -- docs scripts tests requirements
     $untrackedContent = foreach ($file in $untrackedFiles) {
         if (Test-Path -LiteralPath $file -PathType Leaf) {
             @"
@@ -40,7 +38,7 @@ $(Get-Content -LiteralPath $file -Raw)
 "@
         }
     }
-    $referenceFiles = @("requirements.txt", "requirements-dev.txt")
+    $referenceFiles = @("requirements/base.txt", "requirements/dev.txt", "requirements/mcp.txt")
     $referenceContent = foreach ($file in $referenceFiles) {
         if (Test-Path -LiteralPath $file -PathType Leaf) {
             @"

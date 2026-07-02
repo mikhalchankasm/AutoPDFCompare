@@ -16,13 +16,13 @@ Current release: `v0.1.3`
 Paste this into your local agent:
 
 ```text
-Прочитай https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/SETUP_PROMPT.md и выполни инструкцию по подключению PDFCompare MCP. Используй stdio transport, имя сервера pdfcompare.
+Прочитай https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/docs/SETUP_PROMPT.md и выполни инструкцию по подключению PDFCompare MCP. Используй stdio transport, имя сервера pdfcompare.
 ```
 
 Update later:
 
 ```text
-Обнови PDFCompare MCP по инструкции из https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/SETUP_PROMPT.md
+Обнови PDFCompare MCP по инструкции из https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/docs/SETUP_PROMPT.md
 ```
 
 Важно: MCP-кнопки запускают локальную PowerShell-команду и код из этого репозитория. Используйте их только если доверяете репозиторию и агенту.

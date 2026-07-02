@@ -2,7 +2,7 @@
 
 PDFCompare exposes a local MCP server so any local LLM agent with stdio MCP support can compare PDFs without knowing the internal Python API.
 
-For one-click setup buttons, see the repository `README.md`. For copy-paste setup prompts, see `SETUP_PROMPT.md` and `docs/AGENT_PROMPTS.md`.
+For one-click setup buttons, see the repository `README.md`. For copy-paste setup prompts, see `docs/SETUP_PROMPT.md` and `docs/AGENT_PROMPTS.md`.
 
 ## Tools
 
@@ -104,7 +104,7 @@ Use the venv Python if available:
 }
 ```
 
-If there is no venv, use the system Python after installing both `requirements.txt` and `requirements-mcp.txt`:
+If there is no venv, use the system Python after installing both `requirements/base.txt` and `requirements/mcp.txt`:
 
 ```json
 {

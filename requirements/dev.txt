@@ -1,4 +1,4 @@
--r requirements.txt
+-r base.txt
 ruff>=0.6
 mypy>=1.11
 pytest>=8.0

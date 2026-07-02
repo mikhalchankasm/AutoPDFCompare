@@ -12,12 +12,8 @@ on:
       - "pdfcompare_gui.py"
       - "pdfcompare_core/**"
       - "pdfcompare_ui/**"
-      - "PDFCompareLocal.spec"
-      - "requirements.txt"
-      - "requirements-dev.txt"
-      - "requirements-mcp.txt"
-      - "run_gui.bat"
-      - "run_gui_silent.vbs"
+      - "packaging/**"
+      - "requirements/**"
       - "scripts/**"
       - "tests/**"
       - "pyproject.toml"
@@ -41,11 +37,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if (-not (Test-Path requirements-dev.txt)) { throw "requirements-dev.txt is missing" }
+          if (-not (Test-Path requirements/dev.txt)) { throw "requirements/dev.txt is missing" }
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install -r requirements-dev.txt
-          pip install -r requirements-mcp.txt
+          pip install -r requirements/dev.txt
+          pip install -r requirements/mcp.txt
 
       - name: Lint
         run: .\scripts\lint.ps1
@@ -54,7 +50,7 @@ jobs:
         run: .\scripts\test.ps1
 
       - name: Build EXE
-        run: pyinstaller --noconfirm PDFCompareLocal.spec
+        run: pyinstaller --noconfirm packaging/PDFCompareLocal.spec
 
       - name: Build portable ZIP
         run: .\scripts\package_portable.ps1

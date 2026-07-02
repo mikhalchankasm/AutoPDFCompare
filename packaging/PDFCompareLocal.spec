@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
 # Locate tkinterdnd2 package data
 tkdnd_data = []
 try:
@@ -13,8 +15,8 @@ except ImportError:
     pass
 
 a = Analysis(
-    ['pdfcompare_gui.py'],
-    pathex=[],
+    [str(ROOT / 'pdfcompare_gui.py')],
+    pathex=[str(ROOT)],
     binaries=[],
     datas=tkdnd_data,
     hiddenimports=['tkinterdnd2'],

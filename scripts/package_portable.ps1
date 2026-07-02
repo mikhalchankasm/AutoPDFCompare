@@ -20,13 +20,8 @@ try {
     $files = @(
         "compare_pdfs.py",
         "pdfcompare_gui.py",
-        "run_gui.bat",
-        "run_gui_silent.vbs",
-        "requirements.txt",
-        "requirements-mcp.txt",
         "README.md",
-        "CHANGELOG.md",
-        "SETUP_PROMPT.md"
+        "CHANGELOG.md"
     )
     foreach ($file in $files) {
         Copy-Item -LiteralPath (Join-Path $repo $file) -Destination $stage
@@ -36,9 +31,13 @@ try {
         Copy-Item -LiteralPath (Join-Path $repo $dir) -Destination $stage -Recurse
     }
 
+    Copy-Item -LiteralPath (Join-Path $repo "requirements") -Destination $stage -Recurse
+    Copy-Item -LiteralPath (Join-Path $repo "scripts/run_gui.bat") -Destination (Join-Path $stage "run_gui.bat")
+    Copy-Item -LiteralPath (Join-Path $repo "scripts/run_gui_silent.vbs") -Destination (Join-Path $stage "run_gui_silent.vbs")
+
     $docsStage = Join-Path $stage "docs"
     New-Item -ItemType Directory -Force -Path $docsStage | Out-Null
-    foreach ($doc in @("LOCAL_AGENT_MCP.md", "PDFCOMPARE_AGENT_SKILL.md", "AGENT_PROMPTS.md")) {
+    foreach ($doc in @("LOCAL_AGENT_MCP.md", "PDFCOMPARE_AGENT_SKILL.md", "AGENT_PROMPTS.md", "SETUP_PROMPT.md")) {
         Copy-Item -LiteralPath (Join-Path $repo "docs/$doc") -Destination $docsStage
     }
 

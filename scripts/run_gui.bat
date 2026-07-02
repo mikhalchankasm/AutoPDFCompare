@@ -1,14 +1,16 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+set "ROOT=%~dp0"
+if not exist "%ROOT%pdfcompare_gui.py" set "ROOT=%~dp0..\"
+cd /d "%ROOT%"
 
 if exist ".venv\Scripts\pythonw.exe" (
-  start "" ".venv\Scripts\pythonw.exe" "%~dp0pdfcompare_gui.py"
+  start "" ".venv\Scripts\pythonw.exe" "%ROOT%pdfcompare_gui.py"
   exit /b 0
 )
 
 if exist ".venv\Scripts\python.exe" (
-  start "" ".venv\Scripts\python.exe" "%~dp0pdfcompare_gui.py"
+  start "" ".venv\Scripts\python.exe" "%ROOT%pdfcompare_gui.py"
   exit /b 0
 )
 
@@ -19,7 +21,7 @@ if exist "%_WHERE%" (
   where pyw >nul 2>&1
 )
 if %errorlevel%==0 (
-  start "" pyw -3 "%~dp0pdfcompare_gui.py"
+  start "" pyw -3 "%ROOT%pdfcompare_gui.py"
   exit /b 0
 )
 
@@ -29,7 +31,7 @@ if exist "%_WHERE%" (
   where pythonw >nul 2>&1
 )
 if %errorlevel%==0 (
-  start "" pythonw "%~dp0pdfcompare_gui.py"
+  start "" pythonw "%ROOT%pdfcompare_gui.py"
   exit /b 0
 )
 

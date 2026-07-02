@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Moved packaging, requirements, launchers, and agent setup prompt files into dedicated folders to keep the repository root smaller.
+
 ## v0.1.3 - 2026-07-03
 
 ### Added
@@ -22,7 +25,7 @@
 - Optional named result folders via `--run-name`, GUI report-name field, and shared run-name sanitization.
 - Tests for named result folder sanitization and path construction.
 - Copy-paste agent prompts for connecting PDFCompare MCP and starting comparisons.
-- One-click Cursor/VS Code MCP setup buttons and root `SETUP_PROMPT.md` for agent-driven installation.
+- One-click Cursor/VS Code MCP setup buttons and `SETUP_PROMPT.md` for agent-driven installation.
 - MCP bootstrap wrapper that refreshes dependencies, starts the stdio server, and supports opt-in repository updates.
 
 ### Changed

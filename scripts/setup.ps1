@@ -16,9 +16,9 @@ try {
 
     $python = Join-Path $venv "Scripts/python.exe"
     & $python -m pip install --upgrade pip
-    & $python -m pip install -r requirements.txt
+    & $python -m pip install -r (Join-Path $repo "requirements/base.txt")
     if ($WithMcp) {
-        & $python -m pip install -r requirements-mcp.txt
+        & $python -m pip install -r (Join-Path $repo "requirements/mcp.txt")
     }
 }
 finally {

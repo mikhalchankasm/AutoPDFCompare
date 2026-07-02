@@ -10,7 +10,7 @@ Run these commands from the repository root:
 ./scripts/lint.ps1
 ./scripts/test.ps1
 ./scripts/package_portable.ps1
-pyinstaller --noconfirm PDFCompareLocal.spec
+pyinstaller --noconfirm packaging/PDFCompareLocal.spec
 ```
 
 Expected local artifacts:
