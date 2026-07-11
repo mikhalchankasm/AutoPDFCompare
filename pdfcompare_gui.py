@@ -179,10 +179,10 @@ class PDFCompareApp(
         self.options_bbox_merge_hint_label: ttk.Label | None = None
         self.options_keep_debug_label: ttk.Label | None = None
         self.options_keep_debug_hint_label: ttk.Label | None = None
-        self.bbox_merge_chip: tk.Label | None = None
+        self.bbox_merge_chip: ttk.Checkbutton | None = None
         self.bbox_merge_gap_entry: ttk.Entry | None = None
         self.bbox_merge_max_ratio_entry: ttk.Entry | None = None
-        self.keep_debug_chip: tk.Label | None = None
+        self.keep_debug_chip: ttk.Checkbutton | None = None
         self.clear_btn: ttk.Button | None = None
         self.from_history_btn: ttk.Button | None = None
         self.exclude_pick_btn: ttk.Button | None = None
@@ -674,19 +674,15 @@ class PDFCompareApp(
             background=BG_SOFT,
         )
         self.options_bbox_merge_label.pack(side=tk.LEFT, pady=(0, 6))
-        self.bbox_merge_chip = tk.Label(
+        self.bbox_merge_chip = ttk.Checkbutton(
             bbox_head,
-            text=self._tr("toggle_onoff"),
-            padx=12,
-            pady=4,
-            bg=BG_CARD,
-            fg=TEXT_SECONDARY,
-            relief="solid",
-            bd=1,
-            cursor="hand2",
+            text=self._tr("opts_enable"),
+            variable=self.bbox_merge,
+            onvalue="on",
+            offvalue="off",
+            command=self._update_bbox_merge_fields,
         )
         self.bbox_merge_chip.pack(side=tk.LEFT, padx=(8, 0))
-        self.bbox_merge_chip.bind("<Button-1>", lambda _e: self.bbox_merge.set("on" if self.bbox_merge.get() == "off" else "off"))
         bbox_fields = tk.Frame(bbox_frame, bg=BG_SOFT)
         bbox_fields.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(bbox_fields, text=self._tr("opts_bbox_merge_gap"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
@@ -714,19 +710,14 @@ class PDFCompareApp(
             background=BG_SOFT,
         )
         self.options_keep_debug_label.pack(side=tk.LEFT, pady=(0, 6))
-        self.keep_debug_chip = tk.Label(
+        self.keep_debug_chip = ttk.Checkbutton(
             kd_head,
-            text=self._tr("toggle_onoff"),
-            padx=12,
-            pady=4,
-            bg=BG_CARD,
-            fg=TEXT_SECONDARY,
-            relief="solid",
-            bd=1,
-            cursor="hand2",
+            text=self._tr("opts_enable"),
+            variable=self.keep_debug,
+            onvalue="on",
+            offvalue="off",
         )
         self.keep_debug_chip.pack(side=tk.LEFT, padx=(8, 0))
-        self.keep_debug_chip.bind("<Button-1>", lambda _e: self.keep_debug.set("on" if self.keep_debug.get() == "off" else "off"))
         self.options_keep_debug_hint_label = ttk.Label(
             keep_debug_frame,
             text=self._tr("opts_keep_debug_hint"),
@@ -1053,22 +1044,12 @@ class PDFCompareApp(
             active = value == current
             widget.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
 
-    def _update_toggle_chip(self, chip: tk.Label | None, var: tk.StringVar) -> None:
-        if chip is None:
-            return
-        active = var.get() == "on"
-        chip.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
-
-    def _update_bbox_merge_chip(self) -> None:
-        self._update_toggle_chip(self.bbox_merge_chip, self.bbox_merge)
-        # Enable/disable the gap/ratio fields based on the toggle.
+    def _update_bbox_merge_fields(self) -> None:
+        """Enable/disable the gap/ratio fields based on the bbox-merge checkbox."""
         state = tk.NORMAL if self.bbox_merge.get() == "on" else tk.DISABLED
         for widget in (self.bbox_merge_gap_entry, self.bbox_merge_max_ratio_entry):
             if widget is not None:
                 widget.configure(state=state)
-
-    def _update_keep_debug_chip(self) -> None:
-        self._update_toggle_chip(self.keep_debug_chip, self.keep_debug)
 
     def _update_history_filter_buttons(self) -> None:
         current = self.history_filter.get()
@@ -1168,8 +1149,7 @@ class PDFCompareApp(
             self.stroke_value.set(self.stroke_tol.get())
         self._update_worker_chips()
         self._update_strictness_chips()
-        self._update_bbox_merge_chip()
-        self._update_keep_debug_chip()
+        self._update_bbox_merge_fields()
 
     def _bind_input_tracking(self) -> None:
         for var in (

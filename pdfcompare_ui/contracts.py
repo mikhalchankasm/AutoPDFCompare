@@ -93,10 +93,10 @@ class AppProtocol(Protocol):
     run_btn: tk.Button | None
     open_report_btn: ttk.Button | None
     open_run_btn: ttk.Button | None
-    bbox_merge_chip: tk.Label | None
+    bbox_merge_chip: ttk.Checkbutton | None
     bbox_merge_gap_entry: ttk.Entry | None
     bbox_merge_max_ratio_entry: ttk.Entry | None
-    keep_debug_chip: tk.Label | None
+    keep_debug_chip: ttk.Checkbutton | None
     exclude_pick_btn: ttk.Button | None
     update_badge: tk.Label | None
 
@@ -130,6 +130,7 @@ class AppProtocol(Protocol):
     def _refresh_drop_badges(self) -> None: ...
     def _refresh_file_cards(self) -> None: ...
     def _refresh_option_values(self) -> None: ...
+    def _update_bbox_merge_fields(self) -> None: ...
     def _update_history_filter_buttons(self) -> None: ...
 
     # History
