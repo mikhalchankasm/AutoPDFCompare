@@ -17,6 +17,7 @@ import numpy as np
 from .constants import (
     INTERNAL_REPORT_DIR,
     INVALID_DOWNLOAD_NAME_CHARS_RE,
+    MAX_RENDER_MEGAPIXELS,
     PAGE_INFO_THUMB_DPI,
     SHEET_EN_RE,
     SHEET_FRACTION_RE,
@@ -56,16 +57,29 @@ def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
 
     if pix.n == 3:
         # PyMuPDF returns RGB for csRGB; convert to OpenCV's BGR.
-        return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-    if pix.n == 4:
+        img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+    elif pix.n == 4:
         # Shouldn't happen with alpha=False, but keep it robust.
-        return cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
-    if pix.n == 1:
-        return cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+        img = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+    elif pix.n == 1:
+        img = cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+    else:
+        # Fallback: take first 3 channels and treat them as RGB.
+        arr = arr[:, :, :3]
+        img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
-    # Fallback: take first 3 channels and treat them as RGB.
-    arr = arr[:, :, :3]
-    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+    # Guard against memory blow-ups on very large pages (e.g. A0/A1 at high
+    # DPI). The diff pipeline allocates several full-frame float32 buffers;
+    # capping the raster area keeps peak memory bounded. Downscaling is area-
+    # interpolated to preserve stroke geometry.
+    h, w = img.shape[:2]
+    megapixels = (w * h) / 1_000_000.0
+    if megapixels > MAX_RENDER_MEGAPIXELS:
+        scale = (MAX_RENDER_MEGAPIXELS / megapixels) ** 0.5
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return img
 
 
 def render_page_gray(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
@@ -74,8 +88,18 @@ def render_page_gray(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarra
     pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, colorspace=fitz.csGRAY)
     arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
     if pix.n == 1:
-        return arr[:, :, 0]
-    return cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+        gray: np.ndarray = arr[:, :, 0]
+    else:
+        gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+
+    h, w = gray.shape[:2]
+    megapixels = (w * h) / 1_000_000.0
+    if megapixels > MAX_RENDER_MEGAPIXELS:
+        scale = (MAX_RENDER_MEGAPIXELS / megapixels) ** 0.5
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_AREA).astype(np.uint8)
+    return gray
 
 
 def page_tokens(text: str) -> set[str]:

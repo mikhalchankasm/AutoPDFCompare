@@ -22,8 +22,12 @@ MODERATE_DIFF_PERCENT = 5.0
 PAGE_INFO_THUMB_DPI = 96
 THUMB_MAX_WIDTH = 320
 THUMB_JPEG_QUALITY = 82
+# Soft cap on the rendered page raster (megapixels). Pages above this are
+# downscaled before the diff to keep peak memory bounded on large A0/A1
+# sheets at high DPI. ~40 MP is roughly an A1 page at 250 DPI.
+MAX_RENDER_MEGAPIXELS = 40.0
 LIVE_REPORT_EVENT_PREFIX = "__PDFCOMPARE_LIVE_REPORT__|"
 INTERNAL_REPORT_DIR = "_pdfcompare"
 START_REPORT_FILE = "start.html"
 APP_NAME = "PDFCompare Local"
-APP_VERSION = "0.1.4"
+APP_VERSION = "0.1.5"

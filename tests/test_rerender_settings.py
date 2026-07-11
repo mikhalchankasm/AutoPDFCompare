@@ -1,30 +1,44 @@
 """Tests for the rerender override parsing and page_settings assembly.
 
 These cover the pure logic that decides how the Re-render tab turns its
-StringVar fields into kwargs for regenerate_report_pages /
-regenerate_report_pages_mixed, without spinning up a full Tk window.
+input fields into kwargs for regenerate_report_pages /
+regenerate_report_pages_mixed. We use lightweight string stubs instead of
+real Tk StringVars so the tests are deterministic and do not depend on a
+working Tk/Tcl installation (CI and headless environments included).
 """
 
 from __future__ import annotations
 
 import unittest
-import tkinter as tk
 
 from pdfcompare_ui.rerender_tab import RerenderTabMixin
 
 
+class FakeStringVar:
+    """Minimal StringVar stand-in: get()/set() on a plain string."""
+
+    def __init__(self, value: str = "") -> None:
+        self._value = value
+
+    def get(self) -> str:
+        return self._value
+
+    def set(self, value: str) -> None:
+        self._value = value
+
+
 class StubApp:
-    """Minimal stand-in exposing just the StringVars the rerender logic reads.
+    """Minimal stand-in exposing just the attributes the rerender logic reads.
 
     Mirrors the field names PDFCompareApp declares; the rerender helpers only
-    touch these attributes, so we can exercise their logic directly.
+    touch these attributes, so we can exercise their logic directly without Tk.
     """
 
-    def __init__(self, root: tk.Tk) -> None:
-        self.rerender_stroke_tol = tk.StringVar(master=root, value="")
-        self.rerender_strictness = tk.StringVar(master=root, value="")
-        self.rerender_exclude = tk.StringVar(master=root, value="")
-        self.rerender_bbox_gap = tk.StringVar(master=root, value="")
+    def __init__(self) -> None:
+        self.rerender_stroke_tol = FakeStringVar("")
+        self.rerender_strictness = FakeStringVar("")
+        self.rerender_exclude = FakeStringVar("")
+        self.rerender_bbox_gap = FakeStringVar("")
         self.rerender_page_settings: dict[int, dict] = {}
 
     # Bind the real mixin methods so we test the production logic.
@@ -35,13 +49,7 @@ class StubApp:
 
 class CollectOverridesTests(unittest.TestCase):
     def setUp(self) -> None:
-        # Tk root is required for StringVar but we never create windows.
-        self.root = tk.Tk()
-        self.root.withdraw()
-        self.app = StubApp(self.root)
-
-    def tearDown(self) -> None:
-        self.root.destroy()
+        self.app = StubApp()
 
     def test_empty_fields_yield_no_overrides(self) -> None:
         overrides = self.app._collect_uniform_overrides_safe()
@@ -76,12 +84,7 @@ class CollectOverridesTests(unittest.TestCase):
 
 class BuildPageSettingsTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.root = tk.Tk()
-        self.root.withdraw()
-        self.app = StubApp(self.root)
-
-    def tearDown(self) -> None:
-        self.root.destroy()
+        self.app = StubApp()
 
     def test_no_overrides_single_group_all_seqs(self) -> None:
         self.app.rerender_page_settings = {}

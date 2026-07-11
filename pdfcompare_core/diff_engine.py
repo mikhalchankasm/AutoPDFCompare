@@ -199,19 +199,35 @@ def compute_diff_detailed(
 
     _, bw_a = cv2.threshold(gray_a, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     _, bw_b = cv2.threshold(gray_b, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    del gray_a, gray_b
 
     fg_a = cv2.bitwise_not(bw_a)  # dark strokes/text as foreground
     fg_b = cv2.bitwise_not(bw_b)
+    del bw_a, bw_b
 
     # remove tiny raster speckles
     noise_kernel = np.ones((2, 2), np.uint8)
     fg_a = cv2.morphologyEx(fg_a, cv2.MORPH_OPEN, noise_kernel, iterations=1)
     fg_b = cv2.morphologyEx(fg_b, cv2.MORPH_OPEN, noise_kernel, iterations=1)
 
-    dt_to_b = cv2.distanceTransform(cv2.bitwise_not(fg_b), cv2.DIST_L2, 3)
-    dt_to_a = cv2.distanceTransform(cv2.bitwise_not(fg_a), cv2.DIST_L2, 3)
+    # Distance transforms are float32 (4 bytes/px) — the single largest
+    # allocations in this function. Compute each, apply the stroke-tolerance
+    # threshold immediately, and release the float buffer before the next one
+    # so peak memory holds one transform at a time instead of two.
+    # (Large A0/A1 sheets at high DPI previously crashed here allocating
+    # >1 GB; cv2.error -4 Insufficient memory.)
+    not_fg_b = cv2.bitwise_not(fg_b)
+    dt_to_b = cv2.distanceTransform(not_fg_b, cv2.DIST_L2, 3)
+    del not_fg_b
     mask_del = cv2.bitwise_and(fg_a, (dt_to_b > effective_stroke_tol_px).astype(np.uint8) * 255)
+    del dt_to_b
+
+    not_fg_a = cv2.bitwise_not(fg_a)
+    dt_to_a = cv2.distanceTransform(not_fg_a, cv2.DIST_L2, 3)
+    del not_fg_a
     mask_add = cv2.bitwise_and(fg_b, (dt_to_a > effective_stroke_tol_px).astype(np.uint8) * 255)
+    del dt_to_a
+
     mask = cv2.bitwise_or(mask_del, mask_add)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))

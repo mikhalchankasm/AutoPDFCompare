@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.5 - 2026-07-11
+
+### Fixed
+- Resolved out-of-memory crash (`cv2.error: -4 Insufficient memory`, ~1 GB allocation) on large A0/A1 sheets at high DPI. The two full-frame `distanceTransform` buffers are now computed and released one at a time instead of held simultaneously, halving peak memory in the diff engine.
+- Added a render-area guard (`MAX_RENDER_MEGAPIXELS = 40`): pages rendered above this size are area-downscaled before the diff to keep memory bounded, while preserving stroke geometry.
+
 ## v0.1.4 - 2026-07-11
 
 ### Added
