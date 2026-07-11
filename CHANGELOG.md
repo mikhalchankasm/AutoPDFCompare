@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.6 - 2026-07-11
+
+### Added
+- Slider report mode: middle-mouse (wheel button) drag to draw a rectangle and zoom the view to fit that rectangle. Left-drag still moves the split divider; right-drag still pans; the browser's middle-click autoscroll is suppressed during the drag. Return to the full view with the existing Fit button or Ctrl+wheel-out.
+
 ## v0.1.5 - 2026-07-11
 
 ### Fixed

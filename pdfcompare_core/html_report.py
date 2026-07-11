@@ -2205,6 +2205,7 @@ def generate_html_report(
     .swatch-pink {{ color:rgb(236,72,153); background:rgba(244,114,182,.45); }}
     .swatch-green {{ color:rgb(22,163,74); background:rgba(134,239,172,.45); }}
     .bbox-opacity {{ width:110px; }}
+    .zoom-rect {{ position:absolute; border:2px dashed rgba(20,120,255,.95); background:rgba(20,120,255,.12); box-sizing:border-box; pointer-events:none; z-index:5; display:none; }}
 {REPORT_CSS_TOKENS}
 {CSS_CMP}
   </style>
@@ -2283,6 +2284,7 @@ def generate_html_report(
           <img id="imgNew" class="layer new-layer" alt="{html.escape(t["slider_new"])}" draggable="false"/>
           <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(t["slider_old"])}" draggable="false"/></div>
           <div id="bboxLayer" class="bbox-layer"></div>
+          <div id="zoomRect" class="zoom-rect"></div>
           <div id="divider" class="divider"></div>
         </div>
         <div id="loadMsg" class="load-msg">{html.escape(t["no_data"])}</div>
@@ -2294,7 +2296,7 @@ def generate_html_report(
           {i18n_span_text("NEW", "NEW", "split-label new")}
         </div>
         <input id="zoom" class="sr-only" type="range" min="1" max="500" value="100"/>
-        <div class="hint">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · Ctrl+Wheel - zoom", "Left click - split · Right drag - pan · Ctrl+Wheel - zoom")}</div>
+        <div class="hint">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · СКМ-выделение - zoom · Ctrl+Wheel - zoom", "Left click - split · Right drag - pan · Middle drag - zoom to rect · Ctrl+Wheel - zoom")}</div>
       </div>
   </div>
   <script>
@@ -2594,6 +2596,40 @@ def generate_html_report(
     let panStartY = 0;
     let panStartScrollLeft = 0;
     let panStartScrollTop = 0;
+    let selecting = false;
+    const zoomRect = document.getElementById('zoomRect');
+    let selStartClientX = 0;
+    let selStartClientY = 0;
+    function clientToSurfaceXY(clientX, clientY) {{
+      const rect = surface.getBoundingClientRect();
+      return {{ x: clientX - rect.left, y: clientY - rect.top, rect: rect }};
+    }}
+    function zoomToClientRect(startX, startY, endX, endY) {{
+      // Convert a screen-space drag rectangle (relative to the surface) into
+      // an image-pixel rectangle, then fit it into the viewport.
+      const left = Math.min(startX, endX);
+      const top = Math.min(startY, endY);
+      const w = Math.abs(endX - startX);
+      const h = Math.abs(endY - startY);
+      if (w < 4 || h < 4) return;  // ignore accidental clicks
+      const rect = surface.getBoundingClientRect();
+      if (!rect.width || !rect.height || !naturalW || !naturalH) return;
+      // Image-pixel rectangle captured by this drag.
+      const imgX = (left / rect.width) * naturalW;
+      const imgY = (top / rect.height) * naturalH;
+      const imgW = (w / rect.width) * naturalW;
+      const imgH = (h / rect.height) * naturalH;
+      // Fit the selected image rect into the stage viewport (with padding).
+      const pad = 16;
+      const sx = Math.max(0.01, (stage.clientWidth - pad) / imgW);
+      const sy = Math.max(0.01, (stage.clientHeight - pad) / imgH);
+      const s = Math.max(0.01, Math.min(5.0, Math.min(sx, sy)));
+      setZoomPercent(s * 100);
+      // After resize, center the selected rect in the viewport.
+      const z = s;
+      stage.scrollLeft = Math.max(0, imgX * z - (stage.clientWidth - imgW * z) / 2);
+      stage.scrollTop = Math.max(0, imgY * z - (stage.clientHeight - imgH * z) / 2);
+    }}
     surface.addEventListener('mousedown', (e) => {{
       if (e.button === 2) {{
         panning = true;
@@ -2605,12 +2641,40 @@ def generate_html_report(
         e.preventDefault();
         return;
       }}
+      if (e.button === 1) {{
+        // Middle button: start a zoom-by-rectangle selection.
+        // preventDefault is essential to suppress the browser autoscroll cursor.
+        e.preventDefault();
+        selecting = true;
+        selStartClientX = e.clientX;
+        selStartClientY = e.clientY;
+        zoomRect.style.display = 'block';
+        const p = clientToSurfaceXY(e.clientX, e.clientY);
+        zoomRect.style.left = p.x + 'px';
+        zoomRect.style.top = p.y + 'px';
+        zoomRect.style.width = '0px';
+        zoomRect.style.height = '0px';
+        return;
+      }}
       if (e.button !== 0) return;
       draggingSplit = true;
       stage.classList.add('dragging');
       setSplitFromClientX(e.clientX);
     }});
     window.addEventListener('mousemove', (e) => {{
+      if (selecting) {{
+        const start = clientToSurfaceXY(selStartClientX, selStartClientY);
+        const cur = clientToSurfaceXY(e.clientX, e.clientY);
+        const left = Math.min(start.x, cur.x);
+        const top = Math.min(start.y, cur.y);
+        const w = Math.abs(cur.x - start.x);
+        const h = Math.abs(cur.y - start.y);
+        zoomRect.style.left = left + 'px';
+        zoomRect.style.top = top + 'px';
+        zoomRect.style.width = w + 'px';
+        zoomRect.style.height = h + 'px';
+        return;
+      }}
       if (panning) {{
         stage.scrollLeft = panStartScrollLeft - (e.clientX - panStartX);
         stage.scrollTop = panStartScrollTop - (e.clientY - panStartY);
@@ -2619,7 +2683,15 @@ def generate_html_report(
       if (!draggingSplit) return;
       setSplitFromClientX(e.clientX);
     }});
-    window.addEventListener('mouseup', () => {{
+    window.addEventListener('mouseup', (e) => {{
+      if (selecting) {{
+        selecting = false;
+        zoomRect.style.display = 'none';
+        const start = clientToSurfaceXY(selStartClientX, selStartClientY);
+        const cur = clientToSurfaceXY(e.clientX, e.clientY);
+        zoomToClientRect(start.x, start.y, cur.x, cur.y);
+        return;
+      }}
       if (draggingSplit) {{
         draggingSplit = false;
         stage.classList.remove('dragging');
