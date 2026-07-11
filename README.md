@@ -2,7 +2,7 @@
 
 > Local Windows tool for comparing two PDF revisions and opening a visual HTML diff report.
 
-Current release: `v0.1.6`
+Current release: `v0.1.7`
 
 [![Download Windows EXE][download-exe-badge]][download-exe]
 [![Download portable ZIP][download-zip-badge]][download-zip]
@@ -32,6 +32,8 @@ Update later:
 Download `PDFCompareLocal.exe`, select OLD and NEW PDFs, then open the generated HTML report. Python is not required for the EXE.
 
 The GUI exposes the same controls as the MCP server: DPI, stroke tolerance, strictness presets (`strict`/`normal`/`loose`), exclusion regions (manual `x,y,w,h` or a visual picker), experimental bbox merge, and a debug-images toggle. The **Re-render** tab recalculates selected pages with different precision, with both uniform and per-page (mixed) override modes, and shows the `Diff %`, `FG %`, and `mm²` metrics per row.
+
+The app checks for new releases automatically (once per day on launch) and shows a dialog with a download link when an update is available. Click the gear icon in the top-right to check manually.
 
 ## Screenshots
 

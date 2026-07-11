@@ -5,8 +5,14 @@ from __future__ import annotations
 import json
 import os
 import tkinter as tk
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from pdfcompare_core.constants import (
+    UPDATE_CHECK_ENABLED_DEFAULT,
+    UPDATE_CHECK_INTERVAL_HOURS,
+)
 
 from .i18n import I18N
 from .contracts import AppProtocol
@@ -18,6 +24,39 @@ class StatePersistenceMixin:
     last_run_dir: Path | None
     last_inputs: dict[str, Any]
     history_records: list[dict[str, Any]]
+    update_check_state: dict[str, Any]
+
+    def _default_update_check_state(self) -> dict[str, Any]:
+        return {
+            "enabled": UPDATE_CHECK_ENABLED_DEFAULT,
+            "last_checked_utc": "",
+            "skip_version": "",
+        }
+
+    def _should_check_for_updates(self) -> bool:
+        """True if auto-update check is enabled and due (>= interval since last check)."""
+        st = self.update_check_state
+        if not st.get("enabled", UPDATE_CHECK_ENABLED_DEFAULT):
+            return False
+        last = str(st.get("last_checked_utc") or "")
+        if not last:
+            return True
+        try:
+            last_dt = datetime.fromisoformat(last)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=UTC)
+        except ValueError:
+            return True
+        elapsed = datetime.now(UTC) - last_dt
+        return elapsed >= timedelta(hours=UPDATE_CHECK_INTERVAL_HOURS)
+
+    def _mark_update_checked(self: AppProtocol) -> None:
+        self.update_check_state["last_checked_utc"] = datetime.now(UTC).isoformat()
+        self._save_state()
+
+    def _skip_update_version(self: AppProtocol, version: str) -> None:
+        self.update_check_state["skip_version"] = str(version)
+        self._save_state()
 
     def _capture_inputs(self: AppProtocol) -> dict[str, Any]:
         return {
@@ -86,6 +125,11 @@ class StatePersistenceMixin:
                     self.last_inputs = last_inputs
                 if isinstance(history, list):
                     self.history_records = [h for h in history if isinstance(h, dict)][-300:]
+                uc = data.get("update_check")
+                if isinstance(uc, dict):
+                    base = self._default_update_check_state()
+                    base.update(uc)
+                    self.update_check_state = base
         except Exception:
             self.last_inputs = {}
             self.history_records = []
@@ -98,6 +142,7 @@ class StatePersistenceMixin:
                 "language": self.lang.get(),
                 "last_inputs": self._capture_inputs(),
                 "history": self.history_records[-300:],
+                "update_check": self.update_check_state,
             }
             tmp_path = self.state_path.with_suffix(".tmp")
             tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

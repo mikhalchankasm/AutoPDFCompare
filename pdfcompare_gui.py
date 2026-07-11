@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 import tkinter as tk
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -29,6 +30,7 @@ from pdfcompare_ui.history_tab import HistoryTabMixin
 from pdfcompare_ui.i18n import I18N
 from pdfcompare_ui.rerender_tab import RerenderTabMixin
 from pdfcompare_ui.state_persistence import StatePersistenceMixin
+from pdfcompare_ui.update_check import fetch_latest_release, is_newer
 from pdfcompare_ui.utils import (
     count_pdf_pages_pair,
     extract_revision_label,
@@ -146,6 +148,7 @@ class PDFCompareApp(
         self.drop_canvas: tk.Frame | None = None
         self.lang_ru_btn: tk.Label | None = None
         self.lang_en_btn: tk.Label | None = None
+        self.update_badge: tk.Label | None = None
         self.subtitle_label: ttk.Label | None = None
         self.tabs: ttk.Notebook | None = None
         self.compare_tab: ttk.Frame | None = None
@@ -215,6 +218,7 @@ class PDFCompareApp(
         self.state_path = self.state_dir / "state.json"
         self.last_inputs: dict[str, Any] = {}
         self.history_records: list[dict[str, Any]] = []
+        self.update_check_state: dict[str, Any] = self._default_update_check_state()
         self._load_state()
 
         self._build_ui()
@@ -226,6 +230,7 @@ class PDFCompareApp(
         self.root.bind("<Return>", self._on_enter)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(150, self._poll_worker_events)
+        self.root.after(800, self._start_update_check)
 
     def _tr(self, key: str, **kwargs: object) -> str:
         lang = self.lang.get() if self.lang.get() in I18N else "ru"
@@ -481,7 +486,8 @@ class PDFCompareApp(
         self.lang_en_btn.pack(side=tk.LEFT)
         self.lang_en_btn.bind("<Button-1>", lambda _e: self._set_language("en"))
 
-        tk.Label(
+        # Gear icon doubles as the manual "check for updates" affordance.
+        gear = tk.Label(
             right_top,
             text="⚙",
             width=3,
@@ -491,7 +497,25 @@ class PDFCompareApp(
             relief="solid",
             bd=1,
             font=("Segoe UI", 12),
-        ).pack(side=tk.RIGHT, padx=(8, 6))
+            cursor="hand2",
+        )
+        gear.pack(side=tk.RIGHT, padx=(8, 6))
+        gear.bind("<Button-1>", lambda _e: self._check_for_updates_now())
+
+        # Update badge — hidden until a newer release is found.
+        self.update_badge = tk.Label(
+            right_top,
+            text="★",
+            padx=10,
+            pady=4,
+            bg=BG_INFO,
+            fg=ACCENT_DARK,
+            relief="solid",
+            bd=1,
+            cursor="hand2",
+            font=("Segoe UI", 9, "bold"),
+        )
+        # Not packed here; shown by _show_update_badge when an update exists.
 
         self.tabs = ttk.Notebook(outer)
         self.tabs.pack(fill=tk.BOTH, expand=True)
@@ -1538,11 +1562,81 @@ class PDFCompareApp(
                         }
                     )
                     messagebox.showerror(self._tr("dlg_error_title"), f"{err}\n\n{tb}")
+                elif kind == "update_available":
+                    version = str(event[1])
+                    url = str(event[2])
+                    name = str(event[3])
+                    self._show_update_badge(version, url)
+                    self._show_update_dialog(version, url, name)
+                elif kind == "update_uptodate":
+                    manual = len(event) > 1 and bool(event[1])
+                    if manual:
+                        messagebox.showinfo(
+                            self._tr("dlg_update_title"),
+                            self._tr("dlg_update_uptodate", version=APP_VERSION),
+                        )
+                elif kind == "update_failed":
+                    manual = len(event) > 1 and bool(event[1])
+                    if manual:
+                        messagebox.showwarning(
+                            self._tr("dlg_update_title"),
+                            self._tr("dlg_update_check_failed"),
+                        )
             has_more = not self.worker_events.empty()
         except queue.Empty:
             pass
         finally:
             self.root.after(20 if has_more else 150, self._poll_worker_events)
+
+    def _start_update_check(self) -> None:
+        if not self._should_check_for_updates():
+            return
+        threading.Thread(target=self._update_check_worker, args=(False,), daemon=True).start()
+
+    def _check_for_updates_now(self) -> None:
+        """Manual check triggered by the gear icon — bypasses the 24h gate."""
+        threading.Thread(target=self._update_check_worker, args=(True,), daemon=True).start()
+
+    def _update_check_worker(self, manual: bool) -> None:
+        release = fetch_latest_release()
+        self._mark_update_checked()
+        if release is None:
+            if manual:
+                self.worker_events.put(("update_failed", True))
+            return
+        tag = release.get("tag") or ""
+        if is_newer(APP_VERSION, tag):
+            self.worker_events.put((
+                "update_available",
+                tag,
+                release.get("html_url") or "",
+                release.get("name") or tag,
+            ))
+        elif manual:
+            self.worker_events.put(("update_uptodate", True))
+
+    def _show_update_badge(self, version: str, url: str) -> None:
+        if self.update_badge is None:
+            return
+        self.update_badge.configure(text=f"★ {version}")
+        self.update_badge.bind("<Button-1>", lambda _e, u=url: webbrowser.open(u))  # type: ignore[misc]
+        self.update_badge.pack(side=tk.RIGHT, padx=(8, 6))
+
+    def _show_update_dialog(self, version: str, url: str, name: str) -> None:
+        skip_version = str(self.update_check_state.get("skip_version") or "")
+        if skip_version == version:
+            return  # user previously dismissed this exact version
+        body = self._tr("dlg_update_body", version=version)
+        # askyesno returns True for Yes; we also offer Skip via a separate dialog flow.
+        if messagebox.askyesno(self._tr("dlg_update_title"), body):
+            webbrowser.open(url)
+        else:
+            # Offer to skip this version so the dialog stops reappearing.
+            if messagebox.askyesno(
+                self._tr("dlg_update_title"),
+                self._tr("dlg_update_skip_prompt", version=version),
+            ):
+                self._skip_update_version(version)
 
     def _set_running(self, running: bool) -> None:
         self.running = running

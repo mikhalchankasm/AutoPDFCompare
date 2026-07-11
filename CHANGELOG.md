@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.7 - 2026-07-11
+
+### Added
+- Auto-update check: on launch the app queries the GitHub releases API (at most once per 24h) and, if a newer version exists, shows a dialog with a link to the download page plus a clickable update badge in the header. The gear icon in the top-right triggers a manual check. Users can skip a specific version to suppress repeated prompts. Network failures are silent on automatic checks.
+
 ## v0.1.6 - 2026-07-11
 
 ### Added
