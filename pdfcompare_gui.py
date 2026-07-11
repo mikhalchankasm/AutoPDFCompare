@@ -81,8 +81,8 @@ class PDFCompareApp(
         self.root = root
         self.lang = tk.StringVar(value="ru")
         self.root.title(f"{APP_NAME} {APP_VERSION}")
-        self.root.geometry("1100x740")
-        self.root.minsize(920, 640)
+        self.root.geometry("1100x820")
+        self.root.minsize(920, 700)
         self.root.configure(bg=BG_WINDOW)
 
         self.old_pdf = tk.StringVar()
@@ -158,6 +158,7 @@ class PDFCompareApp(
         self.new_label: ttk.Label | None = None
         self.out_label: ttk.Label | None = None
         self.run_name_label: ttk.Label | None = None
+        self.run_name_hint_label: ttk.Label | None = None
         # old_entry / new_entry are file-card containers (tk.Frame returned
         # by _build_file_card); only out_entry is a real Entry widget.
         self.old_entry: tk.Frame | None = None
@@ -291,6 +292,8 @@ class PDFCompareApp(
             self.out_label.configure(text=self._tr("path_out"))
         if self.run_name_label is not None:
             self.run_name_label.configure(text=self._tr("path_run_name"))
+        if self.run_name_hint_label is not None:
+            self.run_name_hint_label.configure(text=self._tr("path_run_name_hint"))
         if self.old_pick_btn is not None:
             self.old_pick_btn.configure(text=self._tr("btn_select"))
         if self.swap_btn is not None:
@@ -559,6 +562,8 @@ class PDFCompareApp(
         self.run_name_label.pack(side=tk.LEFT, padx=(0, 8))
         self.run_name_entry = ttk.Entry(run_name_wrap, textvariable=self.run_name, style="Path.TEntry")
         self.run_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+        self.run_name_hint_label = ttk.Label(out_wrap, text=self._tr("path_run_name_hint"), style="Hint.TLabel")
+        self.run_name_hint_label.pack(anchor="w", pady=(2, 0))
 
         self.options_body = tk.Frame(self.compare_tab, bg=BG_SOFT, padx=14, pady=14)
         self.options_body.pack(fill=tk.X, pady=(0, 14))
