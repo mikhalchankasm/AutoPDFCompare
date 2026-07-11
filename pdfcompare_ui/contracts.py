@@ -92,6 +92,7 @@ class AppProtocol(Protocol):
     run_btn: tk.Button | None
     open_report_btn: ttk.Button | None
     open_run_btn: ttk.Button | None
+    report_ready_label: tk.Label | None
     bbox_merge_chip: ttk.Checkbutton | None
     bbox_merge_gap_entry: ttk.Entry | None
     bbox_merge_max_ratio_entry: ttk.Entry | None
@@ -123,6 +124,8 @@ class AppProtocol(Protocol):
     # i18n & status
     def _tr(self, key: str, **kwargs: object) -> str: ...
     def _set_status(self, key: str, **kwargs: object) -> None: ...
+    def _show_report_ready(self) -> None: ...
+    def _hide_report_ready(self) -> None: ...
 
     # Compare-tab refresh
     def _refresh_drop_badges(self) -> None: ...

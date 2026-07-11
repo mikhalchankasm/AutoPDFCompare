@@ -192,6 +192,7 @@ class PDFCompareApp(
         self.hist_refresh_btn: ttk.Button | None = None
         self.history_hint_label: ttk.Label | None = None
         self.status_text_label: tk.Label | None = None
+        self.report_ready_label: tk.Label | None = None
         self.history_search_entry: ttk.Entry | None = None
         self.rerender_tree: ttk.Treeview | None = None
         self.rerender_title_label: ttk.Label | None = None
@@ -238,6 +239,14 @@ class PDFCompareApp(
     def _set_status(self, key: str, **kwargs: object) -> None:
         self.status.set(self._tr(key, **kwargs))
 
+    def _show_report_ready(self) -> None:
+        if self.report_ready_label is not None:
+            self.report_ready_label.pack(side=tk.RIGHT, padx=(8, 0))
+
+    def _hide_report_ready(self) -> None:
+        if self.report_ready_label is not None:
+            self.report_ready_label.pack_forget()
+
     def _set_language(self, lang_code: str) -> None:
         """Set language and update button styles"""
         self.lang.set(lang_code)
@@ -265,6 +274,8 @@ class PDFCompareApp(
         self.root.title(f"{self._tr('window_title')} {APP_VERSION}")
         if self.subtitle_label is not None:
             self.subtitle_label.configure(text=self._tr("app_subtitle"))
+        if self.report_ready_label is not None:
+            self.report_ready_label.configure(text=self._tr("status_report_ready"))
         if self.tabs is not None:
             self.tabs.tab(0, text=self._tr("tab_compare"))
             self.tabs.tab(1, text=self._history_tab_text())
@@ -719,6 +730,16 @@ class PDFCompareApp(
         ok_dot.create_oval(1, 1, 7, 7, fill=ACCENT, outline=ACCENT)
         self.status_text_label = tk.Label(status_panel, textvariable=self.status, bg=BG_INFO, fg=ACCENT_DARK, anchor="w", font=("Segoe UI", 9))
         self.status_text_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # Bold banner shown when a live report becomes available; hidden on completion.
+        self.report_ready_label = tk.Label(
+            status_panel,
+            text=self._tr("status_report_ready"),
+            bg=BG_INFO,
+            fg=ACCENT,
+            font=("Segoe UI", 9, "bold"),
+            cursor="hand2",
+        )
+        self.report_ready_label.bind("<Button-1>", lambda _e: self._open_report())
         self.progress = ttk.Progressbar(status_panel, mode="determinate", maximum=100, style="Horizontal.TProgressbar")
         self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
         self.progress.pack_forget()
@@ -1355,6 +1376,7 @@ class PDFCompareApp(
                     msg = str(event[2])
                     if msg.startswith(LIVE_REPORT_EVENT_PREFIX):
                         self.last_run_dir = Path(msg[len(LIVE_REPORT_EVENT_PREFIX):])
+                        self._show_report_ready()
                         msg = self._tr("status_live_report")
                     self.progress.configure(value=pct)
                     self.progress_pct.set(f"{pct:.0f}%")
@@ -1392,6 +1414,7 @@ class PDFCompareApp(
                     old, new, out_dir, dpi, stroke_tol, workers = event[2], event[3], event[4], event[5], event[6], event[7]
                     diff_strictness = event[8]
                     self.last_run_dir = run_dir
+                    self._hide_report_ready()
                     self._set_running(False)
                     self.progress.configure(value=100.0)
                     self.progress_pct.set("100%")
@@ -1428,6 +1451,7 @@ class PDFCompareApp(
                 elif kind == "cancelled":
                     old, new, out_dir, dpi, stroke_tol, workers = event[1], event[2], event[3], event[4], event[5], event[6]
                     diff_strictness = event[7] if len(event) > 7 else self.diff_strictness.get()
+                    self._hide_report_ready()
                     self._set_running(False)
                     self.progress.configure(value=0.0)
                     self.progress_pct.set("0%")
@@ -1448,6 +1472,7 @@ class PDFCompareApp(
                         }
                     )
                 elif kind == "error":
+                    self._hide_report_ready()
                     self._set_running(False)
                     err = event[1]
                     tb = event[2]
@@ -1552,6 +1577,7 @@ class PDFCompareApp(
         # run_btn is always created in _build_ui before _set_running can fire.
         assert self.run_btn is not None
         if running:
+            self._hide_report_ready()
             self.progress.configure(value=0.0)
             self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
             self.progress_pct.set("0%")
