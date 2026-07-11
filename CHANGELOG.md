@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.9 - 2026-07-12
+
+### Fixed
+- Resolved "coordinates must fit in 0..100%" error when using the visual exclusion picker. The picker rounded x and w independently, so their sum could exceed 100% by a tiny amount and be rejected by validation. The picker now clamps the width/height so x+w and y+h never exceed 100; the validator also tolerates sub-0.01% overflow from rounding instead of rejecting it.
+
 ## v0.1.8 - 2026-07-11
 
 ### Changed

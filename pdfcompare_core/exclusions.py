@@ -148,9 +148,24 @@ def _normalize_region_values(values: list[object], idx: int, *, unit: str, label
 
     if x < 0 or y < 0 or w <= 0 or h <= 0:
         raise ValueError(f"Область #{idx}: x/y должны быть >= 0, w/h > 0")
-    if limit is not None and (x > limit or y > limit or x + w > limit or y + h > limit):
-        label_text = "0..1" if unit == "ratio" else "0..100%"
-        raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+    # Allow a tiny tolerance for rounding (e.g. a picker that rounds x and w
+    # independently may produce x+w = 100.0002). Clamp small overflows instead
+    # of rejecting; large overflows are still a user error.
+    eps = 0.01
+    if limit is not None:
+        if x > limit + eps or y > limit + eps:
+            label_text = "0..1" if unit == "ratio" else "0..100%"
+            raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+        if x + w > limit:
+            if x + w > limit + eps:
+                label_text = "0..1" if unit == "ratio" else "0..100%"
+                raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+            w = limit - x
+        if y + h > limit:
+            if y + h > limit + eps:
+                label_text = "0..1" if unit == "ratio" else "0..100%"
+                raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+            h = limit - y
 
     region: ExcludeRegion = {"x": x, "y": y, "w": w, "h": h, "unit": unit}
     if label:

@@ -122,12 +122,21 @@ def pick_exclude_regions(
         top, bottom = sorted((y0, y1))
         if right - left < 3 or bottom - top < 3:
             return  # ignore tiny clicks
+        # Convert to percent and clamp so x+w / y+h never exceed 100
+        # (rounding each value independently can push the sum past 100,
+        # which normalize_exclude_regions would reject).
+        x_pct = round(left / scale / image_width * 100.0, 4)
+        y_pct = round(top / scale / image_height * 100.0, 4)
+        w_pct = round((right - left) / scale / image_width * 100.0, 4)
+        h_pct = round((bottom - top) / scale / image_height * 100.0, 4)
+        w_pct = min(w_pct, 100.0 - x_pct)
+        h_pct = min(h_pct, 100.0 - y_pct)
         regions.append(
             {
-                "x": round(left / scale / image_width * 100.0, 4),
-                "y": round(top / scale / image_height * 100.0, 4),
-                "w": round((right - left) / scale / image_width * 100.0, 4),
-                "h": round((bottom - top) / scale / image_height * 100.0, 4),
+                "x": x_pct,
+                "y": y_pct,
+                "w": w_pct,
+                "h": h_pct,
                 "unit": "percent",
                 "anchor": "top_left",
             }

@@ -274,5 +274,23 @@ class HarmonizeCanvasTests(unittest.TestCase):
         self.assertEqual(out_a.shape[:2], out_b.shape[:2])
 
 
+class ExcludeRegionNormalizationTests(unittest.TestCase):
+    def test_tiny_overflow_is_clamped_not_rejected(self) -> None:
+        """Rounding x and w independently can produce x+w = 100.0001; clamp it."""
+        regions = normalize_exclude_regions([{"x": 60.0001, "y": 80.0001, "w": 40.0001, "h": 20.0001}])
+        self.assertEqual(len(regions), 1)
+        r = regions[0]
+        self.assertLessEqual(float(r["x"]) + float(r["w"]), 100.0 + 1e-9)
+        self.assertLessEqual(float(r["y"]) + float(r["h"]), 100.0 + 1e-9)
+
+    def test_large_overflow_still_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            normalize_exclude_regions([{"x": 50, "y": 50, "w": 80, "h": 80}])
+
+    def test_text_input_tiny_overflow_clamped(self) -> None:
+        regions = normalize_exclude_regions("60.0001,80.0001,40.0001,20.0001")
+        self.assertEqual(len(regions), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
