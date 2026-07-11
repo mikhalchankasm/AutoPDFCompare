@@ -190,6 +190,7 @@ def process_pair_task(
         "added_area_mm2": None,
         "removed_area_mm2": None,
         "max_region_area_mm2": None,
+        "foreground_sparse": None,
         "elapsed_sec": None,
     }
 
@@ -263,6 +264,7 @@ def process_pair_task(
             entry["added_area_mm2"] = float(metrics["added_area_mm2"])
             entry["removed_area_mm2"] = float(metrics["removed_area_mm2"])
             entry["max_region_area_mm2"] = float(metrics["max_region_area_mm2"])
+            entry["foreground_sparse"] = bool(metrics["foreground_sparse"])
             return finish()
 
         if a_idx is not None:
@@ -391,6 +393,7 @@ def _write_run_summary_files(
             "added_area_mm2",
             "removed_area_mm2",
             "max_region_area_mm2",
+            "foreground_sparse",
             "elapsed_sec",
         ]
         w = csv.DictWriter(f, fieldnames=csv_fields)

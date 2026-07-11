@@ -5,6 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from .constants import FOREGROUND_SPARSE_THRESHOLD
 from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes
 
 
@@ -18,7 +19,7 @@ STRICTNESS_PROFILES = {
 type BBox = tuple[int, int, int, int]
 
 
-def _empty_metrics() -> dict[str, float | int]:
+def _empty_metrics() -> dict[str, float | int | bool]:
     return {
         "changed_px": 0,
         "added_px": 0,
@@ -31,6 +32,7 @@ def _empty_metrics() -> dict[str, float | int]:
         "removed_area_mm2": 0.0,
         "max_region_changed_px": 0,
         "max_region_area_mm2": 0.0,
+        "foreground_sparse": False,
     }
 
 
@@ -139,7 +141,7 @@ def _calculate_metrics(
     fg_b: np.ndarray,
     bboxes: list[BBox],
     render_dpi: float,
-) -> dict[str, float | int]:
+) -> dict[str, float | int | bool]:
     metrics = _empty_metrics()
     changed_px = int(cv2.countNonZero(mask))
     added_px = int(cv2.countNonZero(mask_add))
@@ -150,6 +152,12 @@ def _calculate_metrics(
     max_region_changed_px = 0
     for x, y, w, h in bboxes:
         max_region_changed_px = max(max_region_changed_px, int(cv2.countNonZero(mask[y : y + h, x : x + w])))
+    # A nearly-empty sheet makes FG% explode (two lines on a blank A0 = 50%+).
+    # Flag it so classification and reports fall back to absolute metrics.
+    foreground_sparse = foreground_px < (mask.size * FOREGROUND_SPARSE_THRESHOLD)
+    # Clamp FG% to 100.0: mask morphing / anti-aliasing can make changed_px
+    # marginally exceed foreground_px on near-empty pages.
+    diff_fg = min(100.0, (changed_px / foreground_px) * 100.0) if foreground_px else 0.0
     metrics.update(
         {
             "changed_px": changed_px,
@@ -157,12 +165,13 @@ def _calculate_metrics(
             "removed_px": removed_px,
             "foreground_px": foreground_px,
             "diff_percent": (changed_px / mask.size) * 100.0,
-            "diff_foreground_percent": (changed_px / foreground_px) * 100.0 if foreground_px else 0.0,
+            "diff_foreground_percent": diff_fg,
             "diff_area_mm2": changed_px * px_to_mm2,
             "added_area_mm2": added_px * px_to_mm2,
             "removed_area_mm2": removed_px * px_to_mm2,
             "max_region_changed_px": max_region_changed_px,
             "max_region_area_mm2": max_region_changed_px * px_to_mm2,
+            "foreground_sparse": foreground_sparse,
         }
     )
     return metrics

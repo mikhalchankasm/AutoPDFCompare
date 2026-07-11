@@ -19,6 +19,10 @@ SHEET_FRACTION_RE = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")
 UNCHANGED_DIFF_PERCENT = 0.15
 MINOR_DIFF_PERCENT = 1.0
 MODERATE_DIFF_PERCENT = 5.0
+# A page is "foreground-sparse" when drawn content covers less than this
+# fraction of the sheet. On such pages FG% is unreliable (a few lines can
+# read as 50%+), so classification falls back to absolute metrics (mm², zones).
+FOREGROUND_SPARSE_THRESHOLD = 0.0005
 PAGE_INFO_THUMB_DPI = 96
 THUMB_MAX_WIDTH = 320
 THUMB_JPEG_QUALITY = 82
