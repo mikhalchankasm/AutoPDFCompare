@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.8 - 2026-07-11
+
+### Changed
+- Increased default window height (740→820 px) and minimum height (640→700 px) so the bottom action buttons are visible on launch.
+- Replaced the bbox-merge and debug-images on/off chips with checkboxes so the pressed/unpressed state is visually obvious.
+- Reformulated the stroke-tolerance hint to explain what higher and lower values do.
+- Removed the Workers (Auto/1/4) control entirely; the app always uses automatic parallel processing.
+- Open Report and Open Folder buttons next to Run are now always enabled and show an informational message when no report/folder exists, instead of being greyed out.
+- Removed the duplicate Open report / Open folder hyperlinks from the status bar.
+
+### Added
+- A bold, clickable "✓ Report ready to open" banner appears in the status bar as soon as a live report is available mid-comparison, and disappears when the run completes, is cancelled, or errors out.
+- Hint label under the report-name field explaining it is optional (empty = auto timestamped folder).
+
 ## v0.1.7 - 2026-07-11
 
 ### Added
