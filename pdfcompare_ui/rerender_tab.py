@@ -240,10 +240,6 @@ class RerenderTabMixin:
             self._set_status("status_rerender_loaded", count=len(rows))
         else:
             self._set_status("status_rerender_empty")
-        if self.open_report_btn is not None:
-            self.open_report_btn.configure(state=tk.NORMAL)
-        if self.open_run_btn is not None:
-            self.open_run_btn.configure(state=tk.NORMAL)
 
     def _parse_optional_float(self: AppProtocol, var: tk.StringVar) -> float | None:
         text = var.get().strip()

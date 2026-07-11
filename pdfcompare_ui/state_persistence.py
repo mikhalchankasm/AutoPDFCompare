@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import tkinter as tk
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -88,25 +87,15 @@ class StatePersistenceMixin:
         self.bbox_merge_gap.set(str(data.get("bbox_merge_gap") or "5"))
         self.bbox_merge_max_ratio.set(str(data.get("bbox_merge_max_ratio") or "16"))
         self.keep_debug.set(str(data.get("keep_debug") or "off"))
-        if self.open_report_btn is not None:
-            self.open_report_btn.configure(state=tk.DISABLED)
-        if self.open_run_btn is not None:
-            self.open_run_btn.configure(state=tk.DISABLED)
         self.last_run_dir = None
         run_dir = str(data.get("last_run_dir") or "").strip()
         if run_dir:
             self.last_run_dir = Path(run_dir)
             self.rerender_run_dir.set(str(self.last_run_dir))
-            if self.last_run_dir.exists():
-                if self.open_report_btn is not None:
-                    self.open_report_btn.configure(state=tk.NORMAL)
-                if self.open_run_btn is not None:
-                    self.open_run_btn.configure(state=tk.NORMAL)
         self.last_inputs = self._capture_inputs()
         self._refresh_drop_badges()
         self._refresh_file_cards()
         self._refresh_option_values()
-        self._refresh_status_links()
 
     def _load_state(self: AppProtocol) -> None:
         try:

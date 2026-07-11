@@ -192,8 +192,6 @@ class PDFCompareApp(
         self.hist_refresh_btn: ttk.Button | None = None
         self.history_hint_label: ttk.Label | None = None
         self.status_text_label: tk.Label | None = None
-        self.status_report_link: tk.Label | None = None
-        self.status_folder_link: tk.Label | None = None
         self.history_search_entry: ttk.Entry | None = None
         self.rerender_tree: ttk.Treeview | None = None
         self.rerender_title_label: ttk.Label | None = None
@@ -239,17 +237,6 @@ class PDFCompareApp(
 
     def _set_status(self, key: str, **kwargs: object) -> None:
         self.status.set(self._tr(key, **kwargs))
-        self._refresh_status_links()
-
-    def _refresh_status_links(self) -> None:
-        visible = bool(self.last_run_dir and self.last_run_dir.exists())
-        for widget in (self.status_report_link, self.status_folder_link):
-            if widget is None:
-                continue
-            if visible:
-                widget.pack(side=tk.RIGHT, padx=(8, 0))
-            else:
-                widget.pack_forget()
 
     def _set_language(self, lang_code: str) -> None:
         """Set language and update button styles"""
@@ -381,10 +368,6 @@ class PDFCompareApp(
                 ("time", "rerender_col_time"),
             ):
                 self.rerender_tree.heading(col, text=self._tr(key))
-        if self.status_report_link is not None:
-            self.status_report_link.configure(text=self._tr("status_open_report_link"))
-        if self.status_folder_link is not None:
-            self.status_folder_link.configure(text=self._tr("status_open_folder_link"))
         if self.history_search_entry is not None:
             if not self.history_search.get() or self.history_search.get() in (
                 I18N["ru"].get("history_search_placeholder"),
@@ -404,7 +387,6 @@ class PDFCompareApp(
         self._refresh_option_values()
         self._update_history_filter_buttons()
         self._update_strictness_chips()
-        self._refresh_status_links()
         self._refresh_history_table()
 
     def _build_ui(self) -> None:
@@ -720,7 +702,6 @@ class PDFCompareApp(
             text=self._tr("btn_open_report"),
             style="Small.TButton",
             command=self._open_report,
-            state=tk.DISABLED,
         )
         self.open_report_btn.pack(side=tk.LEFT, padx=(8, 0))
         self.open_run_btn = ttk.Button(
@@ -728,7 +709,6 @@ class PDFCompareApp(
             text=self._tr("btn_open_folder"),
             style="Small.TButton",
             command=self._open_run_folder,
-            state=tk.DISABLED,
         )
         self.open_run_btn.pack(side=tk.LEFT, padx=(8, 0))
 
@@ -744,12 +724,6 @@ class PDFCompareApp(
         self.progress.pack_forget()
         ttk.Label(status_panel, textvariable=self.elapsed, width=7, anchor="e", background=BG_INFO).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Label(status_panel, textvariable=self.progress_pct, width=6, anchor="e", background=BG_INFO).pack(side=tk.LEFT, padx=(4, 0))
-        self.status_report_link = tk.Label(status_panel, text=self._tr("status_open_report_link"), bg=BG_INFO, fg=ACCENT, cursor="hand2", font=("Segoe UI", 9))
-        self.status_report_link.pack(side=tk.RIGHT, padx=(8, 0))
-        self.status_report_link.bind("<Button-1>", lambda _e: self._open_report())
-        self.status_folder_link = tk.Label(status_panel, text=self._tr("status_open_folder_link"), bg=BG_INFO, fg=ACCENT, cursor="hand2", font=("Segoe UI", 9))
-        self.status_folder_link.pack(side=tk.RIGHT, padx=(8, 0))
-        self.status_folder_link.bind("<Button-1>", lambda _e: self._open_run_folder())
 
         hist_tools = tk.Frame(self.history_tab, bg=BG_WINDOW, padx=14, pady=14)
         hist_tools.pack(fill=tk.X)
@@ -1207,10 +1181,6 @@ class PDFCompareApp(
         self.progress.configure(value=0.0)
         self.progress_pct.set("0%")
         self.last_run_dir = None
-        if self.open_report_btn is not None:
-            self.open_report_btn.configure(state=tk.DISABLED)
-        if self.open_run_btn is not None:
-            self.open_run_btn.configure(state=tk.DISABLED)
         self._set_status("status_cleared")
         self._save_state()
 
@@ -1308,7 +1278,6 @@ class PDFCompareApp(
         self._save_state()
         self.cancel_requested.clear()
         self.last_run_dir = None
-        self._refresh_status_links()
         self._set_running(True)
         self._set_status("status_running")
         # Workers control removed from UI — always use auto/parallel processing.
@@ -1386,11 +1355,6 @@ class PDFCompareApp(
                     msg = str(event[2])
                     if msg.startswith(LIVE_REPORT_EVENT_PREFIX):
                         self.last_run_dir = Path(msg[len(LIVE_REPORT_EVENT_PREFIX):])
-                        if self.open_report_btn is not None:
-                            self.open_report_btn.configure(state=tk.NORMAL)
-                        if self.open_run_btn is not None:
-                            self.open_run_btn.configure(state=tk.NORMAL)
-                        self._refresh_status_links()
                         msg = self._tr("status_live_report")
                     self.progress.configure(value=pct)
                     self.progress_pct.set(f"{pct:.0f}%")
@@ -1409,13 +1373,8 @@ class PDFCompareApp(
                     self.progress_pct.set("100%")
                     if self.rerender_start_btn is not None:
                         self.rerender_start_btn.configure(state=tk.NORMAL)
-                    if self.open_report_btn is not None:
-                        self.open_report_btn.configure(state=tk.NORMAL)
-                    if self.open_run_btn is not None:
-                        self.open_run_btn.configure(state=tk.NORMAL)
                     self._load_rerender_report(run_dir, quiet=True)
                     self._set_status("status_rerender_done")
-                    self._refresh_status_links()
                     messagebox.showinfo(
                         self._tr("dlg_done_title"),
                         self._tr("dlg_rerender_done_body", report=run_dir / START_REPORT_FILE),
@@ -1436,10 +1395,6 @@ class PDFCompareApp(
                     self._set_running(False)
                     self.progress.configure(value=100.0)
                     self.progress_pct.set("100%")
-                    if self.open_report_btn is not None:
-                        self.open_report_btn.configure(state=tk.NORMAL)
-                    if self.open_run_btn is not None:
-                        self.open_run_btn.configure(state=tk.NORMAL)
                     self._set_status("status_done", path=run_dir / START_REPORT_FILE)
 
                     # Calculate duration
@@ -1606,10 +1561,6 @@ class PDFCompareApp(
             self._set_primary_state(self.run_btn, tk.NORMAL)
             self.run_btn.configure(command=self._request_cancel)
             self.run_btn.configure(text=self._tr("btn_cancel"))
-            if self.open_report_btn is not None:
-                self.open_report_btn.configure(state=tk.DISABLED)
-            if self.open_run_btn is not None:
-                self.open_run_btn.configure(state=tk.DISABLED)
         else:
             self._stop_timer()
             self.cancel_requested.clear()
@@ -1618,10 +1569,10 @@ class PDFCompareApp(
             self.run_btn.configure(command=self.start_compare)
             self.run_btn.configure(text=self._tr("btn_compare_short"))
             self._update_run_availability()
-        self._refresh_status_links()
 
     def _open_report(self) -> None:
-        if not self.last_run_dir:
+        if not self.last_run_dir or not (self.last_run_dir / START_REPORT_FILE).exists():
+            messagebox.showinfo(self._tr("dlg_info_title"), self._tr("status_no_report"))
             return
         report_html = self.last_run_dir / START_REPORT_FILE
         if not report_html.exists():
@@ -1635,6 +1586,7 @@ class PDFCompareApp(
 
     def _open_run_folder(self) -> None:
         if not self.last_run_dir:
+            messagebox.showinfo(self._tr("dlg_info_title"), self._tr("status_no_folder"))
             return
         if self.last_run_dir.exists():
             os.startfile(str(self.last_run_dir))
