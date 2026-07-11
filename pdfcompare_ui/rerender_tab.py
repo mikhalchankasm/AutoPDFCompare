@@ -209,13 +209,13 @@ class RerenderTabMixin:
             pixels = row.get("pixel_count")
             pixels_text = f"{int(pixels):,}".replace(",", " ") if pixels else ""
             elapsed = row.get("elapsed_sec")
-            elapsed_text = f"{float(elapsed):.1f}s" if elapsed not in (None, "") else ""  # type: ignore[arg-type]
+            elapsed_text = f"{float(elapsed):.1f}s" if isinstance(elapsed, (int, float)) else ""
             diff = row.get("diff_percent")
-            diff_text = "" if diff in (None, "") else f"{float(diff):.3f}"  # type: ignore[arg-type]
+            diff_text = f"{float(diff):.3f}" if isinstance(diff, (int, float)) else ""
             fg = row.get("diff_foreground_percent")
-            fg_text = "" if fg in (None, "") else f"{float(fg):.2f}"  # type: ignore[arg-type]
+            fg_text = f"{float(fg):.2f}" if isinstance(fg, (int, float)) else ""
             area = row.get("diff_area_mm2")
-            area_text = "" if area in (None, "") else f"{float(area):.1f}"  # type: ignore[arg-type]
+            area_text = f"{float(area):.1f}" if isinstance(area, (int, float)) else ""
             level = str(row.get("change_level") or row.get("status") or "")
             iid = str(seq)
             self.rerender_tree.insert(
