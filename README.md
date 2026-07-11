@@ -2,7 +2,7 @@
 
 > Local Windows tool for comparing two PDF revisions and opening a visual HTML diff report.
 
-Current release: `v0.1.3`
+Current release: `v0.1.4`
 
 [![Download Windows EXE][download-exe-badge]][download-exe]
 [![Download portable ZIP][download-zip-badge]][download-zip]
@@ -31,6 +31,8 @@ Update later:
 
 Download `PDFCompareLocal.exe`, select OLD and NEW PDFs, then open the generated HTML report. Python is not required for the EXE.
 
+The GUI exposes the same controls as the MCP server: DPI, stroke tolerance, strictness presets (`strict`/`normal`/`loose`), exclusion regions (manual `x,y,w,h` or a visual picker), experimental bbox merge, and a debug-images toggle. The **Re-render** tab recalculates selected pages with different precision, with both uniform and per-page (mixed) override modes, and shows the `Diff %`, `FG %`, and `mm²` metrics per row.
+
 ## Screenshots
 
 Скриншоты показывают интерфейс; содержимое чертежей и спецификаций может быть размыто.
@@ -45,7 +47,11 @@ Download `PDFCompareLocal.exe`, select OLD and NEW PDFs, then open the generated
 
 ```powershell
 python compare_pdfs.py --old old.pdf --new new.pdf --out-dir runs --run-name My_Comparison
+python compare_pdfs.py --old old.pdf --new new.pdf --exclude-region "70,80,30,20" --diff-strictness loose
+python compare_pdfs.py --old old.pdf --new new.pdf --bbox-merge-gap-mm 5 --keep-debug-images
 ```
+
+Notable flags: `--dpi`, `--stroke-tol`, `--diff-strictness` (`strict`/`normal`/`loose`), `--exclude-region` (repeatable `X,Y,W,H` percent), `--bbox-merge-gap-mm` / `--bbox-merge-max-area-ratio` (experimental), `--keep-debug-images`, `--workers`, `--lang`, `--run-name`.
 
 ## Docs
 

@@ -24,6 +24,7 @@ from compare_pdfs import (
     sanitize_run_folder_name,
 )
 from pdfcompare_ui.dnd import DragDropMixin
+from pdfcompare_ui.exclusion_picker import pick_exclude_regions
 from pdfcompare_ui.history_tab import HistoryTabMixin
 from pdfcompare_ui.i18n import I18N
 from pdfcompare_ui.rerender_tab import RerenderTabMixin
@@ -91,6 +92,11 @@ class PDFCompareApp(
         self.diff_strictness = tk.StringVar(value="normal")
         self.exclude_regions = tk.StringVar(value="")
         self.workers = tk.StringVar(value="0")
+        # Bbox merge is experimental and off by default (matches MCP/CLI).
+        self.bbox_merge = tk.StringVar(value="off")
+        self.bbox_merge_gap = tk.StringVar(value="5")
+        self.bbox_merge_max_ratio = tk.StringVar(value="16")
+        self.keep_debug = tk.StringVar(value="off")
         self.status = tk.StringVar(value="")
         self.progress_pct = tk.StringVar(value="0%")
         self.elapsed = tk.StringVar(value="00:00")
@@ -109,6 +115,16 @@ class PDFCompareApp(
         self.rerender_run_dir = tk.StringVar(value="")
         self.rerender_dpi = tk.StringVar(value="500")
         self.rerender_workers = tk.StringVar(value="0")
+        # Rerender overrides: empty/"" means "inherit from the original summary"
+        # (same convention the MCP rerender tool uses with None values).
+        self.rerender_stroke_tol = tk.StringVar(value="")
+        self.rerender_strictness = tk.StringVar(value="")
+        self.rerender_exclude = tk.StringVar(value="")
+        self.rerender_bbox_merge = tk.StringVar(value="off")
+        self.rerender_bbox_gap = tk.StringVar(value="")
+        self.rerender_mode = tk.StringVar(value="uniform")
+        # Per-page overrides in mixed mode: {seq: {dpi, stroke_tol, ...}}.
+        self.rerender_page_settings: dict[int, dict[str, Any]] = {}
 
         self.worker_events: queue.Queue[tuple] = queue.Queue()
         self.running = False
@@ -155,10 +171,17 @@ class PDFCompareApp(
         self.options_strictness_hint_label: ttk.Label | None = None
         self.options_exclude_label: ttk.Label | None = None
         self.options_exclude_hint_label: ttk.Label | None = None
-        self.options_workers_label: ttk.Label | None = None
-        self.options_workers_hint_label: ttk.Label | None = None
+        self.options_bbox_merge_label: ttk.Label | None = None
+        self.options_bbox_merge_hint_label: ttk.Label | None = None
+        self.options_keep_debug_label: ttk.Label | None = None
+        self.options_keep_debug_hint_label: ttk.Label | None = None
+        self.bbox_merge_chip: tk.Label | None = None
+        self.bbox_merge_gap_entry: ttk.Entry | None = None
+        self.bbox_merge_max_ratio_entry: ttk.Entry | None = None
+        self.keep_debug_chip: tk.Label | None = None
         self.clear_btn: ttk.Button | None = None
         self.from_history_btn: ttk.Button | None = None
+        self.exclude_pick_btn: ttk.Button | None = None
         self.hist_restore_btn: tk.Button | None = None
         self.hist_snapshot_btn: ttk.Button | None = None
         self.hist_open_btn: ttk.Button | None = None
@@ -179,6 +202,9 @@ class PDFCompareApp(
         self.rerender_workers_label: ttk.Label | None = None
         self.rerender_start_btn: tk.Button | None = None
         self.rerender_open_report_btn: ttk.Button | None = None
+        self.rerender_mode_chips: dict[str, tk.Label] = {}
+        self.rerender_strictness_chips: dict[str, tk.Label] = {}
+        self.rerender_edit_selected_btn: ttk.Button | None = None
         self.history_filter_buttons: dict[str, tk.Label] = {}
         self.worker_chips: dict[str, tk.Label] = {}
         self.strictness_chips: dict[str, tk.Label] = {}
@@ -584,7 +610,16 @@ class PDFCompareApp(
             background=BG_SOFT,
         )
         self.options_exclude_label.pack(anchor="w", pady=(0, 6))
-        ttk.Entry(exclude_frame, textvariable=self.exclude_regions, style="Path.TEntry").pack(fill=tk.X, ipady=4)
+        exclude_entry_row = tk.Frame(exclude_frame, bg=BG_SOFT)
+        exclude_entry_row.pack(fill=tk.X)
+        ttk.Entry(exclude_entry_row, textvariable=self.exclude_regions, style="Path.TEntry").pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+        self.exclude_pick_btn = ttk.Button(
+            exclude_entry_row,
+            text=self._tr("btn_pick_exclude"),
+            style="Small.TButton",
+            command=self._pick_exclude_regions,
+        )
+        self.exclude_pick_btn.pack(side=tk.LEFT, padx=(6, 0))
         self.options_exclude_hint_label = ttk.Label(
             exclude_frame,
             text=self._tr("opts_exclude_hint"),
@@ -592,6 +627,84 @@ class PDFCompareApp(
             background=BG_SOFT,
         )
         self.options_exclude_hint_label.pack(anchor="w", pady=(6, 0))
+
+        # Row 1: bbox merge (experimental) + keep debug — full width, two sub-frames.
+        advanced_row2 = tk.Frame(advanced_grid, bg=BG_SOFT)
+        advanced_row2.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        advanced_row2.columnconfigure(0, weight=1, uniform="advanced2")
+        advanced_row2.columnconfigure(1, weight=1, uniform="advanced2")
+
+        bbox_frame = tk.Frame(advanced_row2, bg=BG_SOFT)
+        bbox_frame.grid(row=0, column=0, sticky="ew", padx=(0, 12))
+        bbox_head = tk.Frame(bbox_frame, bg=BG_SOFT)
+        bbox_head.pack(fill=tk.X)
+        self.options_bbox_merge_label = ttk.Label(
+            bbox_head,
+            text=self._tr("opts_bbox_merge"),
+            style="SubHeader.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_bbox_merge_label.pack(side=tk.LEFT, pady=(0, 6))
+        self.bbox_merge_chip = tk.Label(
+            bbox_head,
+            text=self._tr("toggle_onoff"),
+            padx=12,
+            pady=4,
+            bg=BG_CARD,
+            fg=TEXT_SECONDARY,
+            relief="solid",
+            bd=1,
+            cursor="hand2",
+        )
+        self.bbox_merge_chip.pack(side=tk.LEFT, padx=(8, 0))
+        self.bbox_merge_chip.bind("<Button-1>", lambda _e: self.bbox_merge.set("on" if self.bbox_merge.get() == "off" else "off"))
+        bbox_fields = tk.Frame(bbox_frame, bg=BG_SOFT)
+        bbox_fields.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(bbox_fields, text=self._tr("opts_bbox_merge_gap"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
+        self.bbox_merge_gap_entry = ttk.Entry(bbox_fields, textvariable=self.bbox_merge_gap, width=6, state=tk.DISABLED)
+        self.bbox_merge_gap_entry.pack(side=tk.LEFT, padx=(6, 16))
+        ttk.Label(bbox_fields, text=self._tr("opts_bbox_merge_ratio"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
+        self.bbox_merge_max_ratio_entry = ttk.Entry(bbox_fields, textvariable=self.bbox_merge_max_ratio, width=6, state=tk.DISABLED)
+        self.bbox_merge_max_ratio_entry.pack(side=tk.LEFT, padx=(6, 0))
+        self.options_bbox_merge_hint_label = ttk.Label(
+            bbox_frame,
+            text=self._tr("opts_bbox_merge_hint"),
+            style="Hint.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_bbox_merge_hint_label.pack(anchor="w", pady=(6, 0))
+
+        keep_debug_frame = tk.Frame(advanced_row2, bg=BG_SOFT)
+        keep_debug_frame.grid(row=0, column=1, sticky="ew")
+        kd_head = tk.Frame(keep_debug_frame, bg=BG_SOFT)
+        kd_head.pack(fill=tk.X)
+        self.options_keep_debug_label = ttk.Label(
+            kd_head,
+            text=self._tr("opts_keep_debug"),
+            style="SubHeader.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_keep_debug_label.pack(side=tk.LEFT, pady=(0, 6))
+        self.keep_debug_chip = tk.Label(
+            kd_head,
+            text=self._tr("toggle_onoff"),
+            padx=12,
+            pady=4,
+            bg=BG_CARD,
+            fg=TEXT_SECONDARY,
+            relief="solid",
+            bd=1,
+            cursor="hand2",
+        )
+        self.keep_debug_chip.pack(side=tk.LEFT, padx=(8, 0))
+        self.keep_debug_chip.bind("<Button-1>", lambda _e: self.keep_debug.set("on" if self.keep_debug.get() == "off" else "off"))
+        self.options_keep_debug_hint_label = ttk.Label(
+            keep_debug_frame,
+            text=self._tr("opts_keep_debug_hint"),
+            style="Hint.TLabel",
+            background=BG_SOFT,
+        )
+        self.options_keep_debug_hint_label.pack(anchor="w", pady=(8, 0))
 
         actions = tk.Frame(self.compare_tab, bg=BG_WINDOW)
         actions.pack(fill=tk.X, pady=(0, 14))
@@ -911,6 +1024,23 @@ class PDFCompareApp(
             active = value == current
             widget.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
 
+    def _update_toggle_chip(self, chip: tk.Label | None, var: tk.StringVar) -> None:
+        if chip is None:
+            return
+        active = var.get() == "on"
+        chip.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
+
+    def _update_bbox_merge_chip(self) -> None:
+        self._update_toggle_chip(self.bbox_merge_chip, self.bbox_merge)
+        # Enable/disable the gap/ratio fields based on the toggle.
+        state = tk.NORMAL if self.bbox_merge.get() == "on" else tk.DISABLED
+        for widget in (self.bbox_merge_gap_entry, self.bbox_merge_max_ratio_entry):
+            if widget is not None:
+                widget.configure(state=state)
+
+    def _update_keep_debug_chip(self) -> None:
+        self._update_toggle_chip(self.keep_debug_chip, self.keep_debug)
+
     def _update_history_filter_buttons(self) -> None:
         current = self.history_filter.get()
         for value, widget in self.history_filter_buttons.items():
@@ -924,6 +1054,27 @@ class PDFCompareApp(
 
     def _get_pages_str(self, old_pdf: Path, new_pdf: Path) -> str:
         return count_pdf_pages_pair(old_pdf, new_pdf)
+
+    def _pick_exclude_regions(self) -> None:
+        """Open the visual picker to draw exclude regions on the Old PDF."""
+        pdf_text = self.old_pdf.get().strip() or self.new_pdf.get().strip()
+        if not pdf_text:
+            self._set_status("status_pick_no_pdf")
+            return
+        pdf_path = Path(pdf_text)
+        if not pdf_path.exists():
+            messagebox.showerror(self._tr("err_file_missing_title"), self._tr("err_old_missing"))
+            return
+        regions = pick_exclude_regions(self.root, pdf_path)
+        if not regions:
+            return
+        coords = ";".join(f"{r['x']:.4g},{r['y']:.4g},{r['w']:.4g},{r['h']:.4g}" for r in regions)
+        existing = self.exclude_regions.get().strip()
+        if existing:
+            self.exclude_regions.set(f"{existing.rstrip(';')};{coords}")
+        else:
+            self.exclude_regions.set(coords)
+        self._set_status("status_pick_added", count=len(regions))
 
     def _start_timer(self) -> None:
         """Start the elapsed time timer"""
@@ -988,6 +1139,8 @@ class PDFCompareApp(
             self.stroke_value.set(self.stroke_tol.get())
         self._update_worker_chips()
         self._update_strictness_chips()
+        self._update_bbox_merge_chip()
+        self._update_keep_debug_chip()
 
     def _bind_input_tracking(self) -> None:
         for var in (
@@ -1000,6 +1153,10 @@ class PDFCompareApp(
             self.diff_strictness,
             self.exclude_regions,
             self.workers,
+            self.bbox_merge,
+            self.bbox_merge_gap,
+            self.bbox_merge_max_ratio,
+            self.keep_debug,
         ):
             var.trace_add("write", self._on_inputs_changed)
         self.history_search.trace_add("write", lambda *_: self._refresh_history_table())
@@ -1063,6 +1220,10 @@ class PDFCompareApp(
         self.out_dir.set("")
         self.run_name.set("")
         self.exclude_regions.set("")
+        self.bbox_merge.set("off")
+        self.bbox_merge_gap.set("5")
+        self.bbox_merge_max_ratio.set("16")
+        self.keep_debug.set("off")
         self.progress.configure(value=0.0)
         self.progress_pct.set("0%")
         self.last_run_dir = None
@@ -1120,10 +1281,21 @@ class PDFCompareApp(
             stroke_tol = float(self.stroke_tol.get().strip())
             workers = int(self.workers.get().strip() or "0")
             exclude_regions = normalize_exclude_regions(self.exclude_regions.get())
+            bbox_merge_gap = float(self.bbox_merge_gap.get().strip()) if self.bbox_merge.get() == "on" else 0.0
+            bbox_merge_ratio = float(self.bbox_merge_max_ratio.get().strip()) if self.bbox_merge.get() == "on" else 16.0
         except ValueError as exc:
             messagebox.showerror(self._tr("err_invalid_option_title"), f"{self._tr('err_invalid_option_parse')}\n\n{exc}")
             return
         diff_strictness = self.diff_strictness.get().strip().lower() or "normal"
+        keep_debug = self.keep_debug.get() == "on"
+
+        if self.bbox_merge.get() == "on":
+            if bbox_merge_gap < 0 or bbox_merge_gap > 50:
+                messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_bbox_merge_gap"))
+                return
+            if bbox_merge_ratio < 1 or bbox_merge_ratio > 100:
+                messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_bbox_merge_ratio"))
+                return
 
         if dpi < 72:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
@@ -1165,7 +1337,10 @@ class PDFCompareApp(
         self._set_status("status_running")
         t = threading.Thread(
             target=self._run_worker,
-            args=(old, new, out_path, dpi, stroke_tol, workers, self.lang.get(), run_name, exclude_regions, diff_strictness),
+            args=(
+                old, new, out_path, dpi, stroke_tol, workers, self.lang.get(), run_name,
+                exclude_regions, diff_strictness, bbox_merge_gap, bbox_merge_ratio, keep_debug,
+            ),
             daemon=True,
         )
         self.worker_thread = t
@@ -1183,6 +1358,9 @@ class PDFCompareApp(
         run_name: str | None,
         exclude_regions: list[dict[str, float | str]],
         diff_strictness: str,
+        bbox_merge_gap_mm: float,
+        bbox_merge_max_area_ratio: float,
+        keep_debug_images: bool,
     ) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
@@ -1201,6 +1379,9 @@ class PDFCompareApp(
                 workers=workers,
                 exclude_regions=exclude_regions,
                 diff_strictness=diff_strictness,
+                bbox_merge_gap_mm=bbox_merge_gap_mm,
+                bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
+                keep_debug_images=keep_debug_images,
                 progress_cb=report_progress,
             )
             if self.cancel_requested.is_set():

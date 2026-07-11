@@ -43,6 +43,10 @@ class AppProtocol(Protocol):
     diff_strictness: tk.StringVar
     exclude_regions: tk.StringVar
     workers: tk.StringVar
+    bbox_merge: tk.StringVar
+    bbox_merge_gap: tk.StringVar
+    bbox_merge_max_ratio: tk.StringVar
+    keep_debug: tk.StringVar
     status: tk.StringVar
     progress_pct: tk.StringVar
     elapsed: tk.StringVar
@@ -51,6 +55,13 @@ class AppProtocol(Protocol):
     rerender_run_dir: tk.StringVar
     rerender_dpi: tk.StringVar
     rerender_workers: tk.StringVar
+    rerender_stroke_tol: tk.StringVar
+    rerender_strictness: tk.StringVar
+    rerender_exclude: tk.StringVar
+    rerender_bbox_merge: tk.StringVar
+    rerender_bbox_gap: tk.StringVar
+    rerender_mode: tk.StringVar
+    rerender_page_settings: dict[int, dict[str, Any]]
 
     # --- Runtime flags / worker plumbing -------------------------------- #
     running: bool
@@ -81,6 +92,11 @@ class AppProtocol(Protocol):
     run_btn: tk.Button | None
     open_report_btn: ttk.Button | None
     open_run_btn: ttk.Button | None
+    bbox_merge_chip: tk.Label | None
+    bbox_merge_gap_entry: ttk.Entry | None
+    bbox_merge_max_ratio_entry: ttk.Entry | None
+    keep_debug_chip: tk.Label | None
+    exclude_pick_btn: ttk.Button | None
 
     # --- History-tab widgets ------------------------------------------- #
     history_tree: ttk.Treeview
@@ -98,6 +114,9 @@ class AppProtocol(Protocol):
     rerender_workers_label: ttk.Label | None
     rerender_start_btn: tk.Button | None  # _primary_button returns tk.Button
     rerender_open_report_btn: ttk.Button | None
+    rerender_mode_chips: dict[str, tk.Label]
+    rerender_strictness_chips: dict[str, tk.Label]
+    rerender_edit_selected_btn: ttk.Button | None
 
     # --- Methods that mixins call across boundaries -------------------- #
     # i18n & status
@@ -128,7 +147,16 @@ class AppProtocol(Protocol):
     def _load_rerender_report(self, run_dir: Path | None = ..., quiet: bool = ...) -> None: ...
     def _pick_rerender_run_dir(self) -> None: ...
     def _start_rerender_selected(self) -> None: ...
-    def _rerender_worker(self, run_dir: Path, seqs: list[int], dpi: int, workers: int) -> None: ...
+    def _rerender_worker(self, run_dir: Path, seqs: list[int], dpi: int, workers: int, overrides: dict[str, Any]) -> None: ...
+    def _rerender_mixed_worker(self, run_dir: Path, page_settings: list[dict[str, Any]], dpi: int, workers: int) -> None: ...
+    def _edit_selected_page_settings(self) -> None: ...
+    def _parse_optional_float(self, var: tk.StringVar) -> float | None: ...
+    def _collect_uniform_overrides(self) -> dict[str, Any] | None: ...
+    def _collect_uniform_overrides_safe(self) -> dict[str, Any]: ...
+    def _build_page_settings(self, seqs: list[int]) -> list[dict[str, Any]]: ...
+    def _begin_rerender_run(self) -> None: ...
+    def _update_rerender_mode_chips(self) -> None: ...
+    def _update_rerender_strictness_chips(self) -> None: ...
 
     # DnD — _install_drop_hook wires these via self.X; tkinterdnd2 returns event.action
     def _handle_dropped_files(self, paths: Any) -> None: ...

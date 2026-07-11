@@ -1,9 +1,20 @@
 # Changelog
 
-## Unreleased
+## v0.1.4 - 2026-07-11
+
+### Added
+- GUI now exposes the same comparison controls as the MCP server: experimental bbox merge (toggle, gap, max-area ratio) and a debug-images toggle, wired through to `compare_pdfs`.
+- Visual exclusion-region picker (✏ Pick…) on the Compare tab: draw one or more rectangles on a rendered PDF page instead of typing `x,y,w,h` by hand.
+- Re-render tab now shows the `FG %` and `mm²` content-relative metrics per row, alongside `Diff %`.
+- Re-render tab supports override fields (stroke tolerance, strictness, exclude regions, bbox merge) and a per-page (mixed-precision) mode that routes selected pages through `regenerate_report_pages_mixed`.
+- CLI gained `--bbox-merge-gap-mm` and `--bbox-merge-max-area-ratio` flags for parity with GUI and MCP.
 
 ### Changed
 - Moved packaging, requirements, launchers, and agent setup prompt files into dedicated folders to keep the repository root smaller.
+- `start_pdf_comparison` signature in the MCP docs now lists the full parameter set (`diff_strictness`, `exclude_regions`, `bbox_merge_max_area_ratio`).
+
+### Fixed
+- PyInstaller spec resolves its root from `SPECPATH` after the spec moved into `packaging/`, so EXE builds work regardless of the invocation working directory.
 
 ## v0.1.3 - 2026-07-03
 

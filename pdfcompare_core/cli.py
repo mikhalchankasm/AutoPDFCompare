@@ -54,6 +54,18 @@ def main() -> None:
         action="store_true",
         help="Keep extra full-size debug PNGs such as b_raw.png and b_aligned.png",
     )
+    parser.add_argument(
+        "--bbox-merge-gap-mm",
+        type=float,
+        default=0.0,
+        help="Experimental: merge nearby change boxes within this distance in mm. 0 (default) disables merging.",
+    )
+    parser.add_argument(
+        "--bbox-merge-max-area-ratio",
+        type=float,
+        default=16.0,
+        help="Experimental: max merged box area relative to the page area. Default 16.",
+    )
     args = parser.parse_args()
 
     if args.old and args.new:
@@ -74,6 +86,8 @@ def main() -> None:
         run_name=args.run_name or None,
         keep_debug_images=args.keep_debug_images,
         workers=args.workers,
+        bbox_merge_gap_mm=args.bbox_merge_gap_mm,
+        bbox_merge_max_area_ratio=args.bbox_merge_max_area_ratio,
     )
     print(f"Готово. Результаты: {run_dir}")
     print(f"Открыть отчёт: {run_dir / START_REPORT_FILE}")

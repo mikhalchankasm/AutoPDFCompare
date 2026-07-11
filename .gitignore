@@ -1,6 +1,7 @@
 __pycache__/
 .claude/
 .codex/
+.zcode/
 .mcp.json
 .pdfcompare_mcp/
 .pdfcompare_mcp_*/

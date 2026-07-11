@@ -13,13 +13,14 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - suggests result folder names;
   - tells the agent to ask the user which folder name to use.
 
-- `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, bbox_merge_gap_mm = 0, workers = 0, lang = "ru", keep_debug_images = false)`
+- `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, diff_strictness = "normal", exclude_regions = None, bbox_merge_gap_mm = 0.0, bbox_merge_max_area_ratio = 16.0, workers = 0, lang = "ru", keep_debug_images = false)`
   - starts the comparison in a background Python process;
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
-  - optional `diff_strictness`: `strict`, `normal`, or `loose`;
-  - optional `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]`;
-  - optional `bbox_merge_gap_mm`: experimental merge of nearby/overlapping change boxes within this distance; default is `0` mm, meaning disabled;
-  - optional `bbox_merge_max_area_ratio`: prevents distant thin changes from becoming one huge empty rectangle; default is `16`, with an additional page-area guard.
+  - `diff_strictness`: `strict`, `normal`, or `loose` (default `normal`);
+  - `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]` (default empty);
+  - `bbox_merge_gap_mm`: experimental merge of nearby/overlapping change boxes within this distance; default is `0.0` mm, meaning disabled;
+  - `bbox_merge_max_area_ratio`: prevents distant thin changes from becoming one huge empty rectangle; default is `16.0`, with an additional page-area guard;
+  - `keep_debug_images`: when `true`, keeps full-size alignment debug images (increases report size).
 
 - `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...])`
   - re-renders selected rows of an existing report in place and rebuilds one combined report;

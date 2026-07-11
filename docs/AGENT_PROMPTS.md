@@ -64,7 +64,7 @@ Required flow:
 6. If I did not already say whether to merge nearby bbox regions, ask me. Treat merge as experimental and recommend keeping it disabled unless I explicitly want grouped boxes. Explain the available limits: bbox_merge_gap_mm defaults to 0 mm (disabled); a typical trial value is 5 mm; bbox_merge_max_area_ratio defaults to 16, with page-area and sparse-fill guards to avoid huge empty rectangles.
 7. Call start_pdf_comparison with the selected run_name, diff_strictness, exclude_regions, and bbox merge settings.
 8. Poll get_pdf_comparison_status until the job completes.
-9. Return the final report_path and summary.counts.
+9. Return the final report_path and summary.counts. When judging change severity, prefer the content-relative FG % and physical mm² metrics over whole-page Diff %, since Diff % is dominated by empty page area on engineering drawings.
 ```
 
 ## 5. Check Job Status

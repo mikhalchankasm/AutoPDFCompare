@@ -30,6 +30,10 @@ class StatePersistenceMixin:
             "diff_strictness": self.diff_strictness.get().strip(),
             "exclude_regions": self.exclude_regions.get().strip(),
             "workers": self.workers.get().strip(),
+            "bbox_merge": self.bbox_merge.get().strip(),
+            "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
+            "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
+            "keep_debug": self.keep_debug.get().strip(),
             "last_run_dir": str(self.last_run_dir) if self.last_run_dir else "",
         }
 
@@ -43,6 +47,10 @@ class StatePersistenceMixin:
         self.diff_strictness.set(str(data.get("diff_strictness") or "normal"))
         self.exclude_regions.set(str(data.get("exclude_regions") or ""))
         self.workers.set(str(data.get("workers") or "0"))
+        self.bbox_merge.set(str(data.get("bbox_merge") or "off"))
+        self.bbox_merge_gap.set(str(data.get("bbox_merge_gap") or "5"))
+        self.bbox_merge_max_ratio.set(str(data.get("bbox_merge_max_ratio") or "16"))
+        self.keep_debug.set(str(data.get("keep_debug") or "off"))
         if self.open_report_btn is not None:
             self.open_report_btn.configure(state=tk.DISABLED)
         if self.open_run_btn is not None:
