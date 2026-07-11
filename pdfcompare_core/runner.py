@@ -229,6 +229,9 @@ def process_pair_task(
                 diff_percent,
                 len(bboxes),
                 diff_foreground_percent=float(metrics["diff_foreground_percent"]),
+                foreground_sparse=bool(metrics["foreground_sparse"]),
+                max_region_area_mm2=float(metrics["max_region_area_mm2"]),
+                diff_area_mm2=float(metrics["diff_area_mm2"]),
             )
 
             imwrite_compat(pair_dir / "a.png", a_h)

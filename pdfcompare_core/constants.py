@@ -23,6 +23,20 @@ MODERATE_DIFF_PERCENT = 5.0
 # fraction of the sheet. On such pages FG% is unreliable (a few lines can
 # read as 50%+), so classification falls back to absolute metrics (mm², zones).
 FOREGROUND_SPARSE_THRESHOLD = 0.0005
+# Composite-significance thresholds (each signal is independent; the final
+# level is the maximum across all signals that apply).
+# Signal 1: foreground-relative diff percent (ignored when foreground_sparse).
+FG_MINOR_PERCENT = 1.0
+FG_MODERATE_PERCENT = 8.0
+FG_MAJOR_PERCENT = 20.0
+# Signal 2: largest single change region in mm².
+REGION_MINOR_MM2 = 100.0
+REGION_MODERATE_MM2 = 2500.0
+REGION_MAJOR_MM2 = 10000.0
+# Signal 3: number of distinct change zones.
+ZONES_MINOR = 1
+ZONES_MODERATE = 15
+ZONES_MAJOR = 40
 PAGE_INFO_THUMB_DPI = 96
 THUMB_MAX_WIDTH = 320
 THUMB_JPEG_QUALITY = 82

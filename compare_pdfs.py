@@ -33,12 +33,19 @@ from pdfcompare_core.cli import main, pick_two_pdfs
 from pdfcompare_core.constants import (
     APP_NAME,
     APP_VERSION,
+    FG_MAJOR_PERCENT,
+    FG_MINOR_PERCENT,
+    FG_MODERATE_PERCENT,
+    FOREGROUND_SPARSE_THRESHOLD,
     INTERNAL_REPORT_DIR,
     INVALID_DOWNLOAD_NAME_CHARS_RE,
     LIVE_REPORT_EVENT_PREFIX,
     MINOR_DIFF_PERCENT,
     MODERATE_DIFF_PERCENT,
     PAGE_INFO_THUMB_DPI,
+    REGION_MAJOR_MM2,
+    REGION_MINOR_MM2,
+    REGION_MODERATE_MM2,
     SHEET_EN_RE,
     SHEET_FRACTION_RE,
     SHEET_RU_RE,
@@ -47,6 +54,9 @@ from pdfcompare_core.constants import (
     THUMB_MAX_WIDTH,
     TOKEN_RE,
     UNCHANGED_DIFF_PERCENT,
+    ZONES_MAJOR,
+    ZONES_MINOR,
+    ZONES_MODERATE,
 )
 from pdfcompare_core.diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, compute_diff_detailed, harmonize_canvas
 from pdfcompare_core.exclusions import (

@@ -7,10 +7,7 @@ import fitz
 
 from compare_pdfs import (
     INTERNAL_REPORT_DIR,
-    MINOR_DIFF_PERCENT,
-    MODERATE_DIFF_PERCENT,
     START_REPORT_FILE,
-    UNCHANGED_DIFF_PERCENT,
     MatchPair,
     classify,
     generate_html_report,
@@ -21,9 +18,111 @@ from compare_pdfs import (
 
 
 class ChangeClassificationTests(unittest.TestCase):
-    def test_detected_regions_make_tiny_area_changed(self) -> None:
+    def test_identical_pages_are_unchanged(self) -> None:
+        self.assertEqual(classify(0.0, bboxes_count=0, diff_foreground_percent=0.0), "unchanged")
+
+    def test_dense_page_small_change_is_minor_by_fg(self) -> None:
+        # Dense page (not sparse), FG% just above minor threshold.
+        self.assertEqual(
+            classify(0.02, bboxes_count=1, diff_foreground_percent=1.5, foreground_sparse=False),
+            "minor",
+        )
+
+    def test_dense_page_moderate_and_major_by_fg(self) -> None:
+        self.assertEqual(
+            classify(0.02, bboxes_count=1, diff_foreground_percent=8.0, foreground_sparse=False),
+            "moderate",
+        )
+        self.assertEqual(
+            classify(0.02, bboxes_count=1, diff_foreground_percent=20.0, foreground_sparse=False),
+            "major",
+        )
+
+    def test_sparse_page_ignores_fg_uses_absolute_metrics(self) -> None:
+        # Sparse page: FG% would be absurd (50%), but foreground_sparse=True
+        # forces classification by mm² / zones. A 150 mm² region = minor.
+        self.assertEqual(
+            classify(
+                0.01,
+                bboxes_count=1,
+                diff_foreground_percent=50.0,
+                foreground_sparse=True,
+                max_region_area_mm2=150.0,
+            ),
+            "minor",
+        )
+        # Same FG% but a large region → major by mm².
+        self.assertEqual(
+            classify(
+                0.01,
+                bboxes_count=1,
+                diff_foreground_percent=50.0,
+                foreground_sparse=True,
+                max_region_area_mm2=12000.0,
+            ),
+            "major",
+        )
+
+    def test_many_small_zones_reach_moderate(self) -> None:
+        # 20 zones → moderate by zone count (>= 15).
+        self.assertEqual(
+            classify(
+                0.01,
+                bboxes_count=20,
+                diff_foreground_percent=0.5,
+                foreground_sparse=False,
+                max_region_area_mm2=50.0,
+            ),
+            "moderate",
+        )
+
+    def test_many_zones_reach_major(self) -> None:
+        # 45 zones → major by zone count (>= 40).
+        self.assertEqual(
+            classify(
+                0.01,
+                bboxes_count=45,
+                diff_foreground_percent=0.5,
+                foreground_sparse=False,
+                max_region_area_mm2=50.0,
+            ),
+            "major",
+        )
+
+    def test_large_single_region_is_major(self) -> None:
+        self.assertEqual(
+            classify(
+                0.1,
+                bboxes_count=1,
+                diff_foreground_percent=0.5,
+                foreground_sparse=False,
+                max_region_area_mm2=12000.0,
+            ),
+            "major",
+        )
+
+    def test_composite_takes_max_across_signals(self) -> None:
+        # FG% says minor (1.5), but region area says major (12000).
+        self.assertEqual(
+            classify(
+                0.02,
+                bboxes_count=1,
+                diff_foreground_percent=1.5,
+                foreground_sparse=False,
+                max_region_area_mm2=12000.0,
+            ),
+            "major",
+        )
+
+    def test_legacy_fallback_uses_diff_percent_only(self) -> None:
+        # Old run data: diff_foreground_percent is None.
+        self.assertEqual(classify(0.2, bboxes_count=0), "minor")
+        self.assertEqual(classify(2.0, bboxes_count=0), "moderate")
+        self.assertEqual(classify(6.0, bboxes_count=0), "major")
+        self.assertEqual(classify(0.021, bboxes_count=0), "unchanged")
         self.assertEqual(classify(0.021, bboxes_count=16), "minor")
 
+    def test_status_and_confidence_with_new_fields(self) -> None:
         row = {
             "status": "matched",
             "a_page": 4,
@@ -32,17 +131,17 @@ class ChangeClassificationTests(unittest.TestCase):
             "change_level": "minor",
             "bboxes_count": 16,
             "score": 0.999,
+            "diff_foreground_percent": 2.0,
+            "foreground_sparse": False,
+            "max_region_area_mm2": 150.0,
         }
         page_status, confidence, content_status, moved = status_and_confidence(row)
-
         self.assertEqual(page_status, "CHANGED")
         self.assertEqual(content_status, "CHANGED")
         self.assertEqual(confidence, "EXACT")
         self.assertFalse(moved)
 
-    def test_tiny_noise_without_detected_regions_remains_unchanged(self) -> None:
-        self.assertEqual(classify(0.021, bboxes_count=0), "unchanged")
-
+    def test_unchanged_status_and_confidence(self) -> None:
         row = {
             "status": "matched",
             "a_page": 4,
@@ -53,25 +152,8 @@ class ChangeClassificationTests(unittest.TestCase):
             "score": 0.999,
         }
         page_status, _, content_status, _ = status_and_confidence(row)
-
         self.assertEqual(page_status, "UNCHANGED")
         self.assertEqual(content_status, "UNCHANGED")
-
-    def test_area_threshold_still_marks_larger_diffs_changed(self) -> None:
-        self.assertEqual(classify(0.2, bboxes_count=0), "minor")
-        self.assertEqual(classify(2.0, bboxes_count=0), "moderate")
-        self.assertEqual(classify(6.0, bboxes_count=0), "major")
-
-    def test_threshold_boundaries_are_inclusive_for_next_level(self) -> None:
-        self.assertEqual(classify(UNCHANGED_DIFF_PERCENT, bboxes_count=0), "minor")
-        self.assertEqual(classify(MINOR_DIFF_PERCENT, bboxes_count=0), "moderate")
-        self.assertEqual(classify(MODERATE_DIFF_PERCENT, bboxes_count=0), "major")
-        self.assertEqual(classify(UNCHANGED_DIFF_PERCENT - 0.000001, bboxes_count=1), "minor")
-
-    def test_foreground_percent_can_raise_change_level(self) -> None:
-        self.assertEqual(classify(0.02, bboxes_count=0, diff_foreground_percent=1.5), "minor")
-        self.assertEqual(classify(0.02, bboxes_count=0, diff_foreground_percent=8.0), "moderate")
-        self.assertEqual(classify(0.02, bboxes_count=0, diff_foreground_percent=20.0), "major")
 
 
 class LiveReportTests(unittest.TestCase):
