@@ -210,7 +210,6 @@ class PDFCompareApp(
         self.rerender_strictness_chips: dict[str, tk.Label] = {}
         self.rerender_edit_selected_btn: ttk.Button | None = None
         self.history_filter_buttons: dict[str, tk.Label] = {}
-        self.worker_chips: dict[str, tk.Label] = {}
         self.strictness_chips: dict[str, tk.Label] = {}
         self.rerender_by_iid: dict[str, dict[str, Any]] = {}
         self.rerender_running = False
@@ -318,10 +317,6 @@ class PDFCompareApp(
             self.options_exclude_label.configure(text=self._tr("opts_exclude"))
         if self.options_exclude_hint_label is not None:
             self.options_exclude_hint_label.configure(text=self._tr("opts_exclude_hint"))
-        if self.options_workers_label is not None:
-            self.options_workers_label.configure(text=self._tr("opts_workers"))
-        if self.options_workers_hint_label is not None:
-            self.options_workers_hint_label.configure(text=self._tr("opts_workers_hint"))
         if self.run_btn is not None:
             if self.running:
                 self.run_btn.configure(text=self._tr("btn_cancelling" if self.cancel_requested.is_set() else "btn_cancel"))
@@ -400,8 +395,6 @@ class PDFCompareApp(
         for value, key in (("all", "hist_filter_all"), ("done", "hist_filter_done"), ("cancelled", "hist_filter_cancelled")):
             if value in self.history_filter_buttons:
                 self.history_filter_buttons[value].configure(text=self._tr(key))
-        if "0" in self.worker_chips:
-            self.worker_chips["0"].configure(text=self._tr("workers_auto"))
         for value, widget in self.strictness_chips.items():
             widget.configure(text=self._tr(f"strictness_{value}"))
         self._update_lang_buttons()
@@ -573,24 +566,10 @@ class PDFCompareApp(
         ttk.Label(opts_head, text=self._tr("opts_default"), style="Hint.TLabel", background=BG_SOFT).pack(side=tk.RIGHT)
         opts_grid = tk.Frame(self.options_body, bg=BG_SOFT)
         opts_grid.pack(fill=tk.X)
-        for col in range(3):
+        for col in range(2):
             opts_grid.columnconfigure(col, weight=1, uniform="opts")
         self._build_scale_option(opts_grid, 0, "opts_dpi", self.dpi, self.dpi_value, 100, 400, 10)
         self._build_scale_option(opts_grid, 1, "opts_stroke", self.stroke_tol, self.stroke_value, 0, 10, 0.5)
-        worker_frame = tk.Frame(opts_grid, bg=BG_SOFT)
-        worker_frame.grid(row=0, column=2, sticky="ew", padx=(12, 0))
-        self.options_workers_label = ttk.Label(worker_frame, text=self._tr("opts_workers"), style="SubHeader.TLabel", background=BG_SOFT)
-        self.options_workers_label.pack(anchor="w", pady=(0, 6))
-        chips = tk.Frame(worker_frame, bg=BG_SOFT)
-        chips.pack(anchor="w")
-        for value, label_key in (("0", "workers_auto"), ("1", None), ("4", None)):
-            text = self._tr(label_key) if label_key else value
-            chip = tk.Label(chips, text=text, padx=12, pady=4, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
-            chip.pack(side=tk.LEFT, padx=(0, 6))
-            chip.bind("<Button-1>", lambda _e, v=value: self.workers.set(v))  # type: ignore[misc]
-            self.worker_chips[value] = chip
-        self.options_workers_hint_label = ttk.Label(worker_frame, text=self._tr("opts_workers_hint"), style="Hint.TLabel", background=BG_SOFT)
-        self.options_workers_hint_label.pack(anchor="w", pady=(8, 0))
 
         advanced_grid = tk.Frame(self.options_body, bg=BG_SOFT)
         advanced_grid.pack(fill=tk.X, pady=(12, 0))
@@ -1032,12 +1011,6 @@ class PDFCompareApp(
     def _history_search_focus_out(self, _event: tk.Event) -> None:
         self._set_history_placeholder()
 
-    def _update_worker_chips(self) -> None:
-        current = self.workers.get().strip() or "0"
-        for value, widget in self.worker_chips.items():
-            active = value == current
-            widget.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
-
     def _update_strictness_chips(self) -> None:
         current = self.diff_strictness.get().strip().lower() or "normal"
         for value, widget in self.strictness_chips.items():
@@ -1147,7 +1120,6 @@ class PDFCompareApp(
             self.stroke_value.set(f"{float(self.stroke_tol.get()):.1f}")
         except ValueError:
             self.stroke_value.set(self.stroke_tol.get())
-        self._update_worker_chips()
         self._update_strictness_chips()
         self._update_bbox_merge_fields()
 
@@ -1161,7 +1133,6 @@ class PDFCompareApp(
             self.stroke_tol,
             self.diff_strictness,
             self.exclude_regions,
-            self.workers,
             self.bbox_merge,
             self.bbox_merge_gap,
             self.bbox_merge_max_ratio,
@@ -1288,7 +1259,6 @@ class PDFCompareApp(
         try:
             dpi = int(self.dpi.get().strip())
             stroke_tol = float(self.stroke_tol.get().strip())
-            workers = int(self.workers.get().strip() or "0")
             exclude_regions = normalize_exclude_regions(self.exclude_regions.get())
             bbox_merge_gap = float(self.bbox_merge_gap.get().strip()) if self.bbox_merge.get() == "on" else 0.0
             bbox_merge_ratio = float(self.bbox_merge_max_ratio.get().strip()) if self.bbox_merge.get() == "on" else 16.0
@@ -1316,9 +1286,6 @@ class PDFCompareApp(
         if stroke_tol < 0:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_stroke"))
             return
-        if workers < 0:
-            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_workers"))
-            return
         if diff_strictness not in DIFF_STRICTNESS_CHOICES:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_strictness"))
             return
@@ -1344,6 +1311,8 @@ class PDFCompareApp(
         self._refresh_status_links()
         self._set_running(True)
         self._set_status("status_running")
+        # Workers control removed from UI — always use auto/parallel processing.
+        workers = 0
         t = threading.Thread(
             target=self._run_worker,
             args=(

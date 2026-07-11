@@ -42,7 +42,6 @@ class AppProtocol(Protocol):
     stroke_tol: tk.StringVar
     diff_strictness: tk.StringVar
     exclude_regions: tk.StringVar
-    workers: tk.StringVar
     bbox_merge: tk.StringVar
     bbox_merge_gap: tk.StringVar
     bbox_merge_max_ratio: tk.StringVar

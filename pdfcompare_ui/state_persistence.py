@@ -68,7 +68,6 @@ class StatePersistenceMixin:
             "stroke_tol": self.stroke_tol.get().strip(),
             "diff_strictness": self.diff_strictness.get().strip(),
             "exclude_regions": self.exclude_regions.get().strip(),
-            "workers": self.workers.get().strip(),
             "bbox_merge": self.bbox_merge.get().strip(),
             "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
             "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
@@ -85,7 +84,6 @@ class StatePersistenceMixin:
         self.stroke_tol.set(str(data.get("stroke_tol") or "2.0"))
         self.diff_strictness.set(str(data.get("diff_strictness") or "normal"))
         self.exclude_regions.set(str(data.get("exclude_regions") or ""))
-        self.workers.set(str(data.get("workers") or "0"))
         self.bbox_merge.set(str(data.get("bbox_merge") or "off"))
         self.bbox_merge_gap.set(str(data.get("bbox_merge_gap") or "5"))
         self.bbox_merge_max_ratio.set(str(data.get("bbox_merge_max_ratio") or "16"))
