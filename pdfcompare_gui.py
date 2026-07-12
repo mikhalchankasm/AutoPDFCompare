@@ -230,6 +230,8 @@ class PDFCompareApp(
         self.strictness_chips: dict[str, tk.Label] = {}
         self.rerender_by_iid: dict[str, dict[str, Any]] = {}
         self.rerender_running = False
+        self.rerender_cancel_requested = threading.Event()
+        self.rerender_thread: threading.Thread | None = None
 
         self.state_dir = Path.home() / ".pdfcompare_local"
         self.state_path = self.state_dir / "state.json"
@@ -382,7 +384,11 @@ class PDFCompareApp(
         if self.rerender_workers_label is not None:
             self.rerender_workers_label.configure(text=self._tr("rerender_workers"))
         if self.rerender_start_btn is not None:
-            self.rerender_start_btn.configure(text=self._tr("rerender_start"))
+            if self.rerender_running:
+                key = "btn_cancelling" if self.rerender_cancel_requested.is_set() else "btn_cancel"
+                self.rerender_start_btn.configure(text=self._tr(key))
+            else:
+                self.rerender_start_btn.configure(text=self._tr("rerender_start"))
         if self.rerender_open_report_btn is not None:
             self.rerender_open_report_btn.configure(text=self._tr("btn_open_report"))
         if self.rerender_tree is not None:
@@ -1258,6 +1264,13 @@ class PDFCompareApp(
         else:
             self._request_cancel()
 
+    def _reset_rerender_button(self) -> None:
+        """Back to "Перегенерировать" after a run ends, however it ended."""
+        self.rerender_cancel_requested.clear()
+        if self.rerender_start_btn is not None:
+            self._set_primary_state(self.rerender_start_btn, tk.NORMAL)
+            self.rerender_start_btn.configure(text=self._tr("rerender_start"))
+
     def _request_cancel(self) -> None:
         if not self.running:
             return
@@ -1432,14 +1445,19 @@ class PDFCompareApp(
                     self.progress.configure(value=pct)
                     self.progress_pct.set(f"{pct:.0f}%")
                     self.status.set(f"{msg} ({pct:.0f}%)")
+                elif kind == "rerender_cancelled":
+                    self.rerender_running = False
+                    self._reset_rerender_button()
+                    self.progress.configure(value=0.0)
+                    self.progress_pct.set("0%")
+                    self._set_status("status_rerender_cancelled")
                 elif kind == "rerender_done":
                     run_dir: Path = event[1]
                     self.rerender_running = False
                     self.last_run_dir = run_dir
                     self.progress.configure(value=100.0)
                     self.progress_pct.set("100%")
-                    if self.rerender_start_btn is not None:
-                        self.rerender_start_btn.configure(state=tk.NORMAL)
+                    self._reset_rerender_button()
                     self._load_rerender_report(run_dir, quiet=True)
                     self._set_status("status_rerender_done")
                     messagebox.showinfo(
@@ -1448,8 +1466,7 @@ class PDFCompareApp(
                     )
                 elif kind == "rerender_error":
                     self.rerender_running = False
-                    if self.rerender_start_btn is not None:
-                        self.rerender_start_btn.configure(state=tk.NORMAL)
+                    self._reset_rerender_button()
                     err = event[1]
                     tb = event[2]
                     self._set_status("status_error", error=err)
@@ -1756,17 +1773,19 @@ class PDFCompareApp(
             messagebox.showerror(self._tr("err_folder_missing_title"), self._tr("err_not_found", path=self.last_run_dir))
 
     def _on_close(self) -> None:
-        if self.running:
+        # A re-render is mid-transaction: give it a moment to unwind and restore
+        # the run, instead of killing the daemon thread with the swap half-done.
+        if self.running or self.rerender_running:
             self.cancel_requested.set()
+            self.rerender_cancel_requested.set()
             self._set_status("status_cancel_requested")
             deadline = time.monotonic() + 3.0
             while True:
-                worker = self.worker_thread
-                if worker is None:
+                workers = [t for t in (self.worker_thread, self.rerender_thread) if t is not None and t.is_alive()]
+                if not workers:
                     break
-                worker.join(timeout=0.05)
-                if not worker.is_alive():
-                    break
+                for worker in workers:
+                    worker.join(timeout=0.05)
                 if time.monotonic() >= deadline:
                     break
                 try:

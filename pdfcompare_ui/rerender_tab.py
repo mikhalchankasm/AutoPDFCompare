@@ -18,6 +18,7 @@ from compare_pdfs import (
 )
 from pdfcompare_core.constants import MAX_RENDER_DPI, MIN_RENDER_DPI
 from pdfcompare_core.exclusions import normalize_exclude_regions
+from pdfcompare_core.runner import RunCancelled
 
 from .exclusion_picker import format_regions_for_field, pick_exclude_regions
 from .styles import ACCENT, BG_CARD, BG_SOFT, BG_WINDOW, TEXT_SECONDARY
@@ -48,6 +49,7 @@ class RerenderTabMixin:
     rerender_dpi_label: ttk.Label | None
     rerender_workers_label: ttk.Label | None
     rerender_start_btn: tk.Button | None  # _primary_button returns tk.Button, not ttk.Button
+    rerender_thread: threading.Thread | None
     rerender_open_report_btn: ttk.Button | None
     rerender_mode_chips: dict[str, tk.Label]
     rerender_strictness_chips: dict[str, tk.Label]
@@ -415,8 +417,22 @@ class RerenderTabMixin:
             active = value == current
             widget.configure(fg=ACCENT if active else TEXT_SECONDARY, bd=2 if active else 1)
 
+    def _request_rerender_cancel(self: AppProtocol) -> None:
+        if not self.rerender_running:
+            return
+        self.rerender_cancel_requested.set()
+        if self.rerender_start_btn is not None:
+            self._set_primary_state(self.rerender_start_btn, tk.DISABLED)
+            self.rerender_start_btn.configure(text=self._tr("btn_cancelling"))
+        self._set_status("status_cancel_requested")
+
     def _start_rerender_selected(self: AppProtocol) -> None:
-        if self.running or self.rerender_running:
+        # While a re-render is running the same button cancels it, like the
+        # compare button does.
+        if self.rerender_running:
+            self._request_rerender_cancel()
+            return
+        if self.running:
             messagebox.showwarning(self._tr("err_invalid_input_title"), self._tr("err_rerender_busy"))
             return
         if self.rerender_tree is None:
@@ -452,6 +468,7 @@ class RerenderTabMixin:
                 args=(run_dir, page_settings, dpi, workers, report_lang),
                 daemon=True,
             )
+            self.rerender_thread = t
             t.start()
             return
 
@@ -464,6 +481,7 @@ class RerenderTabMixin:
             args=(run_dir, seqs, dpi, workers, overrides, report_lang),
             daemon=True,
         )
+        self.rerender_thread = t
         t.start()
 
     def _build_page_settings(self: AppProtocol, seqs: list[int]) -> list[dict[str, Any]]:
@@ -505,8 +523,11 @@ class RerenderTabMixin:
 
     def _begin_rerender_run(self: AppProtocol) -> None:
         self.rerender_running = True
+        self.rerender_cancel_requested.clear()
         if self.rerender_start_btn is not None:
-            self.rerender_start_btn.configure(state=tk.DISABLED)
+            # Stays enabled: it is the cancel button for the duration of the run.
+            self._set_primary_state(self.rerender_start_btn, tk.NORMAL)
+            self.rerender_start_btn.configure(text=self._tr("btn_cancel"))
         self.progress.configure(value=0.0)
         self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
         self.progress_pct.set("0%")
@@ -529,8 +550,12 @@ class RerenderTabMixin:
                 bbox_merge_gap_mm=overrides.get("bbox_merge_gap_mm"),
                 bbox_merge_max_area_ratio=overrides.get("bbox_merge_max_area_ratio"),
                 progress_cb=report_progress,
+                cancel_cb=self.rerender_cancel_requested.is_set,
             )
             self.worker_events.put(("rerender_done", result))
+        except RunCancelled:
+            # The run rolled itself back; the report is untouched.
+            self.worker_events.put(("rerender_cancelled",))
         except Exception as exc:
             self.worker_events.put(("rerender_error", str(exc), traceback.format_exc()))
 
@@ -546,7 +571,10 @@ class RerenderTabMixin:
                 report_lang=report_lang,
                 workers=workers,
                 progress_cb=report_progress,
+                cancel_cb=self.rerender_cancel_requested.is_set,
             )
             self.worker_events.put(("rerender_done", result))
+        except RunCancelled:
+            self.worker_events.put(("rerender_cancelled",))
         except Exception as exc:
             self.worker_events.put(("rerender_error", str(exc), traceback.format_exc()))

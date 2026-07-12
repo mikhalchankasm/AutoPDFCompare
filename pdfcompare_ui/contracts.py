@@ -68,7 +68,9 @@ class AppProtocol(Protocol):
     running: bool
     rerender_running: bool
     cancel_requested: threading.Event
+    rerender_cancel_requested: threading.Event
     worker_thread: threading.Thread | None
+    rerender_thread: threading.Thread | None
     worker_events: queue.Queue[tuple]
     last_run_dir: Path | None
 
@@ -186,6 +188,9 @@ class AppProtocol(Protocol):
 
     # Misc UI helpers used by mixins
     def _open_report(self) -> None: ...
+    def _set_primary_state(self, button: tk.Button, state: str) -> None: ...
+    def _reset_rerender_button(self) -> None: ...
+    def _request_rerender_cancel(self) -> None: ...
     def _primary_button(
         self,
         parent: tk.Misc,

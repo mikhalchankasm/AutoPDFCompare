@@ -151,8 +151,9 @@ class RunCancelled(RuntimeError):
 class CancelFlag(Protocol):
     """What a page worker needs from a cancel flag.
 
-    Satisfied by ``multiprocessing.Manager().Event()`` (cross-process) and by
-    ``_CallbackCancelFlag`` (in-process, sequential path).
+    In production this is a spawn-context ``multiprocessing.Event`` inherited by
+    the pool workers (see ``_init_pool_worker``); on the sequential path it is a
+    ``_CallbackCancelFlag`` wrapping the caller's predicate.
     """
 
     def is_set(self) -> bool: ...
@@ -670,6 +671,11 @@ def regenerate_report_pages(
     """Re-render selected mapped pages in an existing run and rebuild the report."""
 
     def emit(pct: float, msg: str) -> None:
+        # Every stage is cancellable, not just the page tasks: a caller that
+        # passes only cancel_cb (no raising progress_cb) can still stop the run
+        # during alignment or report generation.
+        if cancel_cb is not None and cancel_cb():
+            raise RunCancelled("Операция отменена пользователем")
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
@@ -757,7 +763,6 @@ def regenerate_report_pages(
             )
         )
 
-    emit(5, f"Перегенерация листов: {len(tasks)}, DPI {dpi}, процессов {worker_count}")
     completed = 0
     updated_rows: dict[int, dict] = {}
 
@@ -771,6 +776,8 @@ def regenerate_report_pages(
         emit(5 + 65 * (completed / len(tasks)), f"Перегенерация листов: {completed}/{len(tasks)}")
 
     try:
+        # Inside the try: a cancel raised by emit() must clean the staging dir too.
+        emit(5, f"Перегенерация листов: {len(tasks)}, DPI {dpi}, процессов {worker_count}")
         _run_pair_tasks(tasks, worker_count, on_row, tick, cancel_cb)
     except BaseException:
         shutil.rmtree(staging_pages.parent, ignore_errors=True)
@@ -859,6 +866,11 @@ def regenerate_report_pages_mixed(
     """Re-render selected report rows with per-row settings and rebuild one report."""
 
     def emit(pct: float, msg: str) -> None:
+        # Every stage is cancellable, not just the page tasks: a caller that
+        # passes only cancel_cb (no raising progress_cb) can still stop the run
+        # during alignment or report generation.
+        if cancel_cb is not None and cancel_cb():
+            raise RunCancelled("Операция отменена пользователем")
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
@@ -972,7 +984,6 @@ def regenerate_report_pages_mixed(
     if worker_count > 1:
         tasks = [(*task[:-1], True) for task in tasks]
 
-    emit(5, f"Перегенерация листов со смешанными настройками: {len(tasks)}, процессов {worker_count}")
     completed = 0
     updated_rows: dict[int, dict] = {}
 
@@ -987,6 +998,8 @@ def regenerate_report_pages_mixed(
         emit(5 + 65 * (completed / len(tasks)), f"Перегенерация листов: {completed}/{len(tasks)}")
 
     try:
+        # Inside the try: a cancel raised by emit() must clean the staging dir too.
+        emit(5, f"Перегенерация листов со смешанными настройками: {len(tasks)}, процессов {worker_count}")
         _run_pair_tasks(tasks, worker_count, on_row, tick, cancel_cb)
     except BaseException:
         shutil.rmtree(staging_pages.parent, ignore_errors=True)
@@ -1065,6 +1078,11 @@ def compare_pdfs(
     cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
+        # Every stage is cancellable, not just the page tasks: a caller that
+        # passes only cancel_cb (no raising progress_cb) can still stop the run
+        # during alignment or report generation.
+        if cancel_cb is not None and cancel_cb():
+            raise RunCancelled("Операция отменена пользователем")
         if progress_cb is not None:
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 

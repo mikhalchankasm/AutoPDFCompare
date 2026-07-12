@@ -17,11 +17,13 @@ from tempfile import TemporaryDirectory
 
 import fitz
 
+from pdfcompare_core.pdf_io import find_pages_dir, find_summary_json_path, internal_dir
 from pdfcompare_core.runner import (
     RunCancelled,
     _init_pool_worker,
     compare_pdfs,
     process_pair_task,
+    regenerate_report_pages,
 )
 
 
@@ -240,6 +242,55 @@ class CancellationTests(unittest.TestCase):
 
             self.assertTrue(any("Сравнение листов 1/3" in m for m in messages), messages)
             self.assertFalse(any("Сравнение листов 2/3" in m for m in messages), messages)
+            self.assertEqual(list(out.glob("*")), [])
+
+
+    def test_cancelled_rerender_leaves_the_report_untouched(self) -> None:
+        # Cancelling a re-render must roll the run back: it swaps pages in place,
+        # so a half-applied cancel would corrupt an existing report.
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _make_pdf(tmp_path / "a.pdf", pages=2, extra=False)
+            _make_pdf(tmp_path / "b.pdf", pages=2, extra=True)
+            run_dir = compare_pdfs(
+                tmp_path / "a.pdf", tmp_path / "b.pdf", tmp_path / "runs", high_dpi=72, run_name="base"
+            )
+            summary_before = find_summary_json_path(run_dir).read_bytes()
+            pages_before = sorted(p.stat().st_size for p in find_pages_dir(run_dir).rglob("*.png"))
+
+            with self.assertRaises(RunCancelled):
+                regenerate_report_pages(
+                    run_dir, [1], high_dpi=200, report_lang="ru", workers=1, cancel_cb=lambda: True
+                )
+
+            self.assertEqual(find_summary_json_path(run_dir).read_bytes(), summary_before)
+            self.assertEqual(sorted(p.stat().st_size for p in find_pages_dir(run_dir).rglob("*.png")), pages_before)
+            self.assertEqual(list(internal_dir(run_dir).glob(".rerender_*")), [])
+
+    def test_cancel_cb_stops_stages_outside_the_page_loop(self) -> None:
+        # A core caller passing only cancel_cb (no raising progress_cb) must be
+        # able to cancel during alignment / report generation too, not just
+        # between pages.
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _make_pdf(tmp_path / "a.pdf", pages=1, extra=False)
+            _make_pdf(tmp_path / "b.pdf", pages=1, extra=True)
+            out = tmp_path / "runs"
+            # A single page means the page loop is entered exactly once; flipping
+            # the flag only after several emits lands us in a later stage.
+            flag = _Flag(after=3)
+
+            with self.assertRaises(RunCancelled):
+                compare_pdfs(
+                    tmp_path / "a.pdf",
+                    tmp_path / "b.pdf",
+                    out,
+                    high_dpi=72,
+                    run_name="cancelled",
+                    workers=1,
+                    cancel_cb=flag.is_set,
+                )
+
             self.assertEqual(list(out.glob("*")), [])
 
 
