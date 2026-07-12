@@ -129,6 +129,7 @@ python compare_pdfs.py --old old.pdf --new new.pdf --bbox-merge-gap-mm 5 --keep-
 - Skill-гайд для агентов — [docs/PDFCOMPARE_AGENT_SKILL.md](docs/PDFCOMPARE_AGENT_SKILL.md)
 - История изменений — [CHANGELOG.md](CHANGELOG.md)
 - Процесс релиза — [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)
+- Промпт для ревью репозитория — [docs/REVIEW_PROMPT.md](docs/REVIEW_PROMPT.md)
 
 ## License
 
