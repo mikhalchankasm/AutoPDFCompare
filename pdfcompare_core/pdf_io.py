@@ -46,9 +46,29 @@ def safe_download_file_name(raw_name: str, suffix: str = ".png") -> str:
     return name
 
 
-def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
+def capped_render_dpi(page: fitz.Page, dpi: float) -> float:
+    """Largest DPI <= requested that keeps the raster within MAX_RENDER_MEGAPIXELS.
+
+    Computed from the page geometry BEFORE get_pixmap, so the guard prevents
+    the huge allocation itself — not just the downstream diff buffers. Callers
+    that derive physical metrics (mm zones, mm² areas) must use this effective
+    DPI, not the requested one.
+    """
+    requested = float(dpi)
+    if requested <= 0:
+        raise ValueError(f"DPI должен быть положительным: {dpi!r}")
+    rect = page.rect
+    width_px = float(rect.width) * requested / 72.0
+    height_px = float(rect.height) * requested / 72.0
+    megapixels = width_px * height_px / 1_000_000.0
+    if megapixels <= MAX_RENDER_MEGAPIXELS:
+        return requested
+    return requested * (MAX_RENDER_MEGAPIXELS / megapixels) ** 0.5
+
+
+def render_page(doc: fitz.Document, page_index: int, dpi: float) -> np.ndarray:
     page = doc[page_index]
-    zoom = dpi / 72.0
+    zoom = capped_render_dpi(page, dpi) / 72.0
     # Force a predictable pixel format for downstream OpenCV code:
     # - consistent 3-channel output (BGR)
     # - avoid crashes on grayscale PDFs (n == 1) or unexpected channel order.
@@ -68,10 +88,9 @@ def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
         arr = arr[:, :, :3]
         img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
-    # Guard against memory blow-ups on very large pages (e.g. A0/A1 at high
-    # DPI). The diff pipeline allocates several full-frame float32 buffers;
-    # capping the raster area keeps peak memory bounded. Downscaling is area-
-    # interpolated to preserve stroke geometry.
+    # Safety net only: capped_render_dpi above keeps the raster within the
+    # megapixel budget before allocation; this residual downscale covers
+    # rounding and any exotic pixmap the pre-cap could not predict.
     h, w = img.shape[:2]
     megapixels = (w * h) / 1_000_000.0
     if megapixels > MAX_RENDER_MEGAPIXELS:
@@ -82,9 +101,9 @@ def render_page(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
     return img
 
 
-def render_page_gray(doc: fitz.Document, page_index: int, dpi: int) -> np.ndarray:
+def render_page_gray(doc: fitz.Document, page_index: int, dpi: float) -> np.ndarray:
     page = doc[page_index]
-    zoom = dpi / 72.0
+    zoom = capped_render_dpi(page, dpi) / 72.0
     pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, colorspace=fitz.csGRAY)
     arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
     if pix.n == 1:

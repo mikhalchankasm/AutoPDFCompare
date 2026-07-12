@@ -21,7 +21,7 @@ import numpy as np
 
 from .alignment import align_ecc, align_pages_v1
 from .classification import classify
-from .constants import APP_NAME, APP_VERSION, LIVE_REPORT_EVENT_PREFIX
+from .constants import APP_NAME, APP_VERSION, LIVE_REPORT_EVENT_PREFIX, MAX_RENDER_DPI, MIN_RENDER_DPI
 from .diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff_detailed, harmonize_canvas
 from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes, normalize_exclude_regions
 from .html_report import generate_html_report
@@ -31,6 +31,7 @@ from .models import MatchPair
 from .pdf_io import (
     atomic_write_text,
     build_page_info,
+    capped_render_dpi,
     find_pages_dir,
     find_summary_json_path,
     imwrite_compat,
@@ -110,6 +111,28 @@ def build_run_dir(out_dir: Path, report_lang: str, run_name: str | None = None) 
     return out_dir / f"Comparison_{date_str}_{time_str}_{unique_suffix}"
 
 
+def _quarantine_failed_run(run_dir: Path) -> None:
+    """Rename a partial run to <name>.failed-<suffix> (best effort: delete)."""
+    try:
+        if not run_dir.exists():
+            return
+        suffix = f"failed-{datetime.now().strftime('%H%M%S')}_{uuid4().hex[:4]}"
+        run_dir.rename(run_dir.with_name(f"{run_dir.name}.{suffix}"))
+    except OSError:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def validate_render_dpi(value: object) -> int:
+    """Uniform DPI validation for GUI, CLI, MCP, and re-render paths."""
+    try:
+        dpi = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"DPI должен быть целым числом, получено: {value!r}") from exc
+    if not (MIN_RENDER_DPI <= dpi <= MAX_RENDER_DPI):
+        raise ValueError(f"DPI должен быть в диапазоне {MIN_RENDER_DPI}–{MAX_RENDER_DPI}, получено: {dpi}")
+    return dpi
+
+
 def resolve_worker_count(requested: int | None, total_pairs: int) -> int:
     if total_pairs <= 1:
         return 1
@@ -174,6 +197,7 @@ def process_pair_task(
         "excluded_regions_count": 0,
         "diff_strictness": diff_strictness,
         "high_dpi": int(high_dpi),
+        "effective_dpi": None,
         "stroke_tol_px": float(stroke_tol_px),
         "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
         "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
@@ -196,8 +220,17 @@ def process_pair_task(
 
     with fitz.open(file_a) as doc_a, fitz.open(file_b) as doc_b:
         if status == "matched" and a_idx is not None and b_idx is not None:
-            a_img = render_page(doc_a, a_idx, high_dpi)
-            b_img = render_page(doc_b, b_idx, high_dpi)
+            # Shared effective DPI for the pair: the megapixel cap is applied
+            # BEFORE rendering, and every physical metric downstream (mm zones,
+            # bbox gap, mm² areas) must use the DPI the rasters actually have —
+            # not the requested one, which the cap may have reduced.
+            effective_dpi = min(
+                capped_render_dpi(doc_a[a_idx], high_dpi),
+                capped_render_dpi(doc_b[b_idx], high_dpi),
+            )
+            entry["effective_dpi"] = round(float(effective_dpi), 2)
+            a_img = render_page(doc_a, a_idx, effective_dpi)
+            b_img = render_page(doc_b, b_idx, effective_dpi)
             remember_shape(a_img)
             harmonized = harmonize_canvas(a_img, b_img)
             if harmonized is None:
@@ -211,16 +244,16 @@ def process_pair_task(
             b_aligned, ecc_ok = align_ecc(a_h, b_h)
             entry["ecc_failed"] = not ecc_ok
             pixel_exclusions = exclusion_regions_to_pixel_boxes(
-                exclude_regions or [], a_h.shape[1], a_h.shape[0], dpi=high_dpi
+                exclude_regions or [], a_h.shape[1], a_h.shape[0], dpi=effective_dpi
             )
-            bbox_merge_gap_px = int(round(max(0.0, float(bbox_merge_gap_mm)) * float(high_dpi) / 25.4))
+            bbox_merge_gap_px = int(round(max(0.0, float(bbox_merge_gap_mm)) * float(effective_dpi) / 25.4))
             mask, overlay, bboxes, metrics = compute_diff_detailed(
                 a_h,
                 b_aligned,
                 stroke_tol_px=stroke_tol_px,
                 exclude_regions=exclude_regions,
                 diff_strictness=diff_strictness,
-                render_dpi=high_dpi,
+                render_dpi=effective_dpi,
                 bbox_merge_gap_px=bbox_merge_gap_px,
                 bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
             )
@@ -271,12 +304,15 @@ def process_pair_task(
             return finish()
 
         if a_idx is not None:
+            entry["effective_dpi"] = round(float(capped_render_dpi(doc_a[a_idx], high_dpi)), 2)
             a_full = render_page(doc_a, a_idx, high_dpi)
             remember_shape(a_full)
             a_prev = render_page(doc_a, a_idx, 120)
             imwrite_compat(pair_dir / "a.png", a_full)
             imwrite_compat(pair_dir / "a_preview.png", a_prev)
         if b_idx is not None:
+            if entry["effective_dpi"] is None:
+                entry["effective_dpi"] = round(float(capped_render_dpi(doc_b[b_idx], high_dpi)), 2)
             b_full = render_page(doc_b, b_idx, high_dpi)
             if entry["width_px"] is None:
                 remember_shape(b_full)
@@ -416,12 +452,61 @@ def _staging_pages_dir(run_dir: Path) -> Path:
     return pages_dir
 
 
-def _replace_page_dirs_from_staging(run_dir: Path, live_pages_dir: Path, staging_pages_dir: Path, rows: Sequence[dict]) -> None:
+class _RunUpdateTransaction:
+    """Keeps page backups and pre-update copies of run metadata alive until the
+    whole re-render (pages + summary/CSV/MD + HTML) has succeeded.
+
+    The old implementation deleted the backups right after swapping the page
+    directories, so a failure while writing summary.json or the HTML report
+    left the run half-updated with no way back.
+    """
+
+    def __init__(self, staging_root: Path) -> None:
+        self.staging_root = staging_root
+        self.swapped: list[tuple[Path, Path]] = []  # (live_dir, backup_dir)
+        self.installed: list[Path] = []
+        self.preserved: list[tuple[Path, Path]] = []  # (original, backup_copy)
+
+    def preserve_file(self, path: Path) -> None:
+        """Snapshot a metadata file so rollback() can restore its old content."""
+        if not path.exists() or any(original == path for original, _copy in self.preserved):
+            return
+        backup_dir = self.staging_root / "backup_files"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup = backup_dir / f"{len(self.preserved):02d}_{path.name}"
+        shutil.copy2(path, backup)
+        self.preserved.append((path, backup))
+
+    def commit(self) -> None:
+        shutil.rmtree(self.staging_root, ignore_errors=True)
+
+    def rollback(self) -> None:
+        for dst in reversed(self.installed):
+            shutil.rmtree(dst, ignore_errors=True)
+        for dst, backup in reversed(self.swapped):
+            if backup.exists() and not dst.exists():
+                backup.rename(dst)
+        for original, backup in reversed(self.preserved):
+            try:
+                shutil.copy2(backup, original)
+            except OSError:
+                pass
+        shutil.rmtree(self.staging_root, ignore_errors=True)
+
+
+def _replace_page_dirs_from_staging(
+    run_dir: Path, live_pages_dir: Path, staging_pages_dir: Path, rows: Sequence[dict]
+) -> _RunUpdateTransaction:
+    """Swap freshly rendered page dirs into the live run.
+
+    Returns an open transaction: the caller must finish the remaining run
+    updates (summary, CSV, HTML) and then call ``commit()``, or ``rollback()``
+    on failure to restore the pre-swap state.
+    """
     live_root = live_pages_dir.resolve()
-    backup_root = staging_pages_dir.parent / "backup_pages"
+    txn = _RunUpdateTransaction(staging_pages_dir.parent)
+    backup_root = txn.staging_root / "backup_pages"
     backup_root.mkdir(parents=True, exist_ok=True)
-    swapped: list[tuple[Path, Path]] = []
-    installed: list[Path] = []
     try:
         for row in rows:
             pair_name = str(row.get("pair_dir") or "")
@@ -438,22 +523,13 @@ def _replace_page_dirs_from_staging(run_dir: Path, live_pages_dir: Path, staging
                 if backup.exists():
                     shutil.rmtree(backup)
                 dst.rename(backup)
-                swapped.append((dst, backup))
+                txn.swapped.append((dst, backup))
             src.rename(dst)
-            installed.append(dst)
+            txn.installed.append(dst)
     except Exception:
-        for dst in reversed(installed):
-            if dst.exists():
-                shutil.rmtree(dst)
-        for dst, backup in reversed(swapped):
-            if backup.exists() and not dst.exists():
-                backup.rename(dst)
+        txn.rollback()
         raise
-    finally:
-        try:
-            shutil.rmtree(staging_pages_dir.parent)
-        except FileNotFoundError:
-            pass
+    return txn
 
 
 def regenerate_report_pages(
@@ -508,7 +584,7 @@ def regenerate_report_pages(
     if missing:
         raise RuntimeError(f"Не найдены листы в отчёте: {', '.join(map(str, missing))}")
 
-    dpi = int(high_dpi)
+    dpi = validate_render_dpi(high_dpi)
     tol = float(stroke_tol_px if stroke_tol_px is not None else payload.get("stroke_tol_px", 2.0))
     exclusions = normalize_exclude_regions(exclude_regions if exclude_regions is not None else payload.get("exclude_regions"))
     strictness = str(diff_strictness or payload.get("diff_strictness") or "normal")
@@ -562,7 +638,6 @@ def regenerate_report_pages(
     emit(5, f"Перегенерация листов: {len(tasks)}, DPI {dpi}, процессов {worker_count}")
     completed = 0
     updated_rows: dict[int, dict] = {}
-    swapped_pages = False
     try:
         if worker_count <= 1:
             for task in tasks:
@@ -581,43 +656,55 @@ def regenerate_report_pages(
                         5 + 65 * (completed / len(tasks)),
                         f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})",
                     )
-        _replace_page_dirs_from_staging(run_dir, pages_dir, staging_pages, list(updated_rows.values()))
-        swapped_pages = True
-    finally:
-        if not swapped_pages:
-            shutil.rmtree(staging_pages.parent, ignore_errors=True)
+    except BaseException:
+        shutil.rmtree(staging_pages.parent, ignore_errors=True)
+        raise
 
-    for idx, row in enumerate(details):
-        seq = required_seq(row)
-        if seq in updated_rows:
-            details[idx] = updated_rows[seq]
-    details.sort(key=required_seq)
+    txn = _replace_page_dirs_from_staging(run_dir, pages_dir, staging_pages, list(updated_rows.values()))
+    try:
+        # Snapshot metadata before overwriting so any failure below restores a
+        # fully consistent run (pages + summary + reports).
+        txn.preserve_file(find_summary_json_path(run_dir))
+        txn.preserve_file(summary_json_path(run_dir))
+        txn.preserve_file(page_map_csv_path(run_dir))
+        txn.preserve_file(internal_dir(run_dir) / "summary.md")
+        txn.preserve_file(internal_dir(run_dir) / "engineer_report.md")
 
-    emit(75, "Обновление summary.json и CSV")
-    _write_run_summary_files(
-        run_dir,
-        file_a,
-        file_b,
-        details,
-        dpi,
-        tol,
-        report_lang,
-        exclusions,
-        strictness,
-        merge_gap_mm,
-        merge_max_area_ratio,
-    )
-    emit(82, "Пересборка HTML отчёта")
-    generate_html_report(
-        run_dir,
-        file_a,
-        file_b,
-        details,
-        high_dpi=dpi,
-        stroke_tol_px=tol,
-        report_lang=report_lang,
-        progress_cb=lambda p, msg: emit(82 + 17 * (p / 100.0), msg),
-    )
+        for idx, row in enumerate(details):
+            seq = required_seq(row)
+            if seq in updated_rows:
+                details[idx] = updated_rows[seq]
+        details.sort(key=required_seq)
+
+        emit(75, "Обновление summary.json и CSV")
+        _write_run_summary_files(
+            run_dir,
+            file_a,
+            file_b,
+            details,
+            dpi,
+            tol,
+            report_lang,
+            exclusions,
+            strictness,
+            merge_gap_mm,
+            merge_max_area_ratio,
+        )
+        emit(82, "Пересборка HTML отчёта")
+        generate_html_report(
+            run_dir,
+            file_a,
+            file_b,
+            details,
+            high_dpi=dpi,
+            stroke_tol_px=tol,
+            report_lang=report_lang,
+            progress_cb=lambda p, msg: emit(82 + 17 * (p / 100.0), msg),
+        )
+        txn.commit()
+    except BaseException:
+        txn.rollback()
+        raise
     emit(100, "Готово")
     return run_dir
 
@@ -707,7 +794,7 @@ def regenerate_report_pages_mixed(
     for spec in page_settings:
         if not isinstance(spec, dict):
             raise RuntimeError("Каждая настройка страницы должна быть объектом")
-        spec_dpi = int(spec.get("dpi", spec.get("high_dpi", high_dpi)))
+        spec_dpi = validate_render_dpi(spec.get("dpi", spec.get("high_dpi", high_dpi)))
         spec_tol = float(spec.get("stroke_tol", spec.get("stroke_tol_px", default_tol)))
         spec_strictness = str(spec.get("diff_strictness", default_strictness)).strip().lower()
         if spec_strictness not in DIFF_STRICTNESS_CHOICES:
@@ -771,7 +858,6 @@ def regenerate_report_pages_mixed(
     emit(5, f"Перегенерация листов со смешанными настройками: {len(tasks)}, процессов {worker_count}")
     completed = 0
     updated_rows: dict[int, dict] = {}
-    swapped_pages = False
     try:
         if worker_count <= 1:
             for task in tasks:
@@ -792,51 +878,61 @@ def regenerate_report_pages_mixed(
                         5 + 65 * (completed / len(tasks)),
                         f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})",
                     )
-        _replace_page_dirs_from_staging(run_dir, pages_dir, staging_pages, list(updated_rows.values()))
-        swapped_pages = True
-    finally:
-        if not swapped_pages:
-            shutil.rmtree(staging_pages.parent, ignore_errors=True)
+    except BaseException:
+        shutil.rmtree(staging_pages.parent, ignore_errors=True)
+        raise
 
-    for idx, row in enumerate(details):
-        seq = required_seq(row)
-        if seq in updated_rows:
-            details[idx] = updated_rows[seq]
-    details.sort(key=required_seq)
+    txn = _replace_page_dirs_from_staging(run_dir, pages_dir, staging_pages, list(updated_rows.values()))
+    try:
+        txn.preserve_file(find_summary_json_path(run_dir))
+        txn.preserve_file(summary_json_path(run_dir))
+        txn.preserve_file(page_map_csv_path(run_dir))
+        txn.preserve_file(internal_dir(run_dir) / "summary.md")
+        txn.preserve_file(internal_dir(run_dir) / "engineer_report.md")
 
-    emit(75, "Обновление summary.json и CSV")
-    _write_run_summary_files(
-        run_dir,
-        file_a,
-        file_b,
-        details,
-        int(high_dpi),
-        float(default_tol),
-        report_lang,
-        default_exclusions,
-        default_strictness,
-        default_merge_gap,
-        default_merge_ratio,
-    )
-    summary_payload = json.loads(summary_json_path(run_dir).read_text(encoding="utf-8"))
-    summary_payload["mixed_page_settings"] = [
-        {"seq": seq, **setting} for seq, setting in sorted(settings_by_seq.items())
-    ]
-    summary_payload["is_mixed_precision"] = True
-    summary_payload["mixed_precision_seqs"] = sorted(settings_by_seq)
-    atomic_write_text(summary_json_path(run_dir), json.dumps(summary_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        for idx, row in enumerate(details):
+            seq = required_seq(row)
+            if seq in updated_rows:
+                details[idx] = updated_rows[seq]
+        details.sort(key=required_seq)
 
-    emit(82, "Пересборка HTML отчёта")
-    generate_html_report(
-        run_dir,
-        file_a,
-        file_b,
-        details,
-        high_dpi=int(high_dpi),
-        stroke_tol_px=float(default_tol),
-        report_lang=report_lang,
-        progress_cb=lambda p, msg: emit(82 + 17 * (p / 100.0), msg),
-    )
+        emit(75, "Обновление summary.json и CSV")
+        _write_run_summary_files(
+            run_dir,
+            file_a,
+            file_b,
+            details,
+            int(high_dpi),
+            float(default_tol),
+            report_lang,
+            default_exclusions,
+            default_strictness,
+            default_merge_gap,
+            default_merge_ratio,
+        )
+        summary_payload = json.loads(summary_json_path(run_dir).read_text(encoding="utf-8"))
+        summary_payload["mixed_page_settings"] = [
+            {"seq": seq, **setting} for seq, setting in sorted(settings_by_seq.items())
+        ]
+        summary_payload["is_mixed_precision"] = True
+        summary_payload["mixed_precision_seqs"] = sorted(settings_by_seq)
+        atomic_write_text(summary_json_path(run_dir), json.dumps(summary_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        emit(82, "Пересборка HTML отчёта")
+        generate_html_report(
+            run_dir,
+            file_a,
+            file_b,
+            details,
+            high_dpi=int(high_dpi),
+            stroke_tol_px=float(default_tol),
+            report_lang=report_lang,
+            progress_cb=lambda p, msg: emit(82 + 17 * (p / 100.0), msg),
+        )
+        txn.commit()
+    except BaseException:
+        txn.rollback()
+        raise
     emit(100, "Готово")
     return run_dir
 
@@ -862,6 +958,7 @@ def compare_pdfs(
             progress_cb(float(max(0.0, min(100.0, pct))), msg)
 
     run_dir = build_run_dir(out_dir, report_lang, run_name)
+    high_dpi = validate_render_dpi(high_dpi)
     normalized_exclusions = normalize_exclude_regions(exclude_regions)
     strictness = str(diff_strictness or "normal").strip().lower()
     if strictness not in DIFF_STRICTNESS_CHOICES:
@@ -952,22 +1049,30 @@ def compare_pdfs(
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=worker_count) as executor:
                 future_map = {executor.submit(process_pair_task, *task): task[3] for task in tasks}
-                for future in concurrent.futures.as_completed(future_map):
-                    row = future.result()
-                    details.append(row)
-                    completed += 1
-                    write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
-                    write_live_html_report(
-                        run_dir,
-                        file_a,
-                        file_b,
-                        pairs,
-                        details,
-                        report_lang=report_lang,
-                        in_progress=True,
-                        write_detail_views=False,
-                    )
-                    emit(38 + 48 * (completed / total_pairs), compare_progress_message())
+                try:
+                    for future in concurrent.futures.as_completed(future_map):
+                        row = future.result()
+                        details.append(row)
+                        completed += 1
+                        write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
+                        write_live_html_report(
+                            run_dir,
+                            file_a,
+                            file_b,
+                            pairs,
+                            details,
+                            report_lang=report_lang,
+                            in_progress=True,
+                            write_detail_views=False,
+                        )
+                        emit(38 + 48 * (completed / total_pairs), compare_progress_message())
+                except BaseException:
+                    # Cancellation/errors surface via emit(); drop the queued
+                    # pages so "Отмена" doesn't keep grinding to the end —
+                    # only the pages already running finish.
+                    for pending in future_map:
+                        pending.cancel()
+                    raise
         details.sort(key=lambda row: int(row["seq"]))
         write_live_html_report(
             run_dir,
@@ -1011,4 +1116,8 @@ def compare_pdfs(
         # Cancellation is cooperative and may happen mid-run; drop partial artifacts.
         if str(exc) == "__CANCELLED__":
             shutil.rmtree(run_dir, ignore_errors=True)
+        else:
+            # Move the partial run aside so retrying with the same run_name
+            # isn't blocked by a half-written folder; keep it for debugging.
+            _quarantine_failed_run(run_dir)
         raise
