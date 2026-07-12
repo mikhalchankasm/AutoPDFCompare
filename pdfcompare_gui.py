@@ -149,6 +149,7 @@ class PDFCompareApp(
         self.lang_ru_btn: tk.Label | None = None
         self.lang_en_btn: tk.Label | None = None
         self.update_badge: tk.Label | None = None
+        self.check_updates_btn: tk.Label | None = None
         self.subtitle_label: ttk.Label | None = None
         self.tabs: ttk.Notebook | None = None
         self.compare_tab: ttk.Frame | None = None
@@ -475,21 +476,21 @@ class PDFCompareApp(
         self.lang_en_btn.pack(side=tk.LEFT)
         self.lang_en_btn.bind("<Button-1>", lambda _e: self._set_language("en"))
 
-        # Gear icon doubles as the manual "check for updates" affordance.
-        gear = tk.Label(
+        # "Check for updates" button — explicit refresh icon.
+        self.check_updates_btn = tk.Label(
             right_top,
-            text="⚙",
+            text="↻",
             width=3,
             height=1,
             bg=BG_CARD,
             fg=TEXT_SECONDARY,
             relief="solid",
             bd=1,
-            font=("Segoe UI", 12),
+            font=("Segoe UI", 13),
             cursor="hand2",
         )
-        gear.pack(side=tk.RIGHT, padx=(8, 6))
-        gear.bind("<Button-1>", lambda _e: self._check_for_updates_now())
+        self.check_updates_btn.pack(side=tk.RIGHT, padx=(8, 6))
+        self.check_updates_btn.bind("<Button-1>", lambda _e: self._check_for_updates_now())
 
         # Update badge — hidden until a newer release is found.
         self.update_badge = tk.Label(

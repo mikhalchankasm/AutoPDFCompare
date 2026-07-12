@@ -78,18 +78,20 @@ class ShouldCheckForUpdatesTests(unittest.TestCase):
         self.assertTrue(stub._should_check_for_updates())  # type: ignore[attr-defined]
 
     def test_checked_recently_returns_false(self) -> None:
-        recent = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        # Interval is 1 hour; 5 minutes ago is too recent.
+        recent = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
         stub = self._make_stub(enabled=True, last_checked_iso=recent)
         self.assertFalse(stub._should_check_for_updates())  # type: ignore[attr-defined]
 
     def test_checked_long_ago_returns_true(self) -> None:
-        old = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+        # 2 hours ago exceeds the 1-hour interval.
+        old = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
         stub = self._make_stub(enabled=True, last_checked_iso=old)
         self.assertTrue(stub._should_check_for_updates())  # type: ignore[attr-defined]
 
     def test_naive_timestamp_treated_as_utc(self) -> None:
         # A timestamp without tzinfo should be assumed UTC, not crash.
-        recent_naive = (datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None).isoformat()
+        recent_naive = (datetime.now(UTC) - timedelta(minutes=5)).replace(tzinfo=None).isoformat()
         stub = self._make_stub(enabled=True, last_checked_iso=recent_naive)
         self.assertFalse(stub._should_check_for_updates())  # type: ignore[attr-defined]
 

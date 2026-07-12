@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.11 - 2026-07-12
+
+### Changed
+- Update check interval reduced from 24 hours to 1 hour.
+- Replaced the gear (⚙) icon with an explicit refresh icon (↻) for "check for updates" in the header.
+
 ## v0.1.10 - 2026-07-12
 
 ### Changed

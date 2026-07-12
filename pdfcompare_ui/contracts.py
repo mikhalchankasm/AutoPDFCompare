@@ -99,6 +99,7 @@ class AppProtocol(Protocol):
     keep_debug_chip: ttk.Checkbutton | None
     exclude_pick_btn: ttk.Button | None
     update_badge: tk.Label | None
+    check_updates_btn: tk.Label | None
 
     # --- History-tab widgets ------------------------------------------- #
     history_tree: ttk.Treeview
