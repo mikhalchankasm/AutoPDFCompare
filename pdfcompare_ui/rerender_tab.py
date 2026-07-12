@@ -130,15 +130,15 @@ class RerenderTabMixin:
 
         table_frame = ttk.Frame(self.rerender_tab)
         table_frame.pack(fill=tk.BOTH, expand=True)
-        cols = ("seq", "a", "b", "level", "diff", "fg", "area", "boxes", "pixels", "time")
+        cols = ("seq", "a", "b", "level", "fg", "diff", "area", "boxes", "pixels", "time")
         self.rerender_tree = ttk.Treeview(table_frame, columns=cols, show="headings", selectmode="extended", style="History.Treeview")
         for col, key in (
             ("seq", "rerender_col_seq"),
             ("a", "rerender_col_a"),
             ("b", "rerender_col_b"),
             ("level", "rerender_col_level"),
-            ("diff", "rerender_col_diff"),
             ("fg", "rerender_col_fg"),
+            ("diff", "rerender_col_diff"),
             ("area", "rerender_col_area"),
             ("boxes", "rerender_col_boxes"),
             ("pixels", "rerender_col_pixels"),
@@ -149,8 +149,8 @@ class RerenderTabMixin:
         self.rerender_tree.column("a", width=70, minwidth=60, anchor="center")
         self.rerender_tree.column("b", width=70, minwidth=60, anchor="center")
         self.rerender_tree.column("level", width=150, minwidth=100, anchor="w")
-        self.rerender_tree.column("diff", width=90, minwidth=70, anchor="center")
         self.rerender_tree.column("fg", width=90, minwidth=70, anchor="center")
+        self.rerender_tree.column("diff", width=90, minwidth=70, anchor="center")
         self.rerender_tree.column("area", width=90, minwidth=70, anchor="center")
         self.rerender_tree.column("boxes", width=80, minwidth=60, anchor="center")
         self.rerender_tree.column("pixels", width=120, minwidth=90, anchor="e")
@@ -227,8 +227,8 @@ class RerenderTabMixin:
                     row.get("a_page") or "-",
                     row.get("b_page") or "-",
                     level,
-                    diff_text,
                     fg_text,
+                    diff_text,
                     area_text,
                     row.get("bboxes_count") if row.get("bboxes_count") is not None else "",
                     pixels_text,
