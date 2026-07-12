@@ -1,9 +1,8 @@
 # Changelog
 
-## v0.1.12 - 2026-07-12
+## v0.1.13 - 2026-07-12
 
 ### Added
-- Slider report sidebar is now **pinned by default**: the sheet navigation panel is visible on the left and pushes the comparison content to the right, so you can click any sheet without hovering the edge. A 📌 button in the panel header toggles to the previous floating (hover-to-open) mode. The pin state persists across pages via localStorage.
 - **Exclusion picker rework**: the visual exclude-region dialog now shows a millimetre grid overlay (off/5/10/25/50 mm step), auto-detects the paper format (A4/A3/A2/A1/A0, with manual override for scans whose nominal size differs), and displays a live size label in mm while drawing. Drawn boxes can be selected, moved, resized via 8 handles, and deleted (Del); each box shows its size in mm. Multi-page PDFs get a page switcher. Regions already present in the "Exclude regions" field open as editable boxes, and OK writes the edited set back (so zones can also be removed).
 - **Region anchors in the picker**: each zone can be anchored to any page corner (↖/↗/↙/↘). A bottom-right-anchored stamp zone stays in place on sheets of different formats. The anchored corner is marked on the box; the size label and the toolbar readout show offsets from that corner. Anchored sets are written to the field as JSON (`unit: percent`, `anchor: …`); plain top-left sets keep the old `x,y,w,h` text.
 - **Exclude picker in the re-render tab**: the uniform "Exclude regions" field got the same picker button. It opens the loaded run's old PDF (the selected row's page when exactly one row is selected) with the field's current zones pre-loaded for editing.
@@ -12,7 +11,13 @@
 - Pinned sidebar squeezed the whole slider view into the 48px header row: the comparison stage collapsed to the top and auto-fit zoomed to ~1%. The main column now owns the header/stage/controls rows itself; the page grid only splits sidebar/content columns.
 - Pin state was not saved to localStorage due to an undefined variable in the pin handler (also broke the button label update).
 - Toggling the pin now re-fits the image to the new viewport width after the sidebar transition.
+- Slider header no longer overlaps: the title metrics clip with an ellipsis and button labels collapse to icons when the content column is narrow (container queries).
 - Embedded slider (iframe on the sheet view page) no longer reserves the 300px pinned sidebar column; the drawer is hidden in embed mode.
+
+## v0.1.12 - 2026-07-12
+
+### Added
+- Slider report sidebar is now **pinned by default**: the sheet navigation panel is visible on the left and pushes the comparison content to the right, so you can click any sheet without hovering the edge. A 📌 button in the panel header toggles to the previous floating (hover-to-open) mode. The pin state persists across pages via localStorage.
 
 ## v0.1.11 - 2026-07-12
 
