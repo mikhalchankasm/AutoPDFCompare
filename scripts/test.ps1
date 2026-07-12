@@ -8,6 +8,9 @@ $python = if (Test-Path $venvPython) { $venvPython } else { "python" }
 Push-Location $repo
 try {
     & $python -m pytest
+    if ($LASTEXITCODE -ne 0) {
+        throw "pytest failed with exit code $LASTEXITCODE"
+    }
 }
 finally {
     Pop-Location

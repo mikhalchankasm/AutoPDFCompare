@@ -20,10 +20,10 @@ try {
     & $python -m ruff check compare_pdfs.py pdfcompare_gui.py pdfcompare_core pdfcompare_ui scripts tests
     if ($LASTEXITCODE -ne 0) { throw "ruff check failed" }
 
-    # mypy is informational — many cv2/tkinter false positives still to clean up.
-    # Set $env:LINT_STRICT_MYPY=1 to make mypy a hard gate.
+    # mypy is a hard gate (the tree is currently clean).
+    # Set $env:LINT_ALLOW_MYPY_FAIL=1 to temporarily downgrade it to informational.
     & $python -m mypy compare_pdfs.py pdfcompare_gui.py pdfcompare_core pdfcompare_ui
-    if ($env:LINT_STRICT_MYPY -eq "1" -and $LASTEXITCODE -ne 0) { throw "mypy failed" }
+    if ($env:LINT_ALLOW_MYPY_FAIL -ne "1" -and $LASTEXITCODE -ne 0) { throw "mypy failed" }
 }
 finally {
     Pop-Location

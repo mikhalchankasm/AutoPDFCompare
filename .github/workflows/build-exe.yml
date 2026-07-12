@@ -2,6 +2,9 @@ name: Build and Release
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - master
   push:
     branches:
       - master
@@ -19,12 +22,43 @@ on:
       - "pyproject.toml"
       - ".github/workflows/build-exe.yml"
 
+# Default: read-only. Only the build/publish job gets write access.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          if (-not (Test-Path requirements/dev.txt)) { throw "requirements/dev.txt is missing" }
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+          pip install -r requirements/mcp.txt
+
+      - name: Lint
+        run: .\scripts\lint.ps1
+
+      - name: Test
+        run: .\scripts\test.ps1
+
   build:
     runs-on: windows-latest
+    needs: test
+    # PRs only need the test gate; builds run on master pushes and tags.
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -43,12 +77,6 @@ jobs:
           pip install -r requirements/dev.txt
           pip install -r requirements/mcp.txt
 
-      - name: Lint
-        run: .\scripts\lint.ps1
-
-      - name: Test
-        run: .\scripts\test.ps1
-
       - name: Build EXE
         run: pyinstaller --noconfirm packaging/PDFCompareLocal.spec
 
@@ -65,6 +93,22 @@ jobs:
           & $iscc /DAppVersion=$version packaging/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
+      - name: Generate SHA256SUMS
+        shell: pwsh
+        run: |
+          $files = @(
+            "dist/PDFCompareLocal.exe",
+            "dist_portable/PDFCompareLocal-portable.zip",
+            "dist_installer/PDFCompareLocal-setup.exe"
+          )
+          $lines = foreach ($f in $files) {
+            if (-not (Test-Path $f)) { throw "Missing artifact: $f" }
+            $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+            "$hash  $(Split-Path $f -Leaf)"
+          }
+          Set-Content -Path SHA256SUMS.txt -Value $lines -Encoding ascii
+          Get-Content SHA256SUMS.txt
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -73,6 +117,7 @@ jobs:
             dist/PDFCompareLocal.exe
             dist_portable/PDFCompareLocal-portable.zip
             dist_installer/PDFCompareLocal-setup.exe
+            SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Publish version release (tag v*)
@@ -85,5 +130,6 @@ jobs:
             dist/PDFCompareLocal.exe
             dist_portable/PDFCompareLocal-portable.zip
             dist_installer/PDFCompareLocal-setup.exe
+            SHA256SUMS.txt
           fail_on_unmatched_files: true
           body_path: docs/releases/${{ github.ref_name }}.md
