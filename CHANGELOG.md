@@ -1,13 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.1.15 - 2026-07-13
 
-Fixes driven by an external repository review (all P1 findings and most P2 confirmed and addressed).
+Fixes driven by an external repository review (all P1 findings and most P2 confirmed and addressed). Note: the fixes below landed after the `v0.1.14` tag, so the artifacts published as `v0.1.14` do **not** contain them — this is the first release that does.
 
 ### Fixed
 - **Render megapixel cap is now applied before rasterization**: the effective DPI is computed from the page geometry before `get_pixmap`, so an A0 sheet at high DPI no longer allocates a multi-gigabyte raster that was only downscaled afterwards.
 - **Physical metrics honor the effective DPI**: when the cap reduces the render DPI, mm² areas, mm-based exclusion zones, and the bbox merge gap are computed from the DPI the raster actually has (previously they silently used the requested DPI — areas were understated up to ~2.4× on A0 at 250 DPI, and mm zones drifted). `summary.json` rows now record both `high_dpi` (requested) and `effective_dpi`.
 - **Re-rendering is transactional**: page backups and pre-update copies of summary/CSV/MD now live until the whole update (pages + summary + HTML) succeeds; any failure rolls the run back to a fully consistent state. Previously the backups were deleted right after the page swap, so a failure while writing summary.json left new PNGs with stale metadata.
+- **The report bundle and `start.html` are published together**: the previous report is kept in a backup until the new `start.html` has been written, so a failure in that last step no longer leaves a new report bundle behind a stale entry point while the pages and summary are rolled back. Covered by a failpoint test that hashes pages, summary, the whole report bundle and `start.html`.
 - **A failed comparison no longer blocks its run name**: the partial run folder is renamed to `<name>.failed-…` (kept for debugging), so the same name can be retried immediately.
 - **`scripts/test.ps1` propagates the pytest exit code** — CI can no longer publish a release with failing tests; mypy is now a hard lint gate too.
 - **Cancelling a comparison stops queued pages**: pending ProcessPool futures are cancelled on cancel/error instead of grinding to the end.

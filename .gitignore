@@ -9,6 +9,10 @@ __pycache__/
 *.pyo
 *.pyd
 
+.coverage
+.pytest_cache/
+htmlcov/
+
 build/
 build_*/
 runs/

@@ -2854,22 +2854,39 @@ def generate_html_report(
             (views_dir / slider_file).write_text(slider_html, encoding="utf-8")
         emit(66 + 32 * (view_idx / total_views), t["progress_generate_view"].format(idx=view_idx, total=total_views))
 
+    # The report bundle and start.html are published together: the previous
+    # bundle stays in a backup until start.html has been written, so a failure
+    # anywhere in the swap leaves the run with its old, self-consistent report
+    # instead of a new bundle behind a stale entry point (or none at all).
     backup_bundle_dir = internal_dir(run_dir) / f".report_backup_{uuid4().hex}"
+    start_path = run_dir / START_REPORT_FILE
+    backup_start_path = internal_dir(run_dir) / f".start_backup_{uuid4().hex}.html"
+    had_bundle = final_bundle_dir.exists()
+    had_start = start_path.exists()
     try:
-        if final_bundle_dir.exists():
+        if had_bundle:
             final_bundle_dir.rename(backup_bundle_dir)
+        if had_start:
+            os.replace(start_path, backup_start_path)
         bundle_dir.rename(final_bundle_dir)
-        if backup_bundle_dir.exists():
-            shutil.rmtree(backup_bundle_dir)
+        write_start_page(run_dir, report_lang)
     except Exception:
+        # Put the previous report back. If it cannot be restored, the backup is
+        # deliberately left on disk: it is the only remaining copy.
         if final_bundle_dir.exists():
-            shutil.rmtree(final_bundle_dir)
-        if backup_bundle_dir.exists() and not final_bundle_dir.exists():
+            shutil.rmtree(final_bundle_dir, ignore_errors=True)
+        if had_bundle and backup_bundle_dir.exists() and not final_bundle_dir.exists():
             backup_bundle_dir.rename(final_bundle_dir)
+        if had_start and backup_start_path.exists():
+            os.replace(backup_start_path, start_path)
+        elif not had_start and start_path.exists():
+            start_path.unlink()
         if bundle_dir.exists():
-            shutil.rmtree(bundle_dir)
+            shutil.rmtree(bundle_dir, ignore_errors=True)
         raise
 
-    write_start_page(run_dir, report_lang)
+    if backup_bundle_dir.exists():
+        shutil.rmtree(backup_bundle_dir, ignore_errors=True)
+    backup_start_path.unlink(missing_ok=True)
     emit(100, t["progress_ready"])
     return run_dir / START_REPORT_FILE
