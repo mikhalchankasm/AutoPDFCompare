@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.14 - 2026-07-12
 
 ### Added
 - **Windows installer** (`PDFCompareLocal-setup.exe`, Inno Setup): per-user install without admin rights, Start menu / desktop shortcuts, clean uninstall, in-place upgrades. Built by CI and attached to every release.
