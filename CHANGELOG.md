@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Windows installer** (`PDFCompareLocal-setup.exe`, Inno Setup): per-user install without admin rights, Start menu / desktop shortcuts, clean uninstall, in-place upgrades. Built by CI and attached to every release.
+- **In-app auto-update**: when a new release is available, the packaged app offers "Download and install now" — it downloads the installer, updates silently (`/SILENT`) and restarts itself. Running from source keeps the previous "open the release page" flow; the version can still be skipped.
+- **MCP: text forms for exclude zones** — `start_pdf_comparison` and `rerender_pdf_comparison_pages` accept `exclude_regions` as text (percent `"x,y,w,h;…"` or JSON with `unit`/`anchor`) in addition to object lists, matching the GUI field exactly; an empty string on re-render means "inherit". Tool docstrings and the agent prompt document all forms.
+- **MCP: picker parity** — `pick_pdf_exclude_region` now opens the same visual editor as the GUI (mm grid, paper formats, multiple regions, move/resize, per-region corner anchors) and returns an `exclude_regions` list; `existing` zones open for editing, `anchor` preselects the anchor for new boxes.
+
+### Changed
+- README redesigned: annotated GUI screenshot with a numbered zone legend, install options table (installer / portable EXE / from source), exclude-zone syntax reference with mm/anchor examples, report overview, and update behavior.
+
 ## v0.1.13 - 2026-07-12
 
 ### Added
