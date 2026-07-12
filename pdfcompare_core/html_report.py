@@ -16,7 +16,8 @@ import fitz
 
 from .classification import level_to_report_tags, status_and_confidence
 from .constants import (
-    MINOR_DIFF_PERCENT,
+    FG_MINOR_PERCENT,
+    FG_MODERATE_PERCENT,
     PAGE_INFO_THUMB_DPI,
     START_REPORT_FILE,
     UNCHANGED_DIFF_PERCENT,
@@ -1035,8 +1036,24 @@ def _prepare_pages_records(
         else:
             status_simple = "CHANGED"
             status_ru = t["status_changed_short"]
-            d = row.get("diff_percent") or 0.0
-            note = t["note_visual_changes"].format(d=d)
+            fg = row.get("diff_foreground_percent")
+            area = row.get("diff_area_mm2")
+            n_zones = row.get("bboxes_count")
+            max_region = row.get("max_region_area_mm2")
+            sparse = bool(row.get("foreground_sparse") or False)
+            if sparse or fg is None:
+                note = t["note_visual_changes_sparse"].format(
+                    area=float(area or 0),
+                    n=int(n_zones or 0),
+                    max=float(max_region or 0),
+                )
+            else:
+                note = t["note_visual_changes"].format(
+                    fg=float(fg),
+                    area=float(area or 0),
+                    n=int(n_zones or 0),
+                    max=float(max_region or 0),
+                )
         if row.get("ecc_failed"):
             note = f"{note} {t['note_ecc_failed']}"
 
@@ -1058,6 +1075,7 @@ def _prepare_pages_records(
                 "diff_area_px": row.get("diff_area_px"),
                 "diff_area_mm2": row.get("diff_area_mm2"),
                 "diff_foreground_metric": row.get("diff_foreground_percent"),
+                "foreground_sparse": bool(row.get("foreground_sparse") or False),
                 "added_area_mm2": row.get("added_area_mm2"),
                 "removed_area_mm2": row.get("removed_area_mm2"),
                 "max_region_area_mm2": row.get("max_region_area_mm2"),
@@ -1339,23 +1357,26 @@ def generate_html_report(
             "REMOVED": "warn",
         }.get(status, "warn")
 
-    def heat_class(diff: float | None) -> str:
-        if diff is None or diff < UNCHANGED_DIFF_PERCENT:
+    def heat_class(fg: float | None) -> str:
+        if fg is None or fg < FG_MINOR_PERCENT:
             return "heat-ok"
-        if diff < MINOR_DIFF_PERCENT:
+        if fg < FG_MODERATE_PERCENT:
             return "heat-warn"
         return "heat-bad"
 
-    def diff_meter_html(diff: float | None) -> str:
-        if diff is None:
+    def fg_meter_html(fg: float | None, sparse: bool = False) -> str:
+        if fg is None:
             return '<span class="faint">—</span>'
-        width = diff * 16.0
+        if sparse:
+            return '<span class="faint">—</span>'
+        # Scale: 20% FG saturates the bar (20 * 5 = 100).
+        width = fg * 5.0
         return (
             '<div class="diff-wrap">'
             '<div class="diff-bar">'
-            f'<div class="diff-fill {heat_class(diff)}" style="width:clamp(2%, {width:.3f}%, 100%);"></div>'
+            f'<div class="diff-fill {heat_class(fg)}" style="width:clamp(2%, {width:.3f}%, 100%);"></div>'
             "</div>"
-            f'<span class="diff-num">{diff:.2f}%</span>'
+            f'<span class="diff-num">{fg:.2f}%</span>'
             "</div>"
         )
 
@@ -1403,6 +1424,7 @@ def generate_html_report(
         fg_diff_val = None if p.get("diff_foreground_metric") is None else float(p["diff_foreground_metric"])
         area_mm2_val = None if p.get("diff_area_mm2") is None else float(p["diff_area_mm2"])
         boxes_txt = "—" if p.get("bboxes_count") is None else str(int(p["bboxes_count"]))
+        fg_sparse = bool(p.get("foreground_sparse") or False)
         href = f"views/{p['view_file']}"
 
         thumb_old = p["assets"].get("thumb_old")
@@ -1428,8 +1450,8 @@ def generate_html_report(
             f"<td class='td-map map-cell'>{html.escape(a_idx)}{report_icon('arrow-right', 'ic map-icon', 14)}{html.escape(b_idx)}</td>"
             f"<td class='td-status'>{status_badge_html(status_tag)}{precision_badge}</td>"
             f"<td class='td-level'>{level_badge_html(level_tag)}</td>"
-            f"<td class='td-diff diff-cell'>{diff_meter_html(diff_val)}</td>"
-            f"<td class='td-fg'>{metric_percent_html(fg_diff_val)}</td>"
+            f"<td class='td-fg diff-cell'>{fg_meter_html(fg_diff_val, sparse=fg_sparse)}</td>"
+            f"<td class='td-diff'>{metric_percent_html(diff_val)}</td>"
             f"<td class='td-area'>{metric_area_html(area_mm2_val)}</td>"
             f"<td class='td-boxes'>{html.escape(boxes_txt)}</td>"
             f"<td class='td-preview'>{preview_html}</td>"
@@ -1580,8 +1602,8 @@ def generate_html_report(
             <th>A {report_icon("arrow-right", "ic map-icon", 14)} B</th>
             <th>{i18n_span_text("Статус", "Status")}</th>
             <th>{i18n_span_text("Уровень", "Level")}</th>
-            <th>Diff %</th>
-            <th>FG %</th>
+            <th>{i18n_span_text("Заполнено %", "Drawn %")}</th>
+            <th>{i18n_span_text("Лист %", "Sheet %")}</th>
             <th>mm²</th>
             <th>Δ</th>
             <th>{i18n_span_text("Превью", "Preview")}</th>
@@ -1602,10 +1624,10 @@ def generate_html_report(
         <div class="legend-row">{status_badge_html("ADDED")}<span>{i18n_span("legend_added_desc")}</span></div>
         <div class="legend-row">{status_badge_html("REMOVED")}<span>{i18n_span("legend_removed_desc")}</span></div>
         <div class="legend-row">{status_badge_html("UNCHANGED")}<span>{i18n_span_text("существенные изменения не обнаружены", "no significant changes detected")}</span></div>
-        <div class="legend-row">{level_badge_html("MAJOR")}<span>{i18n_span_text("≥ 5% - MAJOR", "≥ 5% - MAJOR")}</span></div>
-        <div class="legend-row">{level_badge_html("MODERATE")}<span>{i18n_span_text("< 5% - MODERATE", "< 5% - MODERATE")}</span></div>
-        <div class="legend-row">{level_badge_html("MINOR")}<span>{i18n_span_text("< 1% - MINOR", "< 1% - MINOR")}</span></div>
-        <div class="legend-row">{level_badge_html("UNCHANGED")}<span>{i18n_span_text("< 0.15% - UNCHANGED", "< 0.15% - UNCHANGED")}</span></div>
+        <div class="legend-row">{level_badge_html("MAJOR")}<span>{i18n_span_text("≥ 20% заполненного - MAJOR", "≥ 20% drawn - MAJOR")}</span></div>
+        <div class="legend-row">{level_badge_html("MODERATE")}<span>{i18n_span_text("≥ 8% заполненного - MODERATE", "≥ 8% drawn - MODERATE")}</span></div>
+        <div class="legend-row">{level_badge_html("MINOR")}<span>{i18n_span_text("≥ 1% заполненного - MINOR", "≥ 1% drawn - MINOR")}</span></div>
+        <div class="legend-row">{level_badge_html("UNCHANGED")}<span>{i18n_span_text("без зон изменений - UNCHANGED", "no change zones - UNCHANGED")}</span></div>
       </div>
     </details>
 
@@ -1758,7 +1780,7 @@ def generate_html_report(
         a_idx = "-" if p["a_index"] is None else str(p["a_index"])
         b_idx = "-" if p["b_index"] is None else str(p["b_index"])
         diff_txt = "-" if p["diff_metric"] is None else f'{p["diff_metric"]:.3f}%'
-        fg_diff_txt = "-" if p.get("diff_foreground_metric") is None else f'{float(p["diff_foreground_metric"]):.2f}% FG'
+        fg_diff_txt = "-" if p.get("diff_foreground_metric") is None else f'{float(p["diff_foreground_metric"]):.2f}%'
         area_txt = "-" if p.get("diff_area_mm2") is None else f'{float(p["diff_area_mm2"]):.1f} mm²'
         old_src = f"../{p['assets']['hires_old']}" if p["assets"]["hires_old"] else None
         new_src = f"../{p['assets']['hires_new']}" if p["assets"]["hires_new"] else None
@@ -1869,7 +1891,7 @@ def generate_html_report(
       {status_badge_html(status_tag)}
       {level_badge_html(level_tag) if level_tag else ""}
       {detail_precision_badge}
-      <span class="muted">{i18n_span_text(f"· лист {diff_txt} · содержимое {fg_diff_txt} · {area_txt} · {boxes_text} областей", f"· page {diff_txt} · foreground {fg_diff_txt} · {area_txt} · {boxes_text} areas")}</span>
+      <span class="muted">{i18n_span_text(f"· заполнено {fg_diff_txt} · лист {diff_txt} · {area_txt} · {boxes_text} областей", f"· drawn {fg_diff_txt} · sheet {diff_txt} · {area_txt} · {boxes_text} areas")}</span>
       {detail_precision_text}
     </div>
     <div class="toolbar-right">
@@ -2056,6 +2078,7 @@ def generate_html_report(
                 nav_a = "—" if nav_p["a_index"] is None else f"A{nav_p['a_index']}"
                 nav_b = "—" if nav_p["b_index"] is None else f"B{nav_p['b_index']}"
                 nav_diff = "—" if nav_p["diff_metric"] is None else f'{nav_p["diff_metric"]:.3f}%'
+                nav_fg = "—" if nav_p.get("diff_foreground_metric") is None else f'{float(nav_p["diff_foreground_metric"]):.2f}%'
                 nav_boxes = "—" if nav_p["bboxes_count"] is None else str(nav_p["bboxes_count"])
                 nav_has_slider = bool(nav_p.get("slider_file"))
                 nav_href = str(nav_p["slider_file"] if nav_has_slider else nav_p["view_file"])
@@ -2068,7 +2091,7 @@ def generate_html_report(
                 nav_status_en = str(i18n["en"].get(status_key, nav_status_tag))
                 nav_search = (
                     f"{nav_p['view_ord']} {nav_a} {nav_b} {nav_p['status_ru']} {nav_status_tag} "
-                    f"{nav_level_tag} {nav_diff} {nav_boxes} {nav_p['notes']}"
+                    f"{nav_level_tag} {nav_fg} {nav_diff} {nav_boxes} {nav_p['notes']}"
                 ).lower()
                 nav_title_ru = (
                     "Слайдер недоступен для добавленных/удалённых листов"
@@ -2093,12 +2116,12 @@ def generate_html_report(
                 nav_meta_ru = (
                     "Слайдер недоступен · открыть страницу листа"
                     if not nav_has_slider
-                    else f"разница {nav_diff} · {nav_boxes} областей"
+                    else f"заполнено {nav_fg} · {nav_boxes} областей"
                 )
                 nav_meta_en = (
                     "Slider unavailable · open sheet page"
                     if not nav_has_slider
-                    else f"diff {nav_diff} · {nav_boxes} boxes"
+                    else f"drawn {nav_fg} · {nav_boxes} boxes"
                 )
                 nav_title = title_text(nav_title_ru, nav_title_en)
                 nav_aria = i18n_aria(nav_aria_ru, nav_aria_en)
@@ -2235,7 +2258,7 @@ def generate_html_report(
         <span>{i18n_span_text(f"Лист {view_idx} / {len(pages_records)}", f"Sheet {view_idx} / {len(pages_records)}")}</span>
         {status_badge_html(status_tag)}
         {level_badge_html(level_tag) if level_tag else ""}
-        <span class="muted">· {html.escape(diff_txt)}</span>
+        <span class="muted">· {html.escape(fg_diff_txt)} FG · {html.escape(diff_txt)}</span>
       </div>
       <div class="cmp-right">
         <div class="cmp-nav">
