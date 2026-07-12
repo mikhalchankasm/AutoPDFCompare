@@ -11,11 +11,14 @@ Run these commands from the repository root:
 ./scripts/test.ps1
 ./scripts/package_portable.ps1
 pyinstaller --noconfirm packaging/PDFCompareLocal.spec
+# Installer (requires Inno Setup 6; CI builds it automatically):
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=<version> packaging/installer.iss
 ```
 
 Expected local artifacts:
 - `dist/PDFCompareLocal.exe`
 - `dist_portable/PDFCompareLocal-portable.zip`
+- `dist_installer/PDFCompareLocal-setup.exe` (per-user installer; the app auto-updates by downloading this asset and running it with `/SILENT`)
 
 ## Tagged Release
 
@@ -30,7 +33,7 @@ git push origin master
 git push origin v<version>
 ```
 
-GitHub Actions builds the EXE and portable ZIP, then attaches both to the tagged release.
+GitHub Actions builds the EXE, portable ZIP, and installer, then attaches all three to the tagged release. The `PDFCompareLocal-setup.exe` asset name must not change — the in-app updater looks it up by that exact name.
 
 ## Manual Release Fallback
 
@@ -40,6 +43,7 @@ If Actions is unavailable and `gh` is authenticated:
 gh release create v<version> `
   dist/PDFCompareLocal.exe `
   dist_portable/PDFCompareLocal-portable.zip `
+  dist_installer/PDFCompareLocal-setup.exe `
   --title "PDFCompare Local v<version>" `
   --notes-file docs/releases/v<version>.md `
   --latest

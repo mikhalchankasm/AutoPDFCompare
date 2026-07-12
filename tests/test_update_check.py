@@ -106,6 +106,7 @@ class FetchLatestReleaseTests(unittest.TestCase):
         "assets": [
             {"name": "PDFCompareLocal.exe", "browser_download_url": "https://example.com/exe"},
             {"name": "PDFCompareLocal-portable.zip", "browser_download_url": "https://example.com/zip"},
+            {"name": "PDFCompareLocal-setup.exe", "browser_download_url": "https://example.com/setup"},
         ],
     }
 
@@ -122,7 +123,24 @@ class FetchLatestReleaseTests(unittest.TestCase):
         assert result is not None  # for type-checkers
         self.assertEqual(result["tag"], "v0.1.7")
         self.assertEqual(result["exe_url"], "https://example.com/exe")
+        self.assertEqual(result["setup_url"], "https://example.com/setup")
         self.assertEqual(result["html_url"], self.SAMPLE_PAYLOAD["html_url"])
+
+    def test_setup_url_empty_when_release_has_no_installer(self) -> None:
+        payload = dict(self.SAMPLE_PAYLOAD)
+        payload["assets"] = [
+            {"name": "PDFCompareLocal.exe", "browser_download_url": "https://example.com/exe"},
+        ]
+        body = io.BytesIO(json.dumps(payload).encode("utf-8"))
+        fake_resp = mock.MagicMock()
+        fake_resp.status = 200
+        fake_resp.read.return_value = body.read()
+        fake_resp.__enter__ = mock.MagicMock(return_value=fake_resp)
+        fake_resp.__exit__ = mock.MagicMock(return_value=False)
+        with mock.patch("pdfcompare_ui.update_check.urllib.request.urlopen", return_value=fake_resp):
+            result = fetch_latest_release(timeout=1.0)
+        assert result is not None
+        self.assertEqual(result["setup_url"], "")
 
     def test_returns_none_on_network_error(self) -> None:
         with mock.patch("pdfcompare_ui.update_check.urllib.request.urlopen", side_effect=Exception("timeout")):

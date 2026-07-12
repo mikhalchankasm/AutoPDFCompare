@@ -57,9 +57,11 @@ def latest_release_url() -> str:
 def fetch_latest_release(timeout: float = 8.0) -> dict[str, Any] | None:
     """Query the GitHub API for the latest release.
 
-    Returns ``{tag, name, html_url, exe_url, published_at, body}`` or ``None``
-    on any error (network, timeout, non-200, parse failure). Never raises —
-    update checks are best-effort and must not disturb the user.
+    Returns ``{tag, name, html_url, exe_url, setup_url, published_at, body}``
+    or ``None`` on any error (network, timeout, non-200, parse failure).
+    Never raises — update checks are best-effort and must not disturb the
+    user. ``setup_url`` points at the Inno Setup installer asset when the
+    release ships one; the GUI uses it for in-place auto-update.
     """
     try:
         req = urllib.request.Request(
@@ -83,10 +85,13 @@ def fetch_latest_release(timeout: float = 8.0) -> dict[str, Any] | None:
         published_at = str(data.get("published_at") or "")
         body = str(data.get("body") or "")
         exe_url = ""
+        setup_url = ""
         for asset in data.get("assets") or []:
-            if str(asset.get("name")) == "PDFCompareLocal.exe":
+            asset_name = str(asset.get("name"))
+            if asset_name == "PDFCompareLocal.exe":
                 exe_url = str(asset.get("browser_download_url") or "")
-                break
+            elif asset_name == "PDFCompareLocal-setup.exe":
+                setup_url = str(asset.get("browser_download_url") or "")
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -95,6 +100,7 @@ def fetch_latest_release(timeout: float = 8.0) -> dict[str, Any] | None:
         "name": name,
         "html_url": html_url,
         "exe_url": exe_url,
+        "setup_url": setup_url,
         "published_at": published_at,
         "body": body,
     }

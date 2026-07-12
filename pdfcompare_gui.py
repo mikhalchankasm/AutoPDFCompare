@@ -3,6 +3,8 @@ from __future__ import annotations
 import multiprocessing
 import os
 import queue
+import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -1506,8 +1508,17 @@ class PDFCompareApp(
                     version = str(event[1])
                     url = str(event[2])
                     name = str(event[3])
+                    setup_url = str(event[4]) if len(event) > 4 else ""
                     self._show_update_badge(version, url)
-                    self._show_update_dialog(version, url, name)
+                    self._show_update_dialog(version, url, name, setup_url)
+                elif kind == "update_downloaded":
+                    self._launch_update_installer(Path(str(event[1])))
+                elif kind == "update_download_failed":
+                    url = str(event[2]) if len(event) > 2 else ""
+                    self._set_status("status_update_download_failed")
+                    messagebox.showwarning(self._tr("dlg_update_title"), self._tr("dlg_update_download_failed"))
+                    if url:
+                        webbrowser.open(url)
                 elif kind == "update_uptodate":
                     manual = len(event) > 1 and bool(event[1])
                     if manual:
@@ -1551,6 +1562,7 @@ class PDFCompareApp(
                 tag,
                 release.get("html_url") or "",
                 release.get("name") or tag,
+                release.get("setup_url") or "",
             ))
         elif manual:
             self.worker_events.put(("update_uptodate", True))
@@ -1562,21 +1574,66 @@ class PDFCompareApp(
         self.update_badge.bind("<Button-1>", lambda _e, u=url: webbrowser.open(u))  # type: ignore[misc]
         self.update_badge.pack(side=tk.RIGHT, padx=(8, 6))
 
-    def _show_update_dialog(self, version: str, url: str, name: str) -> None:
+    def _show_update_dialog(self, version: str, url: str, name: str, setup_url: str = "") -> None:
         skip_version = str(self.update_check_state.get("skip_version") or "")
         if skip_version == version:
             return  # user previously dismissed this exact version
-        body = self._tr("dlg_update_body", version=version)
-        # askyesno returns True for Yes; we also offer Skip via a separate dialog flow.
-        if messagebox.askyesno(self._tr("dlg_update_title"), body):
-            webbrowser.open(url)
+        # In-place update only makes sense for the packaged exe; running from
+        # source keeps the old "open the release page" flow.
+        can_autoupdate = bool(setup_url) and bool(getattr(sys, "frozen", False))
+        if can_autoupdate:
+            if messagebox.askyesno(self._tr("dlg_update_title"), self._tr("dlg_update_install_body", version=version)):
+                self._download_update_installer(setup_url, url, version)
+                return
         else:
-            # Offer to skip this version so the dialog stops reappearing.
-            if messagebox.askyesno(
-                self._tr("dlg_update_title"),
-                self._tr("dlg_update_skip_prompt", version=version),
-            ):
-                self._skip_update_version(version)
+            body = self._tr("dlg_update_body", version=version)
+            if messagebox.askyesno(self._tr("dlg_update_title"), body):
+                webbrowser.open(url)
+                return
+        # Offer to skip this version so the dialog stops reappearing.
+        if messagebox.askyesno(
+            self._tr("dlg_update_title"),
+            self._tr("dlg_update_skip_prompt", version=version),
+        ):
+            self._skip_update_version(version)
+
+    def _download_update_installer(self, setup_url: str, page_url: str, version: str) -> None:
+        """Fetch the installer asset in the background; the poll loop launches it."""
+        self._set_status("status_update_downloading", version=version)
+
+        def worker() -> None:
+            import tempfile
+            import urllib.request
+
+            try:
+                target = Path(tempfile.gettempdir()) / f"PDFCompareLocal-setup-{version}.exe"
+                req = urllib.request.Request(
+                    setup_url,
+                    headers={"User-Agent": f"PDFCompareLocal/{APP_VERSION}"},
+                )
+                with urllib.request.urlopen(req, timeout=120) as resp, open(target, "wb") as fh:  # noqa: S310
+                    while True:
+                        chunk = resp.read(1024 * 256)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                self.worker_events.put(("update_downloaded", str(target)))
+            except Exception as exc:
+                self.worker_events.put(("update_download_failed", str(exc), page_url))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _launch_update_installer(self, setup_path: Path) -> None:
+        """Run the downloaded installer silently and close the app so files can be replaced."""
+        if not setup_path.exists():
+            self._set_status("status_update_download_failed")
+            return
+        try:
+            subprocess.Popen([str(setup_path), "/SILENT", "/NORESTART"], close_fds=True)
+        except OSError as exc:
+            messagebox.showerror(self._tr("dlg_update_title"), str(exc))
+            return
+        self._on_close()
 
     def _set_running(self, running: bool) -> None:
         self.running = running

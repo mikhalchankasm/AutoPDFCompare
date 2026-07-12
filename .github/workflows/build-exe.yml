@@ -55,6 +55,16 @@ jobs:
       - name: Build portable ZIP
         run: .\scripts\package_portable.ps1
 
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = python -c "from pdfcompare_core.constants import APP_VERSION; print(APP_VERSION)"
+          if (-not $version) { throw "Could not read APP_VERSION" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup 6 not found at $iscc" }
+          & $iscc /DAppVersion=$version packaging/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -62,6 +72,7 @@ jobs:
           path: |
             dist/PDFCompareLocal.exe
             dist_portable/PDFCompareLocal-portable.zip
+            dist_installer/PDFCompareLocal-setup.exe
           if-no-files-found: error
 
       - name: Publish version release (tag v*)
@@ -73,5 +84,6 @@ jobs:
           files: |
             dist/PDFCompareLocal.exe
             dist_portable/PDFCompareLocal-portable.zip
+            dist_installer/PDFCompareLocal-setup.exe
           fail_on_unmatched_files: true
           body_path: docs/releases/${{ github.ref_name }}.md
