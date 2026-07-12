@@ -37,8 +37,8 @@ def write_summary_md(
             "",
             "## Page mapping",
             "",
-            "| A page | B page | status | score | diff % | level |",
-            "|---:|---:|---|---:|---:|---|",
+            "| A page | B page | status | score | drawn % | sheet % | level |",
+            "|---:|---:|---|---:|---:|---:|---|",
         ]
     else:
         lines = [
@@ -54,15 +54,16 @@ def write_summary_md(
             "",
             "## Карта соответствия листов",
             "",
-            "| Лист A | Лист B | статус | оценка | разница % | уровень |",
-            "|---:|---:|---|---:|---:|---|",
+            "| Лист A | Лист B | статус | оценка | заполнено % | лист % | уровень |",
+            "|---:|---:|---|---:|---:|---:|---|",
         ]
     for d in details:
         a = "-" if d["a_page"] is None else str(d["a_page"])
         b = "-" if d["b_page"] is None else str(d["b_page"])
         diffp = "-" if d["diff_percent"] is None else f'{d["diff_percent"]:.3f}'
+        fgp = "-" if d.get("diff_foreground_percent") is None else f'{d["diff_foreground_percent"]:.2f}'
         lvl = "-" if d["change_level"] is None else d["change_level"]
-        lines.append(f"| {a} | {b} | {d['status']} | {d['score']:.3f} | {diffp} | {lvl} |")
+        lines.append(f"| {a} | {b} | {d['status']} | {d['score']:.3f} | {fgp} | {diffp} | {lvl} |")
 
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -158,10 +159,15 @@ def write_engineer_report_md(
         if not rows:
             lines.append("- None" if en else "- Нет")
             return
-        for d in sorted(rows, key=lambda x: (x.get("diff_percent") or 0.0), reverse=True):
+        for d in sorted(rows, key=lambda x: (x.get("diff_foreground_percent") or x.get("diff_percent") or 0.0), reverse=True):
+            fgp = d.get("diff_foreground_percent")
+            area = d.get("diff_area_mm2")
+            fg_txt = "-" if fgp is None else f"{fgp:.2f}%"
+            area_txt = "-" if area is None else f"{area:.1f} mm²"
             lines.append(
-                f"- A{d['a_page']} -> B{d['b_page']}: {'diff' if en else 'разница'}={d['diff_percent']:.3f}%"
-                f", bbox={d['bboxes_count']}"
+                f"- A{d['a_page']} -> B{d['b_page']}: {'drawn' if en else 'заполнено'}={fg_txt}"
+                f", {'area' if en else 'площадь'}={area_txt}"
+                f", {'zones' if en else 'зон'}={d.get('bboxes_count', '-')}"
             )
 
     emit_changes("Unchanged" if en else "Без изменений", unchanged)

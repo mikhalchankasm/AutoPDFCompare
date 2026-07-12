@@ -33,6 +33,7 @@ def live_report_labels(lang: str) -> dict[str, str]:
             "status": "Status",
             "level": "Level",
             "diff_pct": "Diff %",
+            "fg_pct": "Drawn %",
             "boxes": "Boxes",
             "back": "Back to live summary",
             "finalizing": "Final report is being prepared...",
@@ -57,6 +58,7 @@ def live_report_labels(lang: str) -> dict[str, str]:
         "status": "Статус",
         "level": "Уровень",
         "diff_pct": "Разница %",
+        "fg_pct": "Заполнено %",
         "boxes": "Зоны",
         "back": "К live-сводке",
         "finalizing": "Финальный отчёт готовится...",
@@ -310,6 +312,7 @@ def write_live_detail_view(run_dir: Path, file_a: Path, file_b: Path, row: dict,
     a_page = "-" if row.get("a_page") is None else str(row.get("a_page"))
     b_page = "-" if row.get("b_page") is None else str(row.get("b_page"))
     diff_text = "-" if row.get("diff_percent") is None else f"{float(row['diff_percent']):.3f}%"
+    fg_text = "-" if row.get("diff_foreground_percent") is None else f"{float(row['diff_foreground_percent']):.2f}%"
     boxes_text = "-" if row.get("bboxes_count") is None else str(int(row["bboxes_count"]))
     level_text = "-" if row.get("change_level") is None else str(row["change_level"])
     slider_label = "Slider" if str(report_lang).lower().startswith("en") else "Слайдер"
@@ -355,7 +358,7 @@ def write_live_detail_view(run_dir: Path, file_a: Path, file_b: Path, row: dict,
     <div class="top">
       <div>
         <h1>{html.escape(labels["page"])} {html.escape(doc_title)} <span class="badge {css_status}">{html.escape(status_text)}</span></h1>
-        <div class="meta">{html.escape(file_a.name)} -> {html.escape(file_b.name)} | {html.escape(labels["diff_pct"])}: {html.escape(diff_text)} | {html.escape(labels["boxes"])}: {html.escape(boxes_text)} | {html.escape(labels["level"])}: {html.escape(level_text)}</div>
+        <div class="meta">{html.escape(file_a.name)} -> {html.escape(file_b.name)} | {html.escape(labels["fg_pct"])}: {html.escape(fg_text)} | {html.escape(labels["diff_pct"])}: {html.escape(diff_text)} | {html.escape(labels["boxes"])}: {html.escape(boxes_text)} | {html.escape(labels["level"])}: {html.escape(level_text)}</div>
       </div>
       <div>
         {f'<a class="back" href="{html.escape(slider_file)}">{html.escape(slider_label)}</a>' if slider_file else ''}
@@ -416,6 +419,7 @@ def write_live_html_report(
         a_page = "-" if row.get("a_page") is None else str(row.get("a_page"))
         b_page = "-" if row.get("b_page") is None else str(row.get("b_page"))
         diff_text = "-" if row.get("diff_percent") is None else f"{float(row['diff_percent']):.3f}%"
+        fg_text = "-" if row.get("diff_foreground_percent") is None else f"{float(row['diff_foreground_percent']):.2f}%"
         boxes_text = "-" if row.get("bboxes_count") is None else str(int(row["bboxes_count"]))
         level_text = "-" if row.get("change_level") is None else str(row["change_level"])
         rows.append(
@@ -423,7 +427,7 @@ def write_live_html_report(
             f"<td>{seq}</td><td>{html.escape(a_page)}</td><td>{html.escape(b_page)}</td>"
             f"<td><span class='badge {html.escape(css_status)}'>{html.escape(status_text)}</span></td>"
             f"<td><span class='level {html.escape(level_class)}'>{html.escape(level_text)}</span></td>"
-            f"<td>{html.escape(diff_text)}</td><td>{html.escape(boxes_text)}</td>"
+            f"<td>{html.escape(fg_text)}</td><td>{html.escape(diff_text)}</td><td>{html.escape(boxes_text)}</td>"
             f"<td><a href='views/{seq:03d}.html'>{html.escape(labels['open'])}</a></td>"
             "</tr>"
         )
@@ -477,7 +481,8 @@ def write_live_html_report(
       <thead>
         <tr>
           <th>#</th><th>A</th><th>B</th><th>{html.escape(labels["status"])}</th>
-          <th>{html.escape(labels["level"])}</th><th>{html.escape(labels["diff_pct"])}</th>
+          <th>{html.escape(labels["level"])}</th><th>{html.escape(labels["fg_pct"])}</th>
+          <th>{html.escape(labels["diff_pct"])}</th>
           <th>{html.escape(labels["boxes"])}</th><th>{html.escape(labels["open"])}</th>
         </tr>
       </thead>
