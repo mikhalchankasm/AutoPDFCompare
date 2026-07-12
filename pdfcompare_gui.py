@@ -25,7 +25,7 @@ from compare_pdfs import (
     sanitize_run_folder_name,
 )
 from pdfcompare_ui.dnd import DragDropMixin
-from pdfcompare_ui.exclusion_picker import pick_exclude_regions
+from pdfcompare_ui.exclusion_picker import format_regions_for_field, pick_exclude_regions
 from pdfcompare_ui.history_tab import HistoryTabMixin
 from pdfcompare_ui.i18n import I18N
 from pdfcompare_ui.rerender_tab import RerenderTabMixin
@@ -127,6 +127,8 @@ class PDFCompareApp(
         self.rerender_mode = tk.StringVar(value="uniform")
         # Per-page overrides in mixed mode: {seq: {dpi, stroke_tol, ...}}.
         self.rerender_page_settings: dict[int, dict[str, Any]] = {}
+        # Old PDF of the loaded run (from summary.json) — used by the exclude picker.
+        self.rerender_source_pdf: Path | None = None
 
         self.worker_events: queue.Queue[tuple] = queue.Queue()
         self.running = False
@@ -209,6 +211,7 @@ class PDFCompareApp(
         self.rerender_mode_chips: dict[str, tk.Label] = {}
         self.rerender_strictness_chips: dict[str, tk.Label] = {}
         self.rerender_edit_selected_btn: ttk.Button | None = None
+        self.rerender_exclude_pick_btn: ttk.Button | None = None
         self.history_filter_buttons: dict[str, tk.Label] = {}
         self.strictness_chips: dict[str, tk.Label] = {}
         self.rerender_by_iid: dict[str, dict[str, Any]] = {}
@@ -1044,15 +1047,17 @@ class PDFCompareApp(
         if not pdf_path.exists():
             messagebox.showerror(self._tr("err_file_missing_title"), self._tr("err_old_missing"))
             return
-        regions = pick_exclude_regions(self.root, pdf_path)
-        if not regions:
+        existing: list[dict[str, float | str]] = []
+        existing_raw = self.exclude_regions.get().strip()
+        if existing_raw:
+            try:
+                existing = list(normalize_exclude_regions(existing_raw))
+            except ValueError:
+                existing = []
+        regions = pick_exclude_regions(self.root, pdf_path, existing=existing)
+        if regions is None:
             return
-        coords = ";".join(f"{r['x']:.4g},{r['y']:.4g},{r['w']:.4g},{r['h']:.4g}" for r in regions)
-        existing = self.exclude_regions.get().strip()
-        if existing:
-            self.exclude_regions.set(f"{existing.rstrip(';')};{coords}")
-        else:
-            self.exclude_regions.set(coords)
+        self.exclude_regions.set(format_regions_for_field(regions))
         self._set_status("status_pick_added", count=len(regions))
 
     def _start_timer(self) -> None:

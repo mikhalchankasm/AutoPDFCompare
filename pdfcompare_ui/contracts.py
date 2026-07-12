@@ -61,6 +61,7 @@ class AppProtocol(Protocol):
     rerender_bbox_gap: tk.StringVar
     rerender_mode: tk.StringVar
     rerender_page_settings: dict[int, dict[str, Any]]
+    rerender_source_pdf: Path | None
 
     # --- Runtime flags / worker plumbing -------------------------------- #
     running: bool
@@ -120,6 +121,7 @@ class AppProtocol(Protocol):
     rerender_mode_chips: dict[str, tk.Label]
     rerender_strictness_chips: dict[str, tk.Label]
     rerender_edit_selected_btn: ttk.Button | None
+    rerender_exclude_pick_btn: ttk.Button | None
 
     # --- Methods that mixins call across boundaries -------------------- #
     # i18n & status
@@ -162,6 +164,7 @@ class AppProtocol(Protocol):
     def _load_rerender_report(self, run_dir: Path | None = ..., quiet: bool = ...) -> None: ...
     def _pick_rerender_run_dir(self) -> None: ...
     def _start_rerender_selected(self) -> None: ...
+    def _pick_rerender_exclude_regions(self) -> None: ...
     def _rerender_worker(self, run_dir: Path, seqs: list[int], dpi: int, workers: int, overrides: dict[str, Any]) -> None: ...
     def _rerender_mixed_worker(self, run_dir: Path, page_settings: list[dict[str, Any]], dpi: int, workers: int) -> None: ...
     def _edit_selected_page_settings(self) -> None: ...

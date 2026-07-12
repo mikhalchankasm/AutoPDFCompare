@@ -16,7 +16,9 @@ from compare_pdfs import (
     regenerate_report_pages,
     regenerate_report_pages_mixed,
 )
+from pdfcompare_core.exclusions import normalize_exclude_regions
 
+from .exclusion_picker import format_regions_for_field, pick_exclude_regions
 from .styles import ACCENT, BG_CARD, BG_SOFT, BG_WINDOW, TEXT_SECONDARY
 
 from .contracts import AppProtocol
@@ -49,6 +51,8 @@ class RerenderTabMixin:
     rerender_mode_chips: dict[str, tk.Label]
     rerender_strictness_chips: dict[str, tk.Label]
     rerender_edit_selected_btn: ttk.Button | None
+    rerender_exclude_pick_btn: ttk.Button | None
+    rerender_source_pdf: Path | None
 
     def _build_rerender_tab(self: AppProtocol) -> None:
         if self.rerender_tab is None:
@@ -126,6 +130,13 @@ class RerenderTabMixin:
         exclude_row.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(exclude_row, text=self._tr("rerender_exclude"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
         ttk.Entry(exclude_row, textvariable=self.rerender_exclude, style="Path.TEntry").pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        self.rerender_exclude_pick_btn = ttk.Button(
+            exclude_row,
+            text=self._tr("btn_pick_exclude"),
+            style="Small.TButton",
+            command=self._pick_rerender_exclude_regions,
+        )
+        self.rerender_exclude_pick_btn.pack(side=tk.LEFT, padx=(6, 0))
         ttk.Label(options_panel, text=self._tr("rerender_overrides_hint"), style="Hint.TLabel", background=BG_SOFT).pack(anchor="w", pady=(6, 0))
 
         table_frame = ttk.Frame(self.rerender_tab)
@@ -201,6 +212,8 @@ class RerenderTabMixin:
             return
         self.rerender_run_dir.set(str(path))
         self.last_run_dir = path
+        source = str(payload.get("file_a") or "").strip() or str(payload.get("file_b") or "").strip()
+        self.rerender_source_pdf = Path(source) if source else None
         self.rerender_by_iid.clear()
         for iid in self.rerender_tree.get_children():
             self.rerender_tree.delete(iid)
@@ -240,6 +253,35 @@ class RerenderTabMixin:
             self._set_status("status_rerender_loaded", count=len(rows))
         else:
             self._set_status("status_rerender_empty")
+
+    def _pick_rerender_exclude_regions(self: AppProtocol) -> None:
+        """Open the visual picker on the loaded run's old PDF and fill the exclude field."""
+        pdf_path = self.rerender_source_pdf
+        if pdf_path is None or not pdf_path.exists():
+            self._set_status("status_rerender_pick_no_pdf")
+            return
+        # With exactly one row selected, preview that sheet's page.
+        page = 1
+        if self.rerender_tree is not None:
+            selected = self.rerender_tree.selection()
+            if len(selected) == 1:
+                row = self.rerender_by_iid.get(selected[0]) or {}
+                try:
+                    page = int(row.get("a_page") or row.get("b_page") or 1)
+                except (TypeError, ValueError):
+                    page = 1
+        existing: list[dict[str, float | str]] = []
+        raw = self.rerender_exclude.get().strip()
+        if raw:
+            try:
+                existing = list(normalize_exclude_regions(raw))
+            except ValueError:
+                existing = []
+        regions = pick_exclude_regions(self.root, pdf_path, page_number=page, existing=existing)
+        if regions is None:
+            return
+        self.rerender_exclude.set(format_regions_for_field(regions))
+        self._set_status("status_pick_added", count=len(regions))
 
     def _parse_optional_float(self: AppProtocol, var: tk.StringVar) -> float | None:
         text = var.get().strip()
