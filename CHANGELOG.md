@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- **Cancellation now stops the pages that are already running.** Previously "Отмена" only dropped the queued pages: the parent noticed the cancel request in its progress callback, which fires when a page *finishes*, so every started page ran to completion first — on a large sheet at high DPI that meant waiting tens of seconds. The parent now polls the cancel callback while it waits, and the workers poll a shared flag between the expensive phases of a page (before each render, before the diff, before writing output), so a cancelled run unwinds at the next phase boundary and leaves no partial run folder behind. The flag reaches the pool workers by inheritance through the pool initializer (a `multiprocessing.Event` cannot be pickled as a task argument under spawn, and a `Manager()` would add a server process to the frozen EXE).
+
 ### Changed
 - **Reproducible builds**: CI now installs a single hashed lock file (`requirements/lock.txt`, `pip install --require-hashes`) in both the test and the build job, so the same commit always builds against the same dependency set — PyInstaller included, instead of `pip install pyinstaller` picking up whatever is newest. GitHub Actions are pinned by commit SHA (a mutable `@v4` tag can be repointed at any time). `base.txt` / `dev.txt` / `mcp.txt` keep their loose ranges for running from source; `docs/RELEASE_PROCESS.md` documents how to regenerate the lock.
 

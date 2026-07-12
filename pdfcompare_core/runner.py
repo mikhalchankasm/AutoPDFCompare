@@ -6,6 +6,7 @@ import concurrent.futures
 import csv
 import gc
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -13,6 +14,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 from uuid import uuid4
 
 import cv2
@@ -43,6 +45,10 @@ from .pdf_io import (
 )
 
 INVALID_RUN_NAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+
+# How often the parent wakes up while pages are running, to notice cancellation
+# even when no page has finished yet.
+CANCEL_POLL_SECONDS = 0.25
 MAX_RUN_FOLDER_NAME_LEN = 80
 WINDOWS_RESERVED_RUN_NAMES = {
     "CON",
@@ -133,6 +139,104 @@ def validate_render_dpi(value: object) -> int:
     return dpi
 
 
+class RunCancelled(RuntimeError):
+    """The run was cancelled by the user.
+
+    Raised inside a page worker when it sees the shared cancel flag, and by the
+    sequential path between phases of a page. Callers treat it as "cancelled",
+    not as a failure.
+    """
+
+
+class CancelFlag(Protocol):
+    """What a page worker needs from a cancel flag.
+
+    Satisfied by ``multiprocessing.Manager().Event()`` (cross-process) and by
+    ``_CallbackCancelFlag`` (in-process, sequential path).
+    """
+
+    def is_set(self) -> bool: ...
+
+
+class _CallbackCancelFlag:
+    """Adapts a plain predicate (e.g. ``threading.Event.is_set``) to CancelFlag."""
+
+    def __init__(self, check: Callable[[], bool]) -> None:
+        self._check = check
+
+    def is_set(self) -> bool:
+        return bool(self._check())
+
+
+# Set once per pool worker by _init_pool_worker(). A multiprocessing.Event cannot
+# be pickled as a submit() argument under spawn — it can only cross the process
+# boundary by inheritance, which is exactly what the pool's initargs do. (A
+# Manager().Event() would pickle fine, but it costs an extra server process,
+# which is one more thing to go wrong inside the frozen EXE.)
+_WORKER_CANCEL_FLAG: CancelFlag | None = None
+
+
+def _init_pool_worker(cancel_event: CancelFlag) -> None:
+    global _WORKER_CANCEL_FLAG
+    _WORKER_CANCEL_FLAG = cancel_event
+
+
+def _run_pair_tasks(
+    tasks: Sequence[tuple],
+    worker_count: int,
+    on_row: Callable[[dict], None],
+    tick: Callable[[], None],
+    cancel_cb: Callable[[], bool] | None = None,
+) -> None:
+    """Run the page tasks and hand every finished row to ``on_row``.
+
+    Cancellation used to be noticed only when a page finished, because the
+    parent blocked in ``as_completed`` and the cancel check lives in the
+    progress callback. Now the parent wakes up every ``CANCEL_POLL_SECONDS`` to
+    call ``tick()``, and the pages already running poll a shared flag between
+    their expensive phases — so "Отмена" stops the run instead of grinding to
+    the end of every started page.
+    """
+    if worker_count <= 1:
+        flag = _CallbackCancelFlag(cancel_cb) if cancel_cb is not None else None
+        for task in tasks:
+            if flag is not None and flag.is_set():
+                raise RunCancelled("Сравнение отменено пользователем")
+            on_row(process_pair_task(*task, cancel_event=flag))
+        return
+
+    ctx = multiprocessing.get_context("spawn")
+    cancel_event = ctx.Event()
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=worker_count,
+        mp_context=ctx,
+        initializer=_init_pool_worker,
+        initargs=(cancel_event,),
+    ) as executor:
+        pending = {executor.submit(process_pair_task, *task) for task in tasks}
+        try:
+            while pending:
+                if cancel_cb is not None and cancel_cb():
+                    raise RunCancelled("Сравнение отменено пользователем")
+                done, pending = concurrent.futures.wait(
+                    pending,
+                    timeout=CANCEL_POLL_SECONDS,
+                    return_when=concurrent.futures.FIRST_COMPLETED,
+                )
+                if not done:
+                    tick()
+                    continue
+                for future in done:
+                    on_row(future.result())
+        except BaseException:
+            # Tell the running pages to stop at their next phase boundary, then
+            # drop everything still queued.
+            cancel_event.set()
+            for future in pending:
+                future.cancel()
+            raise
+
+
 def resolve_worker_count(requested: int | None, total_pairs: int) -> int:
     if total_pairs <= 1:
         return 1
@@ -159,8 +263,19 @@ def process_pair_task(
     bbox_merge_gap_mm: float = 0.0,
     bbox_merge_max_area_ratio: float = 16.0,
     limit_cv_threads: bool = False,
+    *,
+    cancel_event: CancelFlag | None = None,
 ) -> dict:
     started = time.monotonic()
+
+    # In a pool worker the flag arrives via the initializer, not as an argument.
+    flag = cancel_event if cancel_event is not None else _WORKER_CANCEL_FLAG
+
+    def check_cancelled() -> None:
+        """Bail out between phases: a single page at high DPI takes tens of
+        seconds, so a page that is already running must be interruptible too."""
+        if flag is not None and flag.is_set():
+            raise RunCancelled(f"Лист {seq}: сравнение отменено пользователем")
 
     def remember_shape(img: np.ndarray) -> None:
         h, w = img.shape[:2]
@@ -229,8 +344,11 @@ def process_pair_task(
                 capped_render_dpi(doc_b[b_idx], high_dpi),
             )
             entry["effective_dpi"] = round(float(effective_dpi), 2)
+            check_cancelled()
             a_img = render_page(doc_a, a_idx, effective_dpi)
+            check_cancelled()
             b_img = render_page(doc_b, b_idx, effective_dpi)
+            check_cancelled()
             remember_shape(a_img)
             harmonized = harmonize_canvas(a_img, b_img)
             if harmonized is None:
@@ -243,6 +361,7 @@ def process_pair_task(
             a_h, b_h = harmonized
             b_aligned, ecc_ok = align_ecc(a_h, b_h)
             entry["ecc_failed"] = not ecc_ok
+            check_cancelled()
             pixel_exclusions = exclusion_regions_to_pixel_boxes(
                 exclude_regions or [], a_h.shape[1], a_h.shape[0], dpi=effective_dpi
             )
@@ -267,6 +386,7 @@ def process_pair_task(
                 diff_area_mm2=float(metrics["diff_area_mm2"]),
             )
 
+            check_cancelled()
             imwrite_compat(pair_dir / "a.png", a_h)
             imwrite_compat(pair_dir / "b.png", b_aligned)
             if keep_debug_images:
@@ -303,6 +423,7 @@ def process_pair_task(
             entry["foreground_sparse"] = bool(metrics["foreground_sparse"])
             return finish()
 
+        check_cancelled()
         if a_idx is not None:
             entry["effective_dpi"] = round(float(capped_render_dpi(doc_a[a_idx], high_dpi)), 2)
             a_full = render_page(doc_a, a_idx, high_dpi)
@@ -544,6 +665,7 @@ def regenerate_report_pages(
     bbox_merge_gap_mm: float | None = None,
     bbox_merge_max_area_ratio: float | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
+    cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
     """Re-render selected mapped pages in an existing run and rebuild the report."""
 
@@ -638,24 +760,18 @@ def regenerate_report_pages(
     emit(5, f"Перегенерация листов: {len(tasks)}, DPI {dpi}, процессов {worker_count}")
     completed = 0
     updated_rows: dict[int, dict] = {}
+
+    def on_row(row: dict) -> None:
+        nonlocal completed
+        updated_rows[int(row["seq"])] = row
+        completed += 1
+        emit(5 + 65 * (completed / len(tasks)), f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})")
+
+    def tick() -> None:
+        emit(5 + 65 * (completed / len(tasks)), f"Перегенерация листов: {completed}/{len(tasks)}")
+
     try:
-        if worker_count <= 1:
-            for task in tasks:
-                row = process_pair_task(*task)
-                updated_rows[int(row["seq"])] = row
-                completed += 1
-                emit(5 + 65 * (completed / len(tasks)), f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})")
-        else:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=worker_count) as executor:
-                future_map = {executor.submit(process_pair_task, *task): task[3] for task in tasks}
-                for future in concurrent.futures.as_completed(future_map):
-                    row = future.result()
-                    updated_rows[int(row["seq"])] = row
-                    completed += 1
-                    emit(
-                        5 + 65 * (completed / len(tasks)),
-                        f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})",
-                    )
+        _run_pair_tasks(tasks, worker_count, on_row, tick, cancel_cb)
     except BaseException:
         shutil.rmtree(staging_pages.parent, ignore_errors=True)
         raise
@@ -738,6 +854,7 @@ def regenerate_report_pages_mixed(
     bbox_merge_gap_mm: float | None = None,
     bbox_merge_max_area_ratio: float | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
+    cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
     """Re-render selected report rows with per-row settings and rebuild one report."""
 
@@ -858,26 +975,19 @@ def regenerate_report_pages_mixed(
     emit(5, f"Перегенерация листов со смешанными настройками: {len(tasks)}, процессов {worker_count}")
     completed = 0
     updated_rows: dict[int, dict] = {}
+
+    def on_row(row: dict) -> None:
+        nonlocal completed
+        row["mixed_settings"] = settings_by_seq[int(row["seq"])]
+        updated_rows[int(row["seq"])] = row
+        completed += 1
+        emit(5 + 65 * (completed / len(tasks)), f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})")
+
+    def tick() -> None:
+        emit(5 + 65 * (completed / len(tasks)), f"Перегенерация листов: {completed}/{len(tasks)}")
+
     try:
-        if worker_count <= 1:
-            for task in tasks:
-                row = process_pair_task(*task)
-                row["mixed_settings"] = settings_by_seq[int(row["seq"])]
-                updated_rows[int(row["seq"])] = row
-                completed += 1
-                emit(5 + 65 * (completed / len(tasks)), f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})")
-        else:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=worker_count) as executor:
-                future_map = {executor.submit(process_pair_task, *task): task[3] for task in tasks}
-                for future in concurrent.futures.as_completed(future_map):
-                    row = future.result()
-                    row["mixed_settings"] = settings_by_seq[int(row["seq"])]
-                    updated_rows[int(row["seq"])] = row
-                    completed += 1
-                    emit(
-                        5 + 65 * (completed / len(tasks)),
-                        f"Перегенерирован лист {row['seq']} ({completed}/{len(tasks)})",
-                    )
+        _run_pair_tasks(tasks, worker_count, on_row, tick, cancel_cb)
     except BaseException:
         shutil.rmtree(staging_pages.parent, ignore_errors=True)
         raise
@@ -952,6 +1062,7 @@ def compare_pdfs(
     bbox_merge_gap_mm: float = 0.0,
     bbox_merge_max_area_ratio: float = 16.0,
     progress_cb: Callable[[float, str], None] | None = None,
+    cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
         if progress_cb is not None:
@@ -1027,52 +1138,29 @@ def compare_pdfs(
             avg_page = elapsed / max(1, completed)
             return f"Сравнение листов {completed}/{total_pairs}, осталось ~{eta_text}, среднее {avg_page:.1f}с/лист"
 
-        if worker_count <= 1:
-            for task in tasks:
-                row = process_pair_task(*task)
-                details.append(row)
-                completed += 1
-                write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
-                write_live_html_report(
-                    run_dir,
-                    file_a,
-                    file_b,
-                    pairs,
-                    details,
-                    report_lang=report_lang,
-                    in_progress=True,
-                    write_detail_views=False,
-                )
-                if completed % 8 == 0:
-                    gc.collect()
-                emit(38 + 48 * (completed / total_pairs), compare_progress_message())
-        else:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=worker_count) as executor:
-                future_map = {executor.submit(process_pair_task, *task): task[3] for task in tasks}
-                try:
-                    for future in concurrent.futures.as_completed(future_map):
-                        row = future.result()
-                        details.append(row)
-                        completed += 1
-                        write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
-                        write_live_html_report(
-                            run_dir,
-                            file_a,
-                            file_b,
-                            pairs,
-                            details,
-                            report_lang=report_lang,
-                            in_progress=True,
-                            write_detail_views=False,
-                        )
-                        emit(38 + 48 * (completed / total_pairs), compare_progress_message())
-                except BaseException:
-                    # Cancellation/errors surface via emit(); drop the queued
-                    # pages so "Отмена" doesn't keep grinding to the end —
-                    # only the pages already running finish.
-                    for pending in future_map:
-                        pending.cancel()
-                    raise
+        def on_row(row: dict) -> None:
+            nonlocal completed
+            details.append(row)
+            completed += 1
+            write_live_detail_view(run_dir, file_a, file_b, row, report_lang)
+            write_live_html_report(
+                run_dir,
+                file_a,
+                file_b,
+                pairs,
+                details,
+                report_lang=report_lang,
+                in_progress=True,
+                write_detail_views=False,
+            )
+            if worker_count <= 1 and completed % 8 == 0:
+                gc.collect()
+            emit(38 + 48 * (completed / total_pairs), compare_progress_message())
+
+        def tick() -> None:
+            emit(38 + 48 * (completed / total_pairs), compare_progress_message())
+
+        _run_pair_tasks(tasks, worker_count, on_row, tick, cancel_cb)
         details.sort(key=lambda row: int(row["seq"]))
         write_live_html_report(
             run_dir,
@@ -1114,7 +1202,7 @@ def compare_pdfs(
         return run_dir
     except Exception as exc:
         # Cancellation is cooperative and may happen mid-run; drop partial artifacts.
-        if str(exc) == "__CANCELLED__":
+        if isinstance(exc, RunCancelled) or str(exc) == "__CANCELLED__":
             shutil.rmtree(run_dir, ignore_errors=True)
         else:
             # Move the partial run aside so retrying with the same run_name

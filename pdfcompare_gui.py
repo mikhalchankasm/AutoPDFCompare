@@ -24,6 +24,7 @@ from compare_pdfs import (
     MAX_RENDER_DPI,
     MIN_RENDER_DPI,
     START_REPORT_FILE,
+    RunCancelled,
     compare_pdfs,
     normalize_exclude_regions,
     sanitize_run_folder_name,
@@ -1394,13 +1395,14 @@ class PDFCompareApp(
                 bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
                 keep_debug_images=keep_debug_images,
                 progress_cb=report_progress,
+                cancel_cb=self.cancel_requested.is_set,
             )
             if self.cancel_requested.is_set():
                 self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
                 return
             self.worker_events.put(("done", run_dir, old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
         except Exception as exc:
-            if str(exc) == "__CANCELLED__":
+            if isinstance(exc, RunCancelled) or str(exc) == "__CANCELLED__":
                 self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
                 return
             self.worker_events.put(("error", str(exc), traceback.format_exc(), old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))

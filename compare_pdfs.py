@@ -102,6 +102,7 @@ from pdfcompare_core.pdf_io import (
 )
 from pdfcompare_core.runner import (
     MAX_RUN_FOLDER_NAME_LEN,
+    RunCancelled,
     _details_to_pairs,
     _page_value_to_idx,
     _write_run_summary_files,
