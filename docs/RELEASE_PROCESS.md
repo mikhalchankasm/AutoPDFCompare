@@ -2,6 +2,23 @@
 
 This project publishes Windows builds through GitHub Releases.
 
+## Dependencies
+
+CI installs **only** `requirements/lock.txt` (`pip install --require-hashes`) in both the test and the build job, so the same commit always builds against the same dependency set — including the PyInstaller version. GitHub Actions are pinned by commit SHA for the same reason. `base.txt` / `dev.txt` / `mcp.txt` keep loose ranges and remain the entry point for running from source.
+
+The lock is resolved for Windows / CPython 3.12. Regenerate it after changing any range:
+
+```powershell
+py -3.12 -m venv .lockenv
+.lockenv\Scripts\pip install pip-tools
+.lockenv\Scripts\pip-compile --generate-hashes --strip-extras --allow-unsafe `
+    --output-file requirements/lock.txt requirements/lock.in
+```
+
+Then verify the new set in a clean environment (`pip install --require-hashes -r requirements/lock.txt`, then `lint.ps1` + `test.ps1`) before committing it — a lock bump is a dependency upgrade.
+
+To bump a pinned action, take the SHA of the tag you want (`gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha`) and update the `# vN` comment next to it.
+
 ## Local Verification
 
 Run these commands from the repository root:

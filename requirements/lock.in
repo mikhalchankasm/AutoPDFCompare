@@ -1,0 +1,20 @@
+# Source for requirements/lock.txt — the fully pinned, hashed dependency set CI
+# installs for both the test and the build job (Windows / CPython 3.12).
+#
+# Regenerate after changing any range below or in base.txt / mcp.txt:
+#   py -3.12 -m venv .lockenv
+#   .lockenv\Scripts\pip install pip-tools
+#   .lockenv\Scripts\pip-compile --generate-hashes --strip-extras `
+#       --output-file requirements/lock.txt requirements/lock.in
+#
+# base.txt / dev.txt / mcp.txt keep their loose ranges and stay the entry point
+# for running from source; the lock is what release artifacts are built from.
+-r base.txt
+-r mcp.txt
+
+pyinstaller
+
+ruff
+mypy
+pytest
+pytest-cov

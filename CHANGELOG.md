@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Reproducible builds**: CI now installs a single hashed lock file (`requirements/lock.txt`, `pip install --require-hashes`) in both the test and the build job, so the same commit always builds against the same dependency set — PyInstaller included, instead of `pip install pyinstaller` picking up whatever is newest. GitHub Actions are pinned by commit SHA (a mutable `@v4` tag can be repointed at any time). `base.txt` / `dev.txt` / `mcp.txt` keep their loose ranges for running from source; `docs/RELEASE_PROCESS.md` documents how to regenerate the lock.
+
 ## v0.1.15 - 2026-07-13
 
 Fixes driven by an external repository review (all P1 findings and most P2 confirmed and addressed). Note: the fixes below landed after the `v0.1.14` tag, so the artifacts published as `v0.1.14` do **not** contain them — this is the first release that does.
