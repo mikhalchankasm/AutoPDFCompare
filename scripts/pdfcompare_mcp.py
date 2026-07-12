@@ -29,6 +29,7 @@ from compare_pdfs import (
     find_summary_json_path,
     normalize_exclude_regions,
     sanitize_run_folder_name,
+    validate_render_dpi,
 )
 
 
@@ -567,6 +568,7 @@ def start_pdf_comparison(
         new_pdf = resolve_path(new_path, must_exist=True)
         output_dir = resolve_path(out_dir, must_exist=False)
         safe_run_name = sanitize_run_folder_name(run_name)
+        dpi = validate_render_dpi(dpi)
         strictness = str(diff_strictness or "normal").strip().lower()
         if strictness not in DIFF_STRICTNESS_CHOICES:
             return {"ok": False, "error": f"Некорректная строгость сравнения: {diff_strictness}"}
@@ -706,6 +708,7 @@ def rerender_pdf_comparison_pages(
             }
 
         report_dir = resolve_path(run_dir, must_exist=True)
+        dpi = validate_render_dpi(dpi)
         summary_path = find_summary_json_path(report_dir)
         if not summary_path.exists():
             return {"ok": False, "error": f"Не найден summary.json в отчёте: {report_dir}"}

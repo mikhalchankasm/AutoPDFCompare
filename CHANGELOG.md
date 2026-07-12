@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+Fixes driven by an external repository review (all P1 findings and most P2 confirmed and addressed).
+
+### Fixed
+- **Render megapixel cap is now applied before rasterization**: the effective DPI is computed from the page geometry before `get_pixmap`, so an A0 sheet at high DPI no longer allocates a multi-gigabyte raster that was only downscaled afterwards.
+- **Physical metrics honor the effective DPI**: when the cap reduces the render DPI, mm² areas, mm-based exclusion zones, and the bbox merge gap are computed from the DPI the raster actually has (previously they silently used the requested DPI — areas were understated up to ~2.4× on A0 at 250 DPI, and mm zones drifted). `summary.json` rows now record both `high_dpi` (requested) and `effective_dpi`.
+- **Re-rendering is transactional**: page backups and pre-update copies of summary/CSV/MD now live until the whole update (pages + summary + HTML) succeeds; any failure rolls the run back to a fully consistent state. Previously the backups were deleted right after the page swap, so a failure while writing summary.json left new PNGs with stale metadata.
+- **A failed comparison no longer blocks its run name**: the partial run folder is renamed to `<name>.failed-…` (kept for debugging), so the same name can be retried immediately.
+- **`scripts/test.ps1` propagates the pytest exit code** — CI can no longer publish a release with failing tests; mypy is now a hard lint gate too.
+- **Cancelling a comparison stops queued pages**: pending ProcessPool futures are cancelled on cancel/error instead of grinding to the end.
+- **Tkinter is no longer touched from worker threads**: re-render workers receive the report language as a plain string, and the update-check timestamp is saved via the UI-thread event queue.
+- **CLI**: passing only one of `--old`/`--new` is now an explicit error instead of silently falling back to `--input-dir`.
+- **Uniform DPI validation (72–1200)** for GUI, CLI, MCP, and per-page re-render overrides; per-page dialog no longer crashes on unparseable stroke/gap values.
+
+### Added
+- **Auto-update integrity check**: CI publishes `SHA256SUMS.txt` with every release; the in-app updater downloads the manifest, verifies the installer's SHA-256 before launching it, deletes the file on mismatch, and refuses silent install for releases without a manifest (falls back to the download page).
+- **PR checks**: the workflow now runs lint + tests on pull requests in a read-only job; release permissions are limited to the build/publish job.
+
 ## v0.1.14 - 2026-07-12
 
 ### Added

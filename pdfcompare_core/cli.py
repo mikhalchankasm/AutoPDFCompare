@@ -9,7 +9,7 @@ from pathlib import Path
 from .constants import APP_NAME, APP_VERSION, START_REPORT_FILE
 from .diff_engine import DIFF_STRICTNESS_CHOICES
 from .exclusions import normalize_exclude_regions
-from .runner import compare_pdfs
+from .runner import compare_pdfs, validate_render_dpi
 
 
 def pick_two_pdfs(folder: Path) -> tuple[Path, Path]:
@@ -67,6 +67,13 @@ def main() -> None:
         help="Experimental: max merged box area relative to the page area. Default 16.",
     )
     args = parser.parse_args()
+
+    if bool(args.old) != bool(args.new):
+        parser.error("Укажите оба параметра --old и --new (либо ни одного, чтобы использовать --input-dir)")
+    try:
+        args.dpi = validate_render_dpi(args.dpi)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.old and args.new:
         file_a = args.old

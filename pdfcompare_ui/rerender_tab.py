@@ -16,6 +16,7 @@ from compare_pdfs import (
     regenerate_report_pages,
     regenerate_report_pages_mixed,
 )
+from pdfcompare_core.constants import MAX_RENDER_DPI, MIN_RENDER_DPI
 from pdfcompare_core.exclusions import normalize_exclude_regions
 
 from .exclusion_picker import format_regions_for_field, pick_exclude_regions
@@ -361,22 +362,30 @@ class RerenderTabMixin:
                 dpi_txt = local["dpi"].get().strip()
                 if dpi_txt:
                     try:
-                        spec["dpi"] = int(dpi_txt)
+                        dpi_value = int(dpi_txt)
                     except ValueError:
                         messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_rerender_dpi"))
                         return
-                stroke_txt = local["stroke_tol"].get().strip()
-                if stroke_txt:
-                    spec["stroke_tol"] = float(stroke_txt)
+                    if dpi_value < MIN_RENDER_DPI or dpi_value > MAX_RENDER_DPI:
+                        messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_rerender_dpi"))
+                        return
+                    spec["dpi"] = dpi_value
+                try:
+                    stroke_txt = local["stroke_tol"].get().strip()
+                    if stroke_txt:
+                        spec["stroke_tol"] = float(stroke_txt)
+                    gap_txt = local["bbox_merge_gap_mm"].get().strip()
+                    if gap_txt:
+                        spec["bbox_merge_gap_mm"] = float(gap_txt)
+                except ValueError:
+                    messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_parse"))
+                    return
                 strict_txt = local["diff_strictness"].get().strip().lower()
                 if strict_txt:
                     spec["diff_strictness"] = strict_txt
                 excl_txt = local["exclude_regions"].get().strip()
                 if excl_txt:
                     spec["exclude_regions"] = excl_txt
-                gap_txt = local["bbox_merge_gap_mm"].get().strip()
-                if gap_txt:
-                    spec["bbox_merge_gap_mm"] = float(gap_txt)
                 self.rerender_page_settings[seq] = spec
             dialog.destroy()
             self._set_status("status_rerender_perpage_set", count=len(seqs))
@@ -416,7 +425,7 @@ class RerenderTabMixin:
         except ValueError:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_rerender_dpi"))
             return
-        if dpi < 72:
+        if dpi < MIN_RENDER_DPI or dpi > MAX_RENDER_DPI:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_rerender_dpi"))
             return
         if workers < 0:
@@ -424,6 +433,9 @@ class RerenderTabMixin:
             return
         run_dir = Path(self.rerender_run_dir.get().strip())
         seqs = [int(iid) for iid in selected]
+        # Tk variables are not thread-safe: capture the language here, in the
+        # UI thread, and hand the worker a plain string.
+        report_lang = self.lang.get()
 
         if self.rerender_mode.get() == "perpage" and self.rerender_page_settings:
             # Mixed mode: group selected seqs that share identical settings.
@@ -431,7 +443,7 @@ class RerenderTabMixin:
             self._begin_rerender_run()
             t = threading.Thread(
                 target=self._rerender_mixed_worker,
-                args=(run_dir, page_settings, dpi, workers),
+                args=(run_dir, page_settings, dpi, workers, report_lang),
                 daemon=True,
             )
             t.start()
@@ -443,7 +455,7 @@ class RerenderTabMixin:
         self._begin_rerender_run()
         t = threading.Thread(
             target=self._rerender_worker,
-            args=(run_dir, seqs, dpi, workers, overrides),
+            args=(run_dir, seqs, dpi, workers, overrides, report_lang),
             daemon=True,
         )
         t.start()
@@ -494,7 +506,7 @@ class RerenderTabMixin:
         self.progress_pct.set("0%")
         self._set_status("status_rerender_running")
 
-    def _rerender_worker(self: AppProtocol, run_dir: Path, seqs: list[int], dpi: int, workers: int, overrides: dict[str, Any]) -> None:
+    def _rerender_worker(self: AppProtocol, run_dir: Path, seqs: list[int], dpi: int, workers: int, overrides: dict[str, Any], report_lang: str) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
                 self.worker_events.put(("rerender_progress", float(pct), str(msg)))
@@ -503,7 +515,7 @@ class RerenderTabMixin:
                 run_dir,
                 seqs,
                 high_dpi=dpi,
-                report_lang=self.lang.get(),
+                report_lang=report_lang,
                 workers=workers,
                 stroke_tol_px=overrides.get("stroke_tol"),
                 diff_strictness=overrides.get("diff_strictness"),
@@ -516,7 +528,7 @@ class RerenderTabMixin:
         except Exception as exc:
             self.worker_events.put(("rerender_error", str(exc), traceback.format_exc()))
 
-    def _rerender_mixed_worker(self: AppProtocol, run_dir: Path, page_settings: list[dict[str, Any]], dpi: int, workers: int) -> None:
+    def _rerender_mixed_worker(self: AppProtocol, run_dir: Path, page_settings: list[dict[str, Any]], dpi: int, workers: int, report_lang: str) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
                 self.worker_events.put(("rerender_progress", float(pct), str(msg)))
@@ -525,7 +537,7 @@ class RerenderTabMixin:
                 run_dir,
                 page_settings,
                 high_dpi=dpi,
-                report_lang=self.lang.get(),
+                report_lang=report_lang,
                 workers=workers,
                 progress_cb=report_progress,
             )

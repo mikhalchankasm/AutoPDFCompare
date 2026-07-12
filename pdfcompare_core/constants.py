@@ -44,6 +44,9 @@ THUMB_JPEG_QUALITY = 82
 # downscaled before the diff to keep peak memory bounded on large A0/A1
 # sheets at high DPI. ~40 MP is roughly an A1 page at 250 DPI.
 MAX_RENDER_MEGAPIXELS = 40.0
+# Accepted render-DPI range, enforced uniformly by GUI, CLI, and MCP.
+MIN_RENDER_DPI = 72
+MAX_RENDER_DPI = 1200
 LIVE_REPORT_EVENT_PREFIX = "__PDFCOMPARE_LIVE_REPORT__|"
 INTERNAL_REPORT_DIR = "_pdfcompare"
 START_REPORT_FILE = "start.html"

@@ -40,6 +40,8 @@ from pdfcompare_core.constants import (
     INTERNAL_REPORT_DIR,
     INVALID_DOWNLOAD_NAME_CHARS_RE,
     LIVE_REPORT_EVENT_PREFIX,
+    MAX_RENDER_DPI,
+    MIN_RENDER_DPI,
     MINOR_DIFF_PERCENT,
     MODERATE_DIFF_PERCENT,
     PAGE_INFO_THUMB_DPI,
@@ -110,6 +112,7 @@ from pdfcompare_core.runner import (
     regenerate_report_pages_mixed,
     resolve_worker_count,
     sanitize_run_folder_name,
+    validate_render_dpi,
 )
 
 
