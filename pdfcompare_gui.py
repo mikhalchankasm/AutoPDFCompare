@@ -1169,20 +1169,41 @@ class PDFCompareApp(
                 ready = False
         self._set_primary_state(self.run_btn, tk.NORMAL if ready else tk.DISABLED)
 
+    def _dialog_initialdir(self, *candidates: str) -> str | None:
+        """Pick the folder file dialogs should open in: the first field value
+        that points at (or into) an existing directory — so the dialog opens
+        where the field already points instead of the OS's last-used folder.
+        None is fine: tkinter skips None-valued dialog options."""
+        for raw in candidates:
+            text = (raw or "").strip()
+            if not text:
+                continue
+            try:
+                path = Path(text)
+                folder = path if path.is_dir() else path.parent
+                if folder.is_dir() and str(folder) not in ("", "."):
+                    return str(folder)
+            except OSError:
+                continue
+        return None
+
     def _pick_old_pdf(self) -> None:
-        p = filedialog.askopenfilename(title=self._tr("dlg_pick_old"), filetypes=[("PDF", "*.pdf")])
+        start = self._dialog_initialdir(self.old_pdf.get(), self.new_pdf.get())
+        p = filedialog.askopenfilename(title=self._tr("dlg_pick_old"), filetypes=[("PDF", "*.pdf")], initialdir=start)
         if p:
             self.old_pdf.set(p)
             self._save_state()
 
     def _pick_new_pdf(self) -> None:
-        p = filedialog.askopenfilename(title=self._tr("dlg_pick_new"), filetypes=[("PDF", "*.pdf")])
+        start = self._dialog_initialdir(self.new_pdf.get(), self.old_pdf.get())
+        p = filedialog.askopenfilename(title=self._tr("dlg_pick_new"), filetypes=[("PDF", "*.pdf")], initialdir=start)
         if p:
             self.new_pdf.set(p)
             self._save_state()
 
     def _pick_out_dir(self) -> None:
-        p = filedialog.askdirectory(title=self._tr("dlg_pick_out"))
+        start = self._dialog_initialdir(self.out_dir.get(), self.old_pdf.get())
+        p = filedialog.askdirectory(title=self._tr("dlg_pick_out"), initialdir=start)
         if p:
             self.out_dir.set(p)
             self._save_state()
@@ -1246,7 +1267,7 @@ class PDFCompareApp(
 
         out = self.out_dir.get().strip()
         if not out:
-            selected = filedialog.askdirectory(title=self._tr("dlg_pick_out"))
+            selected = filedialog.askdirectory(title=self._tr("dlg_pick_out"), initialdir=self._dialog_initialdir(self.old_pdf.get()))
             if not selected:
                 self._set_status("status_run_cancel_no_out")
                 return
@@ -1675,6 +1696,11 @@ class PDFCompareApp(
 
     def _open_run_folder(self) -> None:
         if not self.last_run_dir:
+            # No run yet — fall back to the output folder from the field.
+            out_text = self.out_dir.get().strip()
+            if out_text and Path(out_text).is_dir():
+                os.startfile(out_text)
+                return
             messagebox.showinfo(self._tr("dlg_info_title"), self._tr("status_no_folder"))
             return
         if self.last_run_dir.exists():
@@ -1711,9 +1737,16 @@ class PDFCompareApp(
 
 def main() -> None:
     # Use TkinterDnD if available for better drag & drop support
+    root: tk.Tk | None = None
     if HAS_TKDND and TkinterDnD is not None:
-        root = TkinterDnD.Tk()
-    else:
+        try:
+            root = TkinterDnD.Tk()
+        except Exception:
+            # tkinterdnd2 imported but its tkdnd Tcl package failed to load
+            # (broken install / missing binaries). Start without DnD instead
+            # of crashing; _install_drop_hook will report it in the status bar.
+            root = None
+    if root is None:
         root = tk.Tk()
 
     # Use default Windows scaling/behavior but keep predictable font.

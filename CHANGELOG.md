@@ -11,6 +11,11 @@
 ### Changed
 - README redesigned: annotated GUI screenshot with a numbered zone legend, install options table (installer / portable EXE / from source), exclude-zone syntax reference with mm/anchor examples, report overview, and update behavior.
 
+### Fixed
+- "Выбрать…" dialogs (old/new PDF, output folder) now open at the folder already written in the field instead of the OS's last-used location.
+- "Открыть папку" falls back to the output folder from the field when no comparison has been run yet, instead of only showing "folder not set".
+- If tkinterdnd2 is importable but its tkdnd Tcl package fails to load, the app now starts without drag-and-drop (with the status-bar notice) instead of crashing on launch.
+
 ## v0.1.13 - 2026-07-12
 
 ### Added
