@@ -35,6 +35,8 @@ git push origin v<version>
 
 GitHub Actions builds the EXE, portable ZIP, and installer, then attaches them to the tagged release together with `SHA256SUMS.txt`. Asset names must not change: the in-app updater looks up `PDFCompareLocal-setup.exe` by exact name and refuses to auto-install unless its SHA-256 matches the manifest (releases without the manifest fall back to opening the download page).
 
+Authenticode signing is a deliberate non-goal for now (personal/friends distribution; a code-signing certificate costs money and SmartScreen warnings are acceptable). If the audience widens, add signtool to the build job and publisher verification to the updater.
+
 ## Manual Release Fallback
 
 If Actions is unavailable and `gh` is authenticated:

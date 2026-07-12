@@ -7,7 +7,11 @@ $python = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 Push-Location $repo
 try {
-    & $python -m pytest
+    # Coverage gate: core engine only (GUI is intentionally excluded — Tk
+    # widgets are not unit-testable in CI). Actual core coverage is ~85%;
+    # the threshold sits a couple of points lower so an unrelated line
+    # does not block a merge. Raise it as coverage grows.
+    & $python -m pytest --cov=pdfcompare_core --cov-report=term --cov-fail-under=82
     if ($LASTEXITCODE -ne 0) {
         throw "pytest failed with exit code $LASTEXITCODE"
     }

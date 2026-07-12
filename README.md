@@ -133,7 +133,7 @@ python compare_pdfs.py --old old.pdf --new new.pdf --bbox-merge-gap-mm 5 --keep-
 
 ## License
 
-No license is declared yet.
+[MIT](LICENSE). Обратите внимание: зависимость PyMuPDF распространяется под AGPL-3.0 (или коммерческой лицензией Artifex) — при использовании и распространении сборок ограничения PyMuPDF наследуются независимо от лицензии этого репозитория.
 
 [download-setup]: https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal-setup.exe
 [download-exe]: https://github.com/mikhalchankasm/AutoPDFCompare/releases/latest/download/PDFCompareLocal.exe
