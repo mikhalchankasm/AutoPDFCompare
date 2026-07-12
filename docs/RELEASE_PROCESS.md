@@ -33,7 +33,7 @@ git push origin master
 git push origin v<version>
 ```
 
-GitHub Actions builds the EXE, portable ZIP, and installer, then attaches all three to the tagged release. The `PDFCompareLocal-setup.exe` asset name must not change — the in-app updater looks it up by that exact name.
+GitHub Actions builds the EXE, portable ZIP, and installer, then attaches them to the tagged release together with `SHA256SUMS.txt`. Asset names must not change: the in-app updater looks up `PDFCompareLocal-setup.exe` by exact name and refuses to auto-install unless its SHA-256 matches the manifest (releases without the manifest fall back to opening the download page).
 
 ## Manual Release Fallback
 

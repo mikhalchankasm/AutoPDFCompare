@@ -17,7 +17,9 @@ from pdfcompare_ui.update_check import (
     fetch_latest_release,
     is_newer,
     latest_release_url,
+    parse_sha256sums,
     parse_version,
+    sha256_of_file,
 )
 
 
@@ -107,6 +109,7 @@ class FetchLatestReleaseTests(unittest.TestCase):
             {"name": "PDFCompareLocal.exe", "browser_download_url": "https://example.com/exe"},
             {"name": "PDFCompareLocal-portable.zip", "browser_download_url": "https://example.com/zip"},
             {"name": "PDFCompareLocal-setup.exe", "browser_download_url": "https://example.com/setup"},
+            {"name": "SHA256SUMS.txt", "browser_download_url": "https://example.com/sums"},
         ],
     }
 
@@ -124,6 +127,7 @@ class FetchLatestReleaseTests(unittest.TestCase):
         self.assertEqual(result["tag"], "v0.1.7")
         self.assertEqual(result["exe_url"], "https://example.com/exe")
         self.assertEqual(result["setup_url"], "https://example.com/setup")
+        self.assertEqual(result["sums_url"], "https://example.com/sums")
         self.assertEqual(result["html_url"], self.SAMPLE_PAYLOAD["html_url"])
 
     def test_setup_url_empty_when_release_has_no_installer(self) -> None:
@@ -165,6 +169,47 @@ class FetchLatestReleaseTests(unittest.TestCase):
         self.assertIn("api.github.com", url)
         self.assertIn("AutoPDFCompare", url)
         self.assertTrue(url.endswith("/releases/latest"))
+
+
+class Sha256ManifestTests(unittest.TestCase):
+    HASH_A = "a" * 64
+    HASH_B = "0123456789abcdef" * 4
+
+    def test_parses_sha256sum_format(self) -> None:
+        text = (
+            f"{self.HASH_A}  PDFCompareLocal-setup.exe\n"
+            f"{self.HASH_B} *PDFCompareLocal.exe\n"
+            "not a hash line\n"
+            "deadbeef  too-short-hash.bin\n"
+        )
+        sums = parse_sha256sums(text)
+        self.assertEqual(sums["PDFCompareLocal-setup.exe"], self.HASH_A)
+        self.assertEqual(sums["PDFCompareLocal.exe"], self.HASH_B)
+        self.assertNotIn("too-short-hash.bin", sums)
+        self.assertEqual(len(sums), 2)
+
+    def test_uppercase_hash_is_normalized(self) -> None:
+        sums = parse_sha256sums(f"{self.HASH_A.upper()}  Setup.exe")
+        self.assertEqual(sums["Setup.exe"], self.HASH_A)
+
+    def test_file_names_with_spaces(self) -> None:
+        sums = parse_sha256sums(f"{self.HASH_A}  My Setup File.exe")
+        self.assertEqual(sums["My Setup File.exe"], self.HASH_A)
+
+    def test_empty_input(self) -> None:
+        self.assertEqual(parse_sha256sums(""), {})
+        self.assertEqual(parse_sha256sums(None), {})  # type: ignore[arg-type]
+
+    def test_sha256_of_file_matches_hashlib(self) -> None:
+        import hashlib
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "blob.bin"
+            payload = b"pdfcompare" * 1000
+            target.write_bytes(payload)
+            self.assertEqual(sha256_of_file(target), hashlib.sha256(payload).hexdigest())
 
 
 if __name__ == "__main__":

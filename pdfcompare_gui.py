@@ -21,6 +21,8 @@ from compare_pdfs import (
     APP_VERSION,
     DIFF_STRICTNESS_CHOICES,
     LIVE_REPORT_EVENT_PREFIX,
+    MAX_RENDER_DPI,
+    MIN_RENDER_DPI,
     START_REPORT_FILE,
     compare_pdfs,
     normalize_exclude_regions,
@@ -32,7 +34,14 @@ from pdfcompare_ui.history_tab import HistoryTabMixin
 from pdfcompare_ui.i18n import I18N
 from pdfcompare_ui.rerender_tab import RerenderTabMixin
 from pdfcompare_ui.state_persistence import StatePersistenceMixin
-from pdfcompare_ui.update_check import fetch_latest_release, is_newer
+from pdfcompare_ui.update_check import (
+    SETUP_ASSET_NAME,
+    fetch_latest_release,
+    fetch_text,
+    is_newer,
+    parse_sha256sums,
+    sha256_of_file,
+)
 from pdfcompare_ui.utils import (
     count_pdf_pages_pair,
     extract_revision_label,
@@ -1296,11 +1305,8 @@ class PDFCompareApp(
                 messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_bbox_merge_ratio"))
                 return
 
-        if dpi < 72:
-            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
-            return
-        # Guard against accidental huge values that can exhaust memory.
-        if dpi > 1200:
+        # Guard against typos and accidental huge values that exhaust memory.
+        if dpi < MIN_RENDER_DPI or dpi > MAX_RENDER_DPI:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_dpi"))
             return
         if stroke_tol < 0:
@@ -1525,13 +1531,16 @@ class PDFCompareApp(
                         }
                     )
                     messagebox.showerror(self._tr("dlg_error_title"), f"{err}\n\n{tb}")
+                elif kind == "update_checked":
+                    self._mark_update_checked()
                 elif kind == "update_available":
                     version = str(event[1])
                     url = str(event[2])
                     name = str(event[3])
                     setup_url = str(event[4]) if len(event) > 4 else ""
+                    sums_url = str(event[5]) if len(event) > 5 else ""
                     self._show_update_badge(version, url)
-                    self._show_update_dialog(version, url, name, setup_url)
+                    self._show_update_dialog(version, url, name, setup_url, sums_url)
                 elif kind == "update_downloaded":
                     self._launch_update_installer(Path(str(event[1])))
                 elif kind == "update_download_failed":
@@ -1571,7 +1580,9 @@ class PDFCompareApp(
 
     def _update_check_worker(self, manual: bool) -> None:
         release = fetch_latest_release()
-        self._mark_update_checked()
+        # _mark_update_checked touches Tk variables via _save_state — hand it
+        # to the UI thread instead of calling it from this worker.
+        self.worker_events.put(("update_checked",))
         if release is None:
             if manual:
                 self.worker_events.put(("update_failed", True))
@@ -1584,6 +1595,7 @@ class PDFCompareApp(
                 release.get("html_url") or "",
                 release.get("name") or tag,
                 release.get("setup_url") or "",
+                release.get("sums_url") or "",
             ))
         elif manual:
             self.worker_events.put(("update_uptodate", True))
@@ -1595,16 +1607,17 @@ class PDFCompareApp(
         self.update_badge.bind("<Button-1>", lambda _e, u=url: webbrowser.open(u))  # type: ignore[misc]
         self.update_badge.pack(side=tk.RIGHT, padx=(8, 6))
 
-    def _show_update_dialog(self, version: str, url: str, name: str, setup_url: str = "") -> None:
+    def _show_update_dialog(self, version: str, url: str, name: str, setup_url: str = "", sums_url: str = "") -> None:
         skip_version = str(self.update_check_state.get("skip_version") or "")
         if skip_version == version:
             return  # user previously dismissed this exact version
-        # In-place update only makes sense for the packaged exe; running from
-        # source keeps the old "open the release page" flow.
-        can_autoupdate = bool(setup_url) and bool(getattr(sys, "frozen", False))
+        # In-place update only makes sense for the packaged exe, and only when
+        # the release ships a checksum manifest to verify the download against;
+        # running from source keeps the old "open the release page" flow.
+        can_autoupdate = bool(setup_url) and bool(sums_url) and bool(getattr(sys, "frozen", False))
         if can_autoupdate:
             if messagebox.askyesno(self._tr("dlg_update_title"), self._tr("dlg_update_install_body", version=version)):
-                self._download_update_installer(setup_url, url, version)
+                self._download_update_installer(setup_url, sums_url, url, version)
                 return
         else:
             body = self._tr("dlg_update_body", version=version)
@@ -1618,16 +1631,20 @@ class PDFCompareApp(
         ):
             self._skip_update_version(version)
 
-    def _download_update_installer(self, setup_url: str, page_url: str, version: str) -> None:
-        """Fetch the installer asset in the background; the poll loop launches it."""
+    def _download_update_installer(self, setup_url: str, sums_url: str, page_url: str, version: str) -> None:
+        """Fetch the installer asset in the background; the poll loop launches it
+        only after the SHA-256 from the release manifest matched."""
         self._set_status("status_update_downloading", version=version)
 
         def worker() -> None:
             import tempfile
             import urllib.request
 
+            target = Path(tempfile.gettempdir()) / f"PDFCompareLocal-setup-{version}.exe"
             try:
-                target = Path(tempfile.gettempdir()) / f"PDFCompareLocal-setup-{version}.exe"
+                expected = parse_sha256sums(fetch_text(sums_url)).get(SETUP_ASSET_NAME, "")
+                if not expected:
+                    raise RuntimeError(f"В манифесте релиза нет хеша для {SETUP_ASSET_NAME}")
                 req = urllib.request.Request(
                     setup_url,
                     headers={"User-Agent": f"PDFCompareLocal/{APP_VERSION}"},
@@ -1638,8 +1655,16 @@ class PDFCompareApp(
                         if not chunk:
                             break
                         fh.write(chunk)
+                actual = sha256_of_file(target)
+                if actual != expected:
+                    raise RuntimeError(f"SHA-256 инсталлятора не совпал: {actual} != {expected}")
                 self.worker_events.put(("update_downloaded", str(target)))
             except Exception as exc:
+                # Never launch an unverified download.
+                try:
+                    target.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 self.worker_events.put(("update_download_failed", str(exc), page_url))
 
         threading.Thread(target=worker, daemon=True).start()

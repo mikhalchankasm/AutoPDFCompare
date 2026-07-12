@@ -8,11 +8,16 @@ badge/dialog; this module only answers "what is the latest release?" and
 
 from __future__ import annotations
 
+import hashlib
 import json
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from pdfcompare_core.constants import APP_VERSION, GITHUB_REPO
+
+SETUP_ASSET_NAME = "PDFCompareLocal-setup.exe"
+SUMS_ASSET_NAME = "SHA256SUMS.txt"
 
 
 def parse_version(s: str) -> tuple[int, ...]:
@@ -86,12 +91,15 @@ def fetch_latest_release(timeout: float = 8.0) -> dict[str, Any] | None:
         body = str(data.get("body") or "")
         exe_url = ""
         setup_url = ""
+        sums_url = ""
         for asset in data.get("assets") or []:
             asset_name = str(asset.get("name"))
             if asset_name == "PDFCompareLocal.exe":
                 exe_url = str(asset.get("browser_download_url") or "")
-            elif asset_name == "PDFCompareLocal-setup.exe":
+            elif asset_name == SETUP_ASSET_NAME:
                 setup_url = str(asset.get("browser_download_url") or "")
+            elif asset_name == SUMS_ASSET_NAME:
+                sums_url = str(asset.get("browser_download_url") or "")
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -101,6 +109,42 @@ def fetch_latest_release(timeout: float = 8.0) -> dict[str, Any] | None:
         "html_url": html_url,
         "exe_url": exe_url,
         "setup_url": setup_url,
+        "sums_url": sums_url,
         "published_at": published_at,
         "body": body,
     }
+
+
+def parse_sha256sums(text: str) -> dict[str, str]:
+    """Parse `sha256sum`-style lines: ``<64-hex-hash>  <file name>``.
+
+    Unknown lines are skipped; the leading ``*`` of binary-mode entries is
+    tolerated. Returns {file_name: lowercase_hash}.
+    """
+    result: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        parts = line.strip().split()
+        if len(parts) < 2:
+            continue
+        digest = parts[0].lower()
+        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            continue
+        name = " ".join(parts[1:]).lstrip("*").strip()
+        if name:
+            result[name] = digest
+    return result
+
+
+def sha256_of_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch_text(url: str, timeout: float = 30.0) -> str:
+    """Small helper for downloading the checksum manifest."""
+    req = urllib.request.Request(url, headers={"User-Agent": f"PDFCompareLocal/{APP_VERSION}"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — trusted https endpoint
+        return resp.read().decode("utf-8", errors="replace")
