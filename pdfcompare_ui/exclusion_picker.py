@@ -117,6 +117,7 @@ class _RegionPicker:
         doc: fitz.Document,
         page_number: int,
         existing: list[dict[str, float | str]] | None,
+        initial_anchor: str = "top_left",
     ) -> None:
         self.parent = parent
         self.doc = doc
@@ -128,7 +129,7 @@ class _RegionPicker:
         # exported on OK and how the readout counts offsets.
         self.regions: list[dict[str, Any]] = []
         self.selected: int | None = None
-        self.default_anchor = "top_left"
+        self.default_anchor = _canonical_anchor(initial_anchor)
 
         # Interaction state.
         self._mode: str | None = None  # 'draw' | 'move' | 'resize'
@@ -139,7 +140,13 @@ class _RegionPicker:
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title(self._tr("pick_title", "PDFCompare: select exclude regions"))
-        self.dialog.transient(parent)  # type: ignore[call-overload]
+        # A transient of an unmapped owner never maps on Windows — skip it when
+        # the parent is a hidden service root (e.g. the MCP picker).
+        try:
+            if parent.winfo_viewable():
+                self.dialog.transient(parent)  # type: ignore[call-overload]
+        except tk.TclError:
+            pass
         self.dialog.grab_set()
         self.dialog.resizable(False, False)
 
@@ -225,6 +232,8 @@ class _RegionPicker:
         self.dialog.bind("<Delete>", self._on_delete_key)
         self.dialog.bind("<BackSpace>", self._on_delete_key)
 
+        self.dialog.lift()
+        self.dialog.focus_force()
         self._redraw()
 
     # ----- i18n -----
@@ -635,12 +644,14 @@ def pick_exclude_regions(
     dpi: int = 120,  # kept for backwards compatibility; rendering now fits the window
     *,
     existing: list[dict[str, float | str]] | None = None,
+    initial_anchor: str = "top_left",
 ) -> list[dict[str, float | str]] | None:
     """Open a modal window to draw/edit exclude regions.
 
     Returns a list of ``{x, y, w, h, unit, anchor}`` dicts in ``percent``
-    coordinates (``top_left`` anchor). An empty list means the user removed
-    all regions and confirmed; ``None`` means the dialog was cancelled.
+    coordinates (offsets measured from each region's anchor corner). An empty
+    list means the user removed all regions and confirmed; ``None`` means the
+    dialog was cancelled.
     """
     del dpi
     pdf = Path(pdf_path)
@@ -653,7 +664,7 @@ def pick_exclude_regions(
     try:
         if doc.page_count < 1:
             return None
-        picker = _RegionPicker(parent, doc, page_number, existing)
+        picker = _RegionPicker(parent, doc, page_number, existing, initial_anchor=initial_anchor)
         parent.wait_window(picker.dialog)
     finally:
         doc.close()

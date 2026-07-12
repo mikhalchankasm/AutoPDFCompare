@@ -17,7 +17,10 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - starts the comparison in a background Python process;
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
   - `diff_strictness`: `strict`, `normal`, or `loose` (default `normal`);
-  - `exclude_regions`: list of page areas to ignore, for example `[{"x":70,"y":80,"w":30,"h":20}]` (default empty);
+  - `exclude_regions`: page areas to ignore. Accepts the same forms as the GUI field:
+    - percent text `"x,y,w,h; x2,y2,w2,h2"` (top-left anchor), e.g. `"70,80,30,20"`;
+    - a JSON string or list of objects `{"x","y","w","h","unit","anchor","label"}` with `unit` = `percent` (default) / `mm` / `px` and `anchor` = `top_left` (default) / `top_right` / `bottom_left` / `bottom_right` — x/y are offsets from that corner, so a `bottom_right` stamp zone holds on any sheet format, e.g. `[{"x":10,"y":10,"w":60,"h":30,"unit":"mm","anchor":"bottom_right"}]`;
+    - a list of 4-number lists (percent, top-left);
   - `bbox_merge_gap_mm`: experimental merge of nearby/overlapping change boxes within this distance; default is `0.0` mm, meaning disabled;
   - `bbox_merge_max_area_ratio`: prevents distant thin changes from becoming one huge empty rectangle; default is `16.0`, with an additional page-area guard;
   - `keep_debug_images`: when `true`, keeps full-size alignment debug images (increases report size).
@@ -25,12 +28,13 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 - `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...])`
   - re-renders selected rows of an existing report in place and rebuilds one combined report;
   - use after a full compare when a user says "recalculate sheet 4 with higher precision";
-  - `page_settings` can provide different settings per row, e.g. `[{"seq":4,"dpi":500,"stroke_tol":0,"diff_strictness":"strict"},{"seq":7,"dpi":300,"diff_strictness":"loose"}]`.
+  - `exclude_regions` accepts the same text/JSON/list forms as `start_pdf_comparison`; an empty string means "inherit from the original run";
+  - `page_settings` can provide different settings per row, e.g. `[{"seq":4,"dpi":500,"stroke_tol":0,"diff_strictness":"strict"},{"seq":7,"dpi":300,"diff_strictness":"loose","exclude_regions":"70,80,30,20"}]`.
 
-- `pick_pdf_exclude_region(pdf_path, page_number = 1, unit = "percent", anchor = "top_left")`
-  - opens a local window where the user draws an exclusion rectangle;
-  - returns one `exclude_region` object that can be passed to `start_pdf_comparison` or `rerender_pdf_comparison_pages`;
-  - supports `unit: "percent"`, `"px"`, or `"mm"` and anchors such as `bottom_right`.
+- `pick_pdf_exclude_region(pdf_path, page_number = 1, anchor = "top_left", existing = None)`
+  - opens the same visual picker as the GUI: mm grid overlay, paper-format detection (A4..A0), live mm size labels, several regions at once, move/resize via handles, per-region corner anchor;
+  - `anchor` preselects the anchor for newly drawn regions; `existing` (same forms as `exclude_regions`) opens current zones for editing;
+  - returns `exclude_regions` (list, percent units with per-region anchors) ready for `start_pdf_comparison` / `rerender_pdf_comparison_pages`; an empty list means the user removed all zones; `exclude_region` (first item) is kept for older callers.
 
 - `get_pdf_comparison_status(job_id = "")`
   - with `job_id`: returns one job state, progress, live report path, and final summary when available;
@@ -50,7 +54,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - whether similar comparisons already exist;
    - suggested folder names.
 3. Ask the user what the result folder should be called.
-4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. Use percent coordinates `x,y,w,h` from top-left of the page, or call `pick_pdf_exclude_region` when the user wants to draw the area.
+4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. Zones can be given as text — percent `x,y,w,h` from top-left, or JSON objects with `unit` (`percent`/`mm`/`px`) and `anchor` (`bottom_right` is handy for stamps: the zone holds on any sheet format) — or call `pick_pdf_exclude_region` when the user wants to draw/edit the areas visually.
 5. Ask for strictness when it matters:
    - `strict`: more sensitive to small differences;
    - `normal`: default;
