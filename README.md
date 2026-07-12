@@ -2,7 +2,7 @@
 
 > Local Windows tool for comparing two PDF revisions and opening a visual HTML diff report.
 
-Current release: `v0.1.9`
+Current release: `v0.1.10`
 
 [![Download Windows EXE][download-exe-badge]][download-exe]
 [![Download portable ZIP][download-zip-badge]][download-zip]

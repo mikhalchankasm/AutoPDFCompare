@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.10 - 2026-07-12
+
+### Changed
+- The primary change metric is now **% of drawn content** (foreground-relative), not % of the whole sheet. On large A0/A1 drawings where lines cover 3–10% of the page, a significant change that previously read as "0.1%" now shows a meaningful percentage relative to the actual drawing content.
+- Composite severity classification: the change level (minor/moderate/major) is now the maximum across three independent signals — FG% (≥1/8/20%), largest change region in mm² (≥100/2500/10000), and number of change zones (≥1/15/40). A significant change is no longer masked by a mostly-empty sheet.
+- HTML report: the change matrix leads with the FG% meter bar (heat colors keyed to 1/8/20%); sheet diff% is secondary. Per-page toolbar, slider header, and navigation show FG% first.
+- Markdown and live reports: FG% column added ahead of sheet diff%; engineer report sorts by FG%.
+- GUI re-render tab: "Drawn %" column promoted ahead of "Diff %".
+- Page note: "Changed ≈ X% of drawn content (Y mm², zones: N, max zone: Z mm²)".
+
+### Added
+- `foreground_sparse` flag: pages with less than 0.05% drawn content are flagged; on such pages FG% is unreliable and classification falls back to absolute metrics (mm², zones).
+- FG% is clamped to 100.0 (mask morphing could push it past 100 on near-empty pages).
+- Legend updated to the 1/8/20% FG thresholds.
+
+### Compatibility
+- Legacy runs without `foreground_sparse` / `diff_foreground_percent` fall back to the old diff-percent classification and render with "—" for missing fields.
+
 ## v0.1.9 - 2026-07-12
 
 ### Fixed
