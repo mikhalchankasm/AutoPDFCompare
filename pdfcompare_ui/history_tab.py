@@ -115,17 +115,16 @@ class HistoryTabMixin:
         self._restore_selected_history()
 
     def _save_snapshot_to_history(self: AppProtocol) -> None:
+        # Store the full input capture: restoring a snapshot must bring back
+        # every option (strictness, exclusion zones, bbox merge, debug flag),
+        # not just the file paths.
         snap = self._capture_inputs()
+        snap.pop("last_run_dir", None)
         self._add_history_record(
             {
                 "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "result": "snapshot",
-                "old_pdf": snap.get("old_pdf", ""),
-                "new_pdf": snap.get("new_pdf", ""),
-                "out_dir": snap.get("out_dir", ""),
-                "dpi": snap.get("dpi", ""),
-                "stroke_tol": snap.get("stroke_tol", ""),
-                "workers": snap.get("workers", ""),
+                **snap,
                 "run_dir": "",
             }
         )

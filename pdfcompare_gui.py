@@ -140,6 +140,8 @@ class PDFCompareApp(
         self.rerender_page_settings: dict[int, dict[str, Any]] = {}
         # Old PDF of the loaded run (from summary.json) — used by the exclude picker.
         self.rerender_source_pdf: Path | None = None
+        # Last PDF the user chose as the exclusion-picker backdrop (persisted).
+        self.picker_backdrop: str = ""
 
         self.worker_events: queue.Queue[tuple] = queue.Queue()
         self.running = False
@@ -1065,10 +1067,16 @@ class PDFCompareApp(
                 existing = list(normalize_exclude_regions(existing_raw))
             except ValueError:
                 existing = []
-        regions = pick_exclude_regions(self.root, pdf_path, existing=existing)
+        backdrop_out: dict[str, str] = {}
+        regions = pick_exclude_regions(
+            self.root, pdf_path, existing=existing,
+            backdrop=self.picker_backdrop or None, backdrop_out=backdrop_out,
+        )
+        self.picker_backdrop = backdrop_out.get("path", self.picker_backdrop)
         if regions is None:
             return
         self.exclude_regions.set(format_regions_for_field(regions))
+        self._save_state()
         self._set_status("status_pick_added", count=len(regions))
 
     def _start_timer(self) -> None:
@@ -1475,6 +1483,10 @@ class PDFCompareApp(
                             "stroke_tol": str(stroke_tol),
                             "diff_strictness": str(diff_strictness),
                             "exclude_regions": self.exclude_regions.get().strip(),
+                            "bbox_merge": self.bbox_merge.get().strip(),
+                            "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
+                            "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
+                            "keep_debug": self.keep_debug.get().strip(),
                             "workers": str(workers),
                             "run_dir": str(run_dir),
                         }
@@ -1502,6 +1514,10 @@ class PDFCompareApp(
                             "stroke_tol": str(stroke_tol),
                             "diff_strictness": str(diff_strictness),
                             "exclude_regions": self.exclude_regions.get().strip(),
+                            "bbox_merge": self.bbox_merge.get().strip(),
+                            "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
+                            "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
+                            "keep_debug": self.keep_debug.get().strip(),
                             "workers": str(workers),
                             "run_dir": "",
                         }
@@ -1525,6 +1541,10 @@ class PDFCompareApp(
                             "stroke_tol": str(stroke_tol),
                             "diff_strictness": str(diff_strictness),
                             "exclude_regions": self.exclude_regions.get().strip(),
+                            "bbox_merge": self.bbox_merge.get().strip(),
+                            "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
+                            "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
+                            "keep_debug": self.keep_debug.get().strip(),
                             "workers": str(workers),
                             "run_dir": "",
                             "error": err,

@@ -278,10 +278,16 @@ class RerenderTabMixin:
                 existing = list(normalize_exclude_regions(raw))
             except ValueError:
                 existing = []
-        regions = pick_exclude_regions(self.root, pdf_path, page_number=page, existing=existing)
+        backdrop_out: dict[str, str] = {}
+        regions = pick_exclude_regions(
+            self.root, pdf_path, page_number=page, existing=existing,
+            backdrop=self.picker_backdrop or None, backdrop_out=backdrop_out,
+        )
+        self.picker_backdrop = backdrop_out.get("path", self.picker_backdrop)
         if regions is None:
             return
         self.rerender_exclude.set(format_regions_for_field(regions))
+        self._save_state()
         self._set_status("status_pick_added", count=len(regions))
 
     def _parse_optional_float(self: AppProtocol, var: tk.StringVar) -> float | None:

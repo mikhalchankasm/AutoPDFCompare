@@ -186,17 +186,23 @@ class _RegionPicker:
         self.anchor_combo.pack(side=tk.LEFT, padx=(4, 14))
         self.anchor_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_anchor_change())
 
-        self.page_var: tk.StringVar | None = None
-        if doc.page_count > 1:
-            ttk.Label(toolbar, text=self._tr("pick_page", "Page:")).pack(side=tk.LEFT)
-            self.page_var = tk.StringVar(value=str(self.page_index + 1))
-            page_spin = ttk.Spinbox(
-                toolbar, from_=1, to=doc.page_count, textvariable=self.page_var, width=5,
-                command=self._on_page_change,
-            )
-            page_spin.pack(side=tk.LEFT, padx=(4, 2))
-            page_spin.bind("<Return>", lambda _e: self._on_page_change())
-            ttk.Label(toolbar, text=f"/ {doc.page_count}").pack(side=tk.LEFT, padx=(0, 14))
+        ttk.Label(toolbar, text=self._tr("pick_page", "Page:")).pack(side=tk.LEFT)
+        self.page_var: tk.StringVar | None = tk.StringVar(value=str(self.page_index + 1))
+        self.page_spin = ttk.Spinbox(
+            toolbar, from_=1, to=max(1, doc.page_count), textvariable=self.page_var, width=5,
+            command=self._on_page_change,
+        )
+        self.page_spin.pack(side=tk.LEFT, padx=(4, 2))
+        self.page_spin.bind("<Return>", lambda _e: self._on_page_change())
+        self.page_total_label = ttk.Label(toolbar, text=f"/ {doc.page_count}")
+        self.page_total_label.pack(side=tk.LEFT, padx=(0, 14))
+
+        # Any PDF can serve as the drawing backdrop: pick a cleaner revision or
+        # a template sheet and trace exclusion zones over it. Zones stay in
+        # percent of the page, so they apply to the compared documents as-is.
+        self._owned_docs: list[fitz.Document] = []
+        self.backdrop_path = ""
+        ttk.Button(toolbar, text=self._tr("pick_backdrop", "Backdrop…"), command=self._choose_backdrop).pack(side=tk.LEFT)
 
         self.readout = ttk.Label(toolbar, text="")
         self.readout.pack(side=tk.RIGHT)
@@ -642,6 +648,49 @@ class _RegionPicker:
         self._load_page()
         self._redraw()
 
+    # ----- backdrop -----
+
+    def _choose_backdrop(self) -> None:
+        from tkinter import filedialog
+
+        path = filedialog.askopenfilename(
+            parent=self.dialog,
+            title=self._tr("pick_backdrop_dlg", "Choose backdrop PDF"),
+            filetypes=[("PDF", "*.pdf")],
+        )
+        if path:
+            self.set_backdrop(Path(path))
+
+    def set_backdrop(self, path: Path) -> bool:
+        """Switch the preview document to another PDF (visual reference only)."""
+        try:
+            doc = fitz.open(path)
+        except Exception:
+            return False
+        if doc.page_count < 1:
+            doc.close()
+            return False
+        self._owned_docs.append(doc)
+        self.doc = doc
+        self.backdrop_path = str(path)
+        self.page_index = 0
+        if self.page_var is not None:
+            self.page_var.set("1")
+        self.page_spin.configure(to=doc.page_count)
+        self.page_total_label.configure(text=f"/ {doc.page_count}")
+        self.dialog.title(f"{self._tr('pick_title', 'PDFCompare: select exclude regions')} — {Path(path).name}")
+        self._load_page()
+        self._redraw()
+        return True
+
+    def close_owned_documents(self) -> None:
+        for doc in self._owned_docs:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        self._owned_docs.clear()
+
     def _on_delete_key(self, _event: tk.Event | None = None) -> None:
         widget = self.dialog.focus_get()
         # Don't hijack Delete/Backspace while typing in the page spinbox etc.
@@ -699,13 +748,18 @@ def pick_exclude_regions(
     *,
     existing: list[dict[str, float | str]] | None = None,
     initial_anchor: str = "top_left",
+    backdrop: str | Path | None = None,
+    backdrop_out: dict[str, str] | None = None,
 ) -> list[dict[str, float | str]] | None:
     """Open a modal window to draw/edit exclude regions.
 
-    Returns a list of ``{x, y, w, h, unit, anchor}`` dicts in ``percent``
-    coordinates (offsets measured from each region's anchor corner). An empty
-    list means the user removed all regions and confirmed; ``None`` means the
-    dialog was cancelled.
+    ``backdrop`` preloads another PDF as the visual reference; ``backdrop_out``
+    (if given) receives {"path": …} with the backdrop in effect when the
+    dialog closed, so the caller can persist the choice. Returns a list of
+    ``{x, y, w, h, unit, anchor}`` dicts in ``percent`` coordinates (offsets
+    measured from each region's anchor corner). An empty list means the user
+    removed all regions and confirmed; ``None`` means the dialog was
+    cancelled.
     """
     del dpi
     pdf = Path(pdf_path)
@@ -715,14 +769,23 @@ def pick_exclude_regions(
         doc = fitz.open(pdf)
     except Exception:
         return None
+    picker: _RegionPicker | None = None
     try:
         if doc.page_count < 1:
             return None
         picker = _RegionPicker(parent, doc, page_number, existing, initial_anchor=initial_anchor)
+        if backdrop:
+            backdrop_path = Path(backdrop)
+            if backdrop_path.exists() and backdrop_path.resolve() != pdf.resolve():
+                picker.set_backdrop(backdrop_path)
         parent.wait_window(picker.dialog)
+        if backdrop_out is not None:
+            backdrop_out["path"] = picker.backdrop_path
     finally:
+        if picker is not None:
+            picker.close_owned_documents()
         doc.close()
-    if picker.result.get("cancelled"):
+    if picker is None or picker.result.get("cancelled"):
         return None
     regions: list[dict[str, float | str]] | None = picker.result.get("regions")
     if regions is None:
