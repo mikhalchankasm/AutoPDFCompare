@@ -236,6 +236,31 @@ class ComputeDiffTests(unittest.TestCase):
         return (iw * ih) / float(tw * th)
 
 
+class ForegroundSparseTests(unittest.TestCase):
+    def test_dense_page_is_not_sparse(self) -> None:
+        a = _white_canvas(200, 200)
+        b = _white_canvas(200, 200)
+        cv2.line(a, (10, 10), (190, 10), (0, 0, 0), thickness=2)
+        cv2.line(b, (10, 10), (190, 190), (0, 0, 0), thickness=2)
+        _, _, _, metrics = compute_diff_detailed(a, b, render_dpi=72)
+        self.assertFalse(metrics["foreground_sparse"])
+
+    def test_nearly_empty_page_is_sparse(self) -> None:
+        # A huge white canvas with a tiny line — foreground covers almost nothing.
+        a = _white_canvas(2000, 2000)
+        b = _white_canvas(2000, 2000)
+        cv2.line(b, (100, 100), (120, 100), (0, 0, 0), thickness=1)
+        _, _, _, metrics = compute_diff_detailed(a, b, render_dpi=72)
+        self.assertTrue(metrics["foreground_sparse"])
+
+    def test_fg_percent_clamped_to_100(self) -> None:
+        a = _white_canvas(2000, 2000)
+        b = _white_canvas(2000, 2000)
+        cv2.line(b, (100, 100), (120, 100), (0, 0, 0), thickness=1)
+        _, _, _, metrics = compute_diff_detailed(a, b, render_dpi=72)
+        self.assertLessEqual(float(metrics["diff_foreground_percent"]), 100.0)
+
+
 class HarmonizeCanvasTests(unittest.TestCase):
     def test_same_size_returns_unchanged(self) -> None:
         a = _white_canvas(100, 100)
