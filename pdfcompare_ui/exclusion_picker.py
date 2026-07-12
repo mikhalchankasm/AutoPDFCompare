@@ -162,7 +162,7 @@ class _RegionPicker:
         self.format_var = tk.StringVar()
         self.format_combo = ttk.Combobox(toolbar, textvariable=self.format_var, state="readonly", width=22)
         self.format_combo.pack(side=tk.LEFT, padx=(4, 14))
-        self.format_combo.bind("<<ComboboxSelected>>", lambda _e: self._redraw())
+        self.format_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_format_change())
 
         ttk.Label(toolbar, text=self._tr("pick_grid", "Grid:")).pack(side=tk.LEFT)
         self.grid_var = tk.StringVar(value=f"10 {self._mm()}")
@@ -262,10 +262,33 @@ class _RegionPicker:
         zoom = min(self.max_w / max(rect.width, 1.0), self.max_h / max(rect.height, 1.0), 4.0)
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
         self.photo = tk.PhotoImage(data=base64.b64encode(pix.tobytes("png")))
-        self.disp_w = self.photo.width()
-        self.disp_h = self.photo.height()
-        self.canvas.configure(width=self.disp_w, height=self.disp_h)
+        self.page_view_w = self.photo.width()
+        self.page_view_h = self.photo.height()
         self._refresh_format_choices()
+        self._apply_view()
+
+    def _is_schematic(self) -> bool:
+        """An explicit format override shows a blank schematic sheet instead of
+        the real page — the user asked to trace stamp zones on a clean sheet
+        of the target format, not on a live drawing."""
+        return self.format_var.get() != self._auto_label
+
+    def _apply_view(self) -> None:
+        """Size the canvas: real page render in Auto mode, blank sheet of the
+        chosen format (true proportions) in schematic mode."""
+        if self._is_schematic():
+            fmt_w, fmt_h = self._format_mm()
+            px_per_mm = min(self.max_w / fmt_w, self.max_h / fmt_h)
+            self.disp_w = max(1, int(round(fmt_w * px_per_mm)))
+            self.disp_h = max(1, int(round(fmt_h * px_per_mm)))
+        else:
+            self.disp_w = self.page_view_w
+            self.disp_h = self.page_view_h
+        self.canvas.configure(width=self.disp_w, height=self.disp_h)
+
+    def _on_format_change(self) -> None:
+        self._apply_view()
+        self._redraw()
 
     def _refresh_format_choices(self) -> None:
         detected = _detect_format(self.page_w_mm, self.page_h_mm)
@@ -287,8 +310,9 @@ class _RegionPicker:
         choice = self.format_var.get()
         for name, fw, fh in ISO_FORMATS:
             if choice == name:
-                # Orient the chosen format to match the page orientation.
-                if self.disp_w >= self.disp_h:
+                # Orient the chosen format to match the page orientation
+                # (from the page's physical size, not the current canvas).
+                if self.page_w_mm >= self.page_h_mm:
                     return max(fw, fh), min(fw, fh)
                 return min(fw, fh), max(fw, fh)
         return self.page_w_mm, self.page_h_mm
@@ -350,7 +374,10 @@ class _RegionPicker:
     def _redraw(self) -> None:
         canvas = self.canvas
         canvas.delete("all")
-        canvas.create_image(0, 0, image=self.photo, anchor="nw")
+        if self._is_schematic():
+            self._draw_schematic_sheet()
+        else:
+            canvas.create_image(0, 0, image=self.photo, anchor="nw")
         self._draw_grid()
         for idx, region in enumerate(self.regions):
             self._draw_region(idx, region)
@@ -358,6 +385,33 @@ class _RegionPicker:
             x, y, w, h = self._draw_rect_px
             canvas.create_rectangle(x, y, x + w, y + h, outline=BOX_COLOR, width=2, dash=(4, 3))
         self._update_readout()
+
+    def _draw_schematic_sheet(self) -> None:
+        """Blank sheet of the chosen format: GOST-style frame (20 mm binding
+        margin on the left, 5 mm elsewhere) and a dashed reference title block
+        185×55 mm in the bottom-right corner, so the user immediately sees
+        where stamps live and can trace them."""
+        fmt_w, fmt_h = self._format_mm()
+        ppx = self.disp_w / fmt_w
+        ppy = self.disp_h / fmt_h
+        canvas = self.canvas
+        canvas.create_rectangle(0, 0, self.disp_w, self.disp_h, fill="#ffffff", outline="#94a3b8")
+        frame_x0, frame_y0 = 20.0 * ppx, 5.0 * ppy
+        frame_x1, frame_y1 = self.disp_w - 5.0 * ppx, self.disp_h - 5.0 * ppy
+        canvas.create_rectangle(frame_x0, frame_y0, frame_x1, frame_y1, outline="#64748b", width=2)
+        stamp_w, stamp_h = 185.0 * ppx, 55.0 * ppy
+        stamp_x0, stamp_y0 = frame_x1 - stamp_w, frame_y1 - stamp_h
+        if stamp_x0 > frame_x0 and stamp_y0 > frame_y0:
+            canvas.create_rectangle(stamp_x0, stamp_y0, frame_x1, frame_y1, outline="#94a3b8", dash=(5, 3))
+            canvas.create_text(
+                (stamp_x0 + frame_x1) / 2,
+                (stamp_y0 + frame_y1) / 2,
+                text=self._tr("pick_stamp_ref", "Title block 185×55 mm"),
+                fill="#94a3b8",
+                font=("TkDefaultFont", 9),
+            )
+        caption = f"{self.format_var.get()} · {fmt_w:.0f}×{fmt_h:.0f} {self._mm()}"
+        canvas.create_text(self.disp_w / 2, frame_y0 + 16, text=caption, fill="#94a3b8", font=("TkDefaultFont", 10, "bold"))
 
     def _draw_grid(self) -> None:
         step = self._grid_step_mm()

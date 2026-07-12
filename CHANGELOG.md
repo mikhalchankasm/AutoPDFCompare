@@ -19,6 +19,7 @@ Fixes driven by an external repository review (all P1 findings and most P2 confi
 - **Auto-update integrity check**: CI publishes `SHA256SUMS.txt` with every release; the in-app updater downloads the manifest, verifies the installer's SHA-256 before launching it, deletes the file on mismatch, and refuses silent install for releases without a manifest (falls back to the download page).
 - **PR checks**: the workflow now runs lint + tests on pull requests in a read-only job; release permissions are limited to the build/publish job.
 - **Coverage gate**: `scripts/test.ps1` (and therefore CI) fails if `pdfcompare_core` coverage drops below 82% (actual: ~85%; GUI is intentionally out of scope).
+- **Schematic sheet mode in the exclusion picker**: choosing a format manually (A4–A0) switches the preview from the real page to a blank sheet of that format in true proportions — with a GOST-style drawing frame and a dashed 185×55 mm title-block guide in the bottom-right corner — so stamp zones can be traced on a clean sheet instead of a live drawing. "Auto" restores the real page render; the canvas resizes to the chosen format's aspect.
 - **License**: the repository is now MIT-licensed (note: the PyMuPDF dependency remains AGPL-3.0/commercial, and its terms apply to distributed builds regardless).
 
 ## v0.1.14 - 2026-07-12
