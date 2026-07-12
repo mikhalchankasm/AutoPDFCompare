@@ -633,16 +633,20 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
 .cmp-page {
   height: 100vh;
   display: grid;
-  grid-template-rows: 48px minmax(0,1fr) auto;
+  grid-template-rows: minmax(0,1fr);
   grid-template-columns: 0 minmax(0,1fr);
   transition: grid-template-columns .18s ease;
 }
 .cmp-page.pinned { grid-template-columns: 300px minmax(0,1fr); }
 html.embed .cmp-header { display: none; }
-html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
+html.embed .cmp-main { grid-template-rows: 0 minmax(0,1fr) auto; }
+/* Embed (iframe on the view page): no drawer, no pinned column. */
+html.embed .sheet-drawer { display: none; }
+html.embed .cmp-page, html.embed .cmp-page.pinned { grid-template-columns: 0 minmax(0,1fr); }
+html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
 .cmp-header {
   display: grid;
-  grid-template-columns: minmax(300px,1fr) auto minmax(520px,1fr);
+  grid-template-columns: minmax(140px,1fr) minmax(0,auto) minmax(auto,1fr);
   gap: 10px;
   align-items: center;
   padding: 6px 10px;
@@ -664,13 +668,19 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
   min-width: 0;
   font-weight: 800;
   white-space: nowrap;
+  overflow: hidden;
+}
+/* Metrics tail is the least critical part of the title: clip it first. */
+.cmp-title > .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .cmp-right {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
-  min-width: 0;
 }
 .cmp-nav { display: flex; align-items: center; gap: 6px; }
 .sheet-drawer {
@@ -688,6 +698,8 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
   pointer-events: auto;
   grid-column: 1;
   grid-row: 1 / -1;
+  min-height: 0;
+  overflow: hidden;
 }
 .sheet-drawer-handle {
   pointer-events: auto;
@@ -732,6 +744,7 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
 /* Pinned: panel is always visible as part of the grid, no transform. */
 .cmp-page.pinned .sheet-drawer-panel {
   position: relative;
+  height: 100%;
   transform: none;
   box-shadow: none;
   border-width: 0 1px 0 0;
@@ -804,8 +817,25 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
   border-radius: var(--radius-sm);
 }
 .sheet-drawer-pin:hover { color: var(--brand); background: var(--brand-soft); }
-.cmp-main { grid-column: 1 / -1; }
+/* cmp-main owns the header/stage/controls rows; cmp-page only splits columns. */
+.cmp-main {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 48px minmax(0,1fr) auto;
+  container-type: inline-size;
+}
 .cmp-page.pinned .cmp-main { grid-column: 2; }
+/* Header adapts to the content column width (matters when the sidebar is pinned). */
+@container (max-width: 1240px) {
+  .cmp-nav .btn { width: 32px; min-width: 32px; padding: 0; }
+  .cmp-nav .btn span { display: none; }
+}
+@container (max-width: 1040px) {
+  .segmented .seg-btn > span[data-i18n-ru] { display: none; }
+}
 .cmp-count {
   display: inline-flex;
   align-items: center;
@@ -986,7 +1016,7 @@ input[type=range] {
     grid-template-columns: 1fr;
     align-items: start;
   }
-  .cmp-page { grid-template-rows: auto minmax(0,1fr) auto; }
+  .cmp-main { grid-template-rows: auto minmax(0,1fr) auto; }
   .cmp-title { justify-content: flex-start; flex-wrap: wrap; white-space: normal; }
   .cmp-right { justify-content: flex-start; flex-wrap: wrap; }
   .segmented { justify-self: start; flex-wrap: wrap; }
@@ -2462,14 +2492,21 @@ def generate_html_report(
     function isPinned() {{ return cmpPage && cmpPage.classList.contains('pinned'); }}
     function applyPinned(pinned) {{
       if (!cmpPage) return;
+      const en = document.documentElement.lang === 'en';
       cmpPage.classList.toggle('pinned', pinned);
       if (drawerPin) {{
         drawerPin.textContent = pinned ? '📌' : '📍';
-        drawerPin.setAttribute('aria-label', pinned ? (lang === 'en' ? 'Unpin panel' : 'Открепить панель') : (lang === 'en' ? 'Pin panel' : 'Прикрепить панель'));
+        drawerPin.setAttribute('aria-label', pinned ? (en ? 'Unpin panel' : 'Открепить панель') : (en ? 'Pin panel' : 'Прикрепить панель'));
       }}
+      if (!pinned && drawer) drawer.classList.remove('open');
       try {{ localStorage.setItem('pdfcompare.drawer', pinned ? 'pinned' : 'floating'); }} catch (e) {{}}
     }}
-    function togglePin() {{ applyPinned(!isPinned()); }}
+    function togglePin() {{
+      applyPinned(!isPinned());
+      // The stage width changes by the panel width; re-fit once the
+      // grid-template-columns transition (~180ms) settles.
+      window.setTimeout(() => fitToWindow(), 220);
+    }}
     // Restore persisted pin state (default: pinned).
     try {{
       const stored = localStorage.getItem('pdfcompare.drawer');
