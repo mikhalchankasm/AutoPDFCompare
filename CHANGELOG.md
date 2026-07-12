@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.12 - 2026-07-12
+
+### Added
+- Slider report sidebar is now **pinned by default**: the sheet navigation panel is visible on the left and pushes the comparison content to the right, so you can click any sheet without hovering the edge. A 📌 button in the panel header toggles to the previous floating (hover-to-open) mode. The pin state persists across pages via localStorage.
+
 ## v0.1.11 - 2026-07-12
 
 ### Changed

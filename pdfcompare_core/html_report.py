@@ -634,7 +634,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   height: 100vh;
   display: grid;
   grid-template-rows: 48px minmax(0,1fr) auto;
+  grid-template-columns: 0 minmax(0,1fr);
+  transition: grid-template-columns .18s ease;
 }
+.cmp-page.pinned { grid-template-columns: 300px minmax(0,1fr); }
 html.embed .cmp-header { display: none; }
 html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
 .cmp-header {
@@ -678,6 +681,14 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
   z-index: 50;
   pointer-events: none;
 }
+/* Pinned: drawer is a real grid column (pushes content), not an overlay. */
+.cmp-page.pinned .sheet-drawer {
+  position: relative;
+  z-index: auto;
+  pointer-events: auto;
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
 .sheet-drawer-handle {
   pointer-events: auto;
   position: absolute;
@@ -699,6 +710,7 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
   position: absolute;
   inset: 0 -8px 0 0;
 }
+.cmp-page.pinned .sheet-drawer-handle { display: none; }
 .sheet-drawer-panel {
   pointer-events: auto;
   position: absolute;
@@ -717,6 +729,14 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
   grid-template-rows: auto auto 1fr auto;
   gap: 10px;
 }
+/* Pinned: panel is always visible as part of the grid, no transform. */
+.cmp-page.pinned .sheet-drawer-panel {
+  position: relative;
+  transform: none;
+  box-shadow: none;
+  border-width: 0 1px 0 0;
+}
+/* Hover reveal only in floating (unpinned) mode. */
 .sheet-drawer:hover .sheet-drawer-panel,
 .sheet-drawer.open .sheet-drawer-panel,
 .sheet-drawer:focus-within .sheet-drawer-panel {
@@ -773,6 +793,19 @@ html.embed .cmp-page { grid-template-rows: 0 minmax(0,1fr) auto; }
 }
 .slider-nav-meta { color: var(--text-muted); font-size: 12px; }
 .sheet-drawer-hint { font-size: 11px; }
+.sheet-drawer-pin {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+.sheet-drawer-pin:hover { color: var(--brand); background: var(--brand-soft); }
+.cmp-main { grid-column: 1 / -1; }
+.cmp-page.pinned .cmp-main { grid-column: 2; }
 .cmp-count {
   display: inline-flex;
   align-items: center;
@@ -2234,6 +2267,7 @@ def generate_html_report(
   </style>
 </head>
 <body>
+  <div class="cmp-page pinned" id="cmpPage">
   <aside class="sheet-drawer" id="sheetDrawer" {i18n_aria("Навигация по листам", "Sheet navigation")}>
     <button class="sheet-drawer-handle" type="button" aria-controls="sheetDrawerPanel" aria-expanded="false" {i18n_aria("Открыть список листов", "Open sheet list")}>
       {report_icon("list", size=16)}
@@ -2243,13 +2277,14 @@ def generate_html_report(
       <div class="sheet-drawer-head">
         <strong>{i18n_span_text("Листы", "Sheets")}</strong>
         <span class="muted">{view_idx} / {len(pages_records)}</span>
+        <button class="sheet-drawer-pin" id="drawerPin" type="button" {i18n_aria("Открепить панель", "Unpin panel")}>📌</button>
       </div>
       <input id="sliderNavSearch" class="slider-nav-search" type="search" {i18n_placeholder_text("Поиск…", "Search…")}/>
       <div id="sliderNavList" class="slider-nav-list">{slider_nav_html}</div>
-      <div class="sheet-drawer-hint muted">{i18n_span_text("Esc — закрыть · ←/→ — соседний лист", "Esc — close · ←/→ — adjacent sheet")}</div>
+      <div class="sheet-drawer-hint muted">{i18n_span_text("📌 — открепить · ←/→ — соседний лист", "📌 — unpin · ←/→ — adjacent sheet")}</div>
     </div>
   </aside>
-  <div class="cmp-page">
+  <div class="cmp-main">
     <header class="cmp-header">
       <div class="cmp-left">
         <a class="btn ghost" href="{html.escape(p['view_file'], quote=True)}">{report_icon("arrow-left", size=16)}{i18n_span_text("К листу", "Back to sheet")}</a>
@@ -2321,6 +2356,7 @@ def generate_html_report(
         <input id="zoom" class="sr-only" type="range" min="1" max="500" value="100"/>
         <div class="hint">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · СКМ-выделение - zoom · Ctrl+Wheel - zoom", "Left click - split · Right drag - pan · Middle drag - zoom to rect · Ctrl+Wheel - zoom")}</div>
       </div>
+  </div>
   </div>
   <script>
     const oldSrc = {json.dumps(old_src)};
@@ -2412,15 +2448,34 @@ def generate_html_report(
     }}
     try {{ applyLang(localStorage.getItem('pdfcompare.lang') || document.documentElement.lang); }} catch (e) {{}}
     function openDrawer() {{
-      if (!drawer) return;
+      if (!drawer || isPinned()) return;
       drawer.classList.add('open');
       if (drawerHandle) drawerHandle.setAttribute('aria-expanded', 'true');
     }}
     function closeDrawer() {{
-      if (!drawer) return;
+      if (!drawer || isPinned()) return;
       drawer.classList.remove('open');
       if (drawerHandle) drawerHandle.setAttribute('aria-expanded', 'false');
     }}
+    const cmpPage = document.getElementById('cmpPage');
+    const drawerPin = document.getElementById('drawerPin');
+    function isPinned() {{ return cmpPage && cmpPage.classList.contains('pinned'); }}
+    function applyPinned(pinned) {{
+      if (!cmpPage) return;
+      cmpPage.classList.toggle('pinned', pinned);
+      if (drawerPin) {{
+        drawerPin.textContent = pinned ? '📌' : '📍';
+        drawerPin.setAttribute('aria-label', pinned ? (lang === 'en' ? 'Unpin panel' : 'Открепить панель') : (lang === 'en' ? 'Pin panel' : 'Прикрепить панель'));
+      }}
+      try {{ localStorage.setItem('pdfcompare.drawer', pinned ? 'pinned' : 'floating'); }} catch (e) {{}}
+    }}
+    function togglePin() {{ applyPinned(!isPinned()); }}
+    // Restore persisted pin state (default: pinned).
+    try {{
+      const stored = localStorage.getItem('pdfcompare.drawer');
+      applyPinned(stored ? stored === 'pinned' : true);
+    }} catch (e) {{}}
+    if (drawerPin) {{ drawerPin.addEventListener('click', togglePin); }}
     if (drawer) {{
       drawer.addEventListener('mouseenter', openDrawer);
       drawer.addEventListener('mouseleave', closeDrawer);
