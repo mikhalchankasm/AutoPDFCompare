@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.16 - 2026-07-13
 
 ### Added
 - **Re-render can be cancelled**: while a re-render runs, its button turns into "Отмена" (like the compare button). Cancelling rolls the run back through the same transaction as a failure — the existing report is left untouched. Closing the window during a re-render now also cancels it and waits for the transaction to unwind, instead of killing the thread mid-swap.
