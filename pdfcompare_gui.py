@@ -50,6 +50,7 @@ from pdfcompare_ui.utils import (
     extract_revision_label,
     format_duration_mmss,
 )
+from pdfcompare_ui.tooltip import add_tooltip
 from pdfcompare_ui.styles import (
     ACCENT,
     ACCENT_DARK,
@@ -164,6 +165,7 @@ class PDFCompareApp(
         self.lang_en_btn: tk.Label | None = None
         self.update_badge: tk.Label | None = None
         self.check_updates_btn: tk.Label | None = None
+        self.help_btn: tk.Label | None = None
         self.subtitle_label: ttk.Label | None = None
         self.tabs: ttk.Notebook | None = None
         self.compare_tab: ttk.Frame | None = None
@@ -245,6 +247,7 @@ class PDFCompareApp(
         self._refresh_history_table()
         self._install_drop_hook()
         self.root.bind("<Return>", self._on_enter)
+        self.root.bind("<F1>", lambda _e: self._show_help())
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(150, self._poll_worker_events)
         self.root.after(800, self._start_update_check)
@@ -467,6 +470,24 @@ class PDFCompareApp(
         )
         self.check_updates_btn.pack(side=tk.RIGHT, padx=(8, 6))
         self.check_updates_btn.bind("<Button-1>", lambda _e: self._check_for_updates_now())
+        add_tooltip(self.check_updates_btn, lambda: self._tr("tip_check_updates"))
+
+        # "?" — a first-run answer to "what do I do here?", without a wizard.
+        self.help_btn = tk.Label(
+            right_top,
+            text="?",
+            width=3,
+            height=1,
+            bg=BG_CARD,
+            fg=TEXT_SECONDARY,
+            relief="solid",
+            bd=1,
+            font=("Segoe UI", 13, "bold"),
+            cursor="hand2",
+        )
+        self.help_btn.pack(side=tk.RIGHT)
+        self.help_btn.bind("<Button-1>", lambda _e: self._show_help())
+        add_tooltip(self.help_btn, lambda: self._tr("tip_help"))
 
         # Update badge — hidden until a newer release is found.
         self.update_badge = tk.Label(
@@ -924,6 +945,10 @@ class PDFCompareApp(
             self.start_compare()
         else:
             self._request_cancel()
+
+    def _show_help(self) -> None:
+        """Short "how this works" — the app had no answer for a first-time user."""
+        messagebox.showinfo(self._tr("help_title"), self._tr("help_body"), parent=self.root)
 
     def _reset_rerender_button(self) -> None:
         """Back to "Перегенерировать" after a run ends, however it ended."""

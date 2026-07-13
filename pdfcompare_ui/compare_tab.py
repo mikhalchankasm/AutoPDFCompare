@@ -13,6 +13,7 @@ from tkinter import ttk
 from pdfcompare_core.diff_engine import DIFF_STRICTNESS_CHOICES
 
 from .contracts import AppProtocol
+from .tooltip import add_tooltip
 from .styles import (
     ACCENT,
     ACCENT_DARK,
@@ -72,6 +73,9 @@ class CompareTabMixin:
         self.swap_btn = ttk.Button(swap_box, text="⇅", width=3, style="Small.TButton", command=self._swap_files)
         self.swap_btn.pack(expand=True)
         self.new_entry = self._build_file_card(files_row, self.new_pdf, old=False)
+        add_tooltip(self.old_entry, lambda: self._tr("tip_old"))
+        add_tooltip(self.new_entry, lambda: self._tr("tip_new"))
+        add_tooltip(self.swap_btn, lambda: self._tr("tip_swap"))
         self.new_entry.grid(row=0, column=2, sticky="nsew")
 
         self.drop_canvas = tk.Frame(self.compare_tab, bg=BG_WINDOW, highlightthickness=1, highlightbackground=BORDER_THIN)
@@ -89,12 +93,15 @@ class CompareTabMixin:
         self.out_entry = ttk.Entry(out_fields, textvariable=self.out_dir, style="Path.TEntry")
         self.out_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
         self.out_pick_btn = ttk.Button(out_fields, text=self._tr("btn_select"), style="Small.TButton", command=self._pick_out_dir)
+        add_tooltip(self.out_entry, lambda: self._tr("tip_out"))
+        add_tooltip(self.out_pick_btn, lambda: self._tr("tip_out"))
         self.out_pick_btn.pack(side=tk.LEFT, padx=(8, 0))
         run_name_wrap = tk.Frame(out_wrap, bg=BG_WINDOW)
         run_name_wrap.pack(fill=tk.X, pady=(8, 0))
         self.run_name_label = ttk.Label(run_name_wrap, text=self._tr("path_run_name"), style="Hint.TLabel")
         self.run_name_label.pack(side=tk.LEFT, padx=(0, 8))
         self.run_name_entry = ttk.Entry(run_name_wrap, textvariable=self.run_name, style="Path.TEntry")
+        add_tooltip(self.run_name_entry, lambda: self._tr("tip_run_name"))
         self.run_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
         self.run_name_hint_label = ttk.Label(out_wrap, text=self._tr("path_run_name_hint"), style="Hint.TLabel")
         self.run_name_hint_label.pack(anchor="w", pady=(2, 0))
@@ -114,6 +121,9 @@ class CompareTabMixin:
             opts_grid.columnconfigure(col, weight=1, uniform="opts")
         self._build_scale_option(opts_grid, 0, "opts_dpi", self.dpi, self.dpi_value, 100, 400, 10)
         self._build_scale_option(opts_grid, 1, "opts_stroke", self.stroke_tol, self.stroke_value, 0, 10, 0.5)
+        # The scale rows are built by a helper, so the tooltips hang off their frames.
+        for idx, key in ((0, "tip_dpi"), (1, "tip_stroke")):
+            add_tooltip(opts_grid.grid_slaves(row=0, column=idx)[0], lambda k=key: self._tr(k))  # type: ignore[misc]
 
         advanced_grid = tk.Frame(self.options_body, bg=BG_SOFT)
         advanced_grid.pack(fill=tk.X, pady=(12, 0))
@@ -145,6 +155,7 @@ class CompareTabMixin:
             chip.pack(side=tk.LEFT, padx=(0, 6))
             chip.bind("<Button-1>", lambda _e, v=value: self.diff_strictness.set(v))  # type: ignore[misc]
             self.strictness_chips[value] = chip
+            add_tooltip(chip, lambda: self._tr("tip_strictness"))
         self.options_strictness_hint_label = ttk.Label(
             strict_frame,
             text=self._tr("opts_strictness_hint"),
@@ -164,7 +175,9 @@ class CompareTabMixin:
         self.options_exclude_label.pack(anchor="w", pady=(0, 6))
         exclude_entry_row = tk.Frame(exclude_frame, bg=BG_SOFT)
         exclude_entry_row.pack(fill=tk.X)
-        ttk.Entry(exclude_entry_row, textvariable=self.exclude_regions, style="Path.TEntry").pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+        exclude_entry = ttk.Entry(exclude_entry_row, textvariable=self.exclude_regions, style="Path.TEntry")
+        exclude_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
+        add_tooltip(exclude_entry, lambda: self._tr("tip_exclude"))
         self.exclude_pick_btn = ttk.Button(
             exclude_entry_row,
             text=self._tr("btn_pick_exclude"),
@@ -172,6 +185,7 @@ class CompareTabMixin:
             command=self._pick_exclude_regions,
         )
         self.exclude_pick_btn.pack(side=tk.LEFT, padx=(6, 0))
+        add_tooltip(self.exclude_pick_btn, lambda: self._tr("tip_exclude_pick"))
         self.options_exclude_hint_label = ttk.Label(
             exclude_frame,
             text=self._tr("opts_exclude_hint"),
@@ -206,6 +220,7 @@ class CompareTabMixin:
             command=self._update_bbox_merge_fields,
         )
         self.bbox_merge_chip.pack(side=tk.LEFT, padx=(8, 0))
+        add_tooltip(self.bbox_merge_chip, lambda: self._tr("tip_bbox_merge"))
         bbox_fields = tk.Frame(bbox_frame, bg=BG_SOFT)
         bbox_fields.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(bbox_fields, text=self._tr("opts_bbox_merge_gap"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
@@ -241,6 +256,7 @@ class CompareTabMixin:
             offvalue="off",
         )
         self.keep_debug_chip.pack(side=tk.LEFT, padx=(8, 0))
+        add_tooltip(self.keep_debug_chip, lambda: self._tr("tip_keep_debug"))
         self.options_keep_debug_hint_label = ttk.Label(
             keep_debug_frame,
             text=self._tr("opts_keep_debug_hint"),
@@ -256,6 +272,7 @@ class CompareTabMixin:
         actions.pack(fill=tk.X, pady=(0, 14))
         self.run_btn = self._primary_button(actions, self._tr("btn_compare_short"), self.start_compare)
         self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        add_tooltip(self.run_btn, lambda: self._tr("tip_run"))
         self.from_history_btn = ttk.Button(
             actions, text=self._tr("btn_from_history"), style="Small.TButton", command=self._restore_last_inputs
         )
@@ -269,6 +286,7 @@ class CompareTabMixin:
             command=self._open_report,
         )
         self.open_report_btn.pack(side=tk.LEFT, padx=(8, 0))
+        add_tooltip(self.open_report_btn, lambda: self._tr("tip_open_report"))
         self.open_run_btn = ttk.Button(
             actions,
             text=self._tr("btn_open_folder"),
@@ -276,6 +294,7 @@ class CompareTabMixin:
             command=self._open_run_folder,
         )
         self.open_run_btn.pack(side=tk.LEFT, padx=(8, 0))
+        add_tooltip(self.open_run_btn, lambda: self._tr("tip_open_folder"))
 
 
     def _build_status_panel(self: AppProtocol) -> None:

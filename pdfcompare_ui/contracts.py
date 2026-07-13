@@ -132,6 +132,7 @@ class AppProtocol(Protocol):
     history_hint_label: ttk.Label | None
     history_search_entry: ttk.Entry | None
     check_updates_btn: tk.Label | None
+    help_btn: tk.Label | None
 
     # --- History-tab widgets ------------------------------------------- #
     history_tree: ttk.Treeview

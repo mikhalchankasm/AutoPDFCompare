@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.19 - 2026-07-13
+
+### Added
+- **Hover tooltips on every option.** The hint labels explained the sliders, but the chips and buttons ("Строгость", "⇅", "Выбрать…") assumed you already knew. Now each one says what it does, in the interface language.
+- **A "?" button (and F1) with a short guide**: what to do step by step, and what `Diff %`, `FG %` and `mm²` actually mean. The app had no answer for a first-time user.
+- **Engine errors are bilingual.** The interface was RU/EN but the engine raised Russian-only text, so an English user saw "Не найден summary.json". Errors a user can trigger (DPI, strictness, run name, exclusion zones, a missing report) now render in the interface language. `str(exc)` stays Russian, so logs are unchanged.
+
+### Changed
+- `AGENTS.md` described a repository that does not exist ("bootstrap state, no source tree committed yet", a `src/` layout). Agents read it first, so every one of them — including review agents — started from a false map. It is now a real guide: the actual layout, the commands, and the invariants that are easy to break.
+- CI audits the locked dependency set with `pip-audit` (advisory: an unfixable transitive advisory should not block shipping). Currently clean.
+- Removed `scripts/ai_review_context.ps1` — unreferenced, superseded by `docs/REVIEW_PROMPT.md`.
+
 ## v0.1.18 - 2026-07-13
 
 ### Fixed
