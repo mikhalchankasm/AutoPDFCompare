@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **Exclusion zones drawn in the picker are now physical (mm), so one zone works on every sheet format.** The picker exported percent-of-page boxes, which do not survive a format change: a 185×55 mm title block traced on A4 landscape is 62% × 26% of the sheet, and applying that to A0 covers **741×220 mm** — a quarter of the drawing. Regions are now stored and exported as millimetres from their anchor corner (`unit: "mm"`), which the diff engine already understood, so the same stamp zone stays 185×55 mm on A4, A3, A1 and A0 in both orientations. A percent mode is still available for zones that should scale with the sheet.
+- **The picker is localized.** It received the Tk root as its parent and looked for a `_tr` method on it, which a `tk.Tk` does not have — so every string silently fell back to English even though the Russian strings existed. The language is now passed explicitly (the GUI passes the current UI language; MCP takes a `lang` argument).
+- **The region list could hang the window**: re-selecting a row while refreshing the list re-fired `<<TreeviewSelect>>`, which redrew and re-selected again. Found by a smoke test before it ever shipped.
+
+### Changed
+- **Picker redesign.** Settings moved to a vertical panel beside the sheet and became visible toggles instead of dropdowns: format (Auto, A4…A0), **orientation (portrait/landscape)**, grid step, anchor corner and units — the whole state is readable at a glance, and the current sheet is spelled out ("A4 · вертикальный · 210×297 мм"). Regions are listed with their number, size and anchor, with delete/clear next to them. Switching the format only changes the preview: it is how you check where your zones land on another sheet.
+
 ### Changed
 - **The MCP server now updates itself by default.** It runs from its own git checkout (`%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare`), which the GUI installer and the app's auto-update never touch — they only replace `PDFCompareLocal.exe`. Auto-update used to be opt-in (`-AutoUpdate` / `PDFCOMPARE_MCP_AUTO_UPDATE=1`), so an agent could silently keep running a months-old engine. The bootstrap now pulls `origin/master` on every server start (still skipping a checkout that is off `master` or has local changes) and re-installs dependencies when they changed. Opt out with `-NoAutoUpdate` or `PDFCOMPARE_MCP_AUTO_UPDATE=0`.
 

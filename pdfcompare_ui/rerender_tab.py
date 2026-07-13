@@ -284,6 +284,7 @@ class RerenderTabMixin:
         regions = pick_exclude_regions(
             self.root, pdf_path, page_number=page, existing=existing,
             backdrop=self.picker_backdrop or None, backdrop_out=backdrop_out,
+            lang=self.lang.get(),
         )
         self.picker_backdrop = backdrop_out.get("path", self.picker_backdrop)
         if regions is None:

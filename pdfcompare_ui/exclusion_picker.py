@@ -1,18 +1,22 @@
 """Visual exclusion-region picker for the Tkinter GUI.
 
-Lets the user draw one or more rectangles on a rendered PDF page and returns
-them as percent coordinates (the same form ``normalize_exclude_regions``
-accepts). Runs inside the existing GUI as a ``Toplevel``.
+The regions are physical: each one is stored and exported as millimetres from a
+chosen page corner (``unit: "mm"`` + ``anchor``). That is what makes a zone
+reusable — a 185×55 mm title block anchored to the bottom-right corner stays
+185×55 mm on A4, A3, A1 and A0, in both orientations. Percent regions cannot do
+this: 185 mm is 62% of an A4 sheet but only 16% of an A0 one, so the same
+percent box would swallow a quarter of a large sheet. Percent export stays
+available for anyone who wants a zone that scales with the sheet.
 
 Features:
-- paper format readout/override (auto-detected A4/A3/A2/A1/A0 or custom);
-- millimetre grid overlay with selectable step;
-- live size label (in mm) while drawing or resizing;
-- boxes can be selected, moved, resized via handles and deleted;
-- per-region corner anchor (e.g. bottom_right keeps a stamp zone in place
-  on sheets of different formats);
-- page navigation for multi-page documents;
-- existing regions from the entry field are shown and stay editable.
+- sheet preview: the real page (or a chosen backdrop PDF) in Auto mode, a blank
+  schematic sheet of the picked format when a format is set explicitly;
+- format A4…A0 with portrait/landscape orientation, so the same zones can be
+  checked against every sheet they will be applied to;
+- millimetre grid with selectable step and a live size readout;
+- regions can be drawn, selected, moved, resized by handles and deleted, and are
+  listed with their size and anchor;
+- per-region corner anchor.
 """
 
 from __future__ import annotations
@@ -28,6 +32,8 @@ import fitz
 
 from pdfcompare_core.exclusions import exclusion_regions_to_pixel_boxes
 
+from .i18n import I18N
+
 PT_PER_MM = 72.0 / 25.4
 
 # ISO A-series paper sizes (portrait, mm).
@@ -38,17 +44,24 @@ ISO_FORMATS: list[tuple[str, float, float]] = [
     ("A1", 594.0, 841.0),
     ("A0", 841.0, 1189.0),
 ]
+FORMAT_NAMES = [name for name, _w, _h in ISO_FORMATS]
 FORMAT_TOLERANCE_MM = 8.0
+AUTO_FORMAT = "auto"
 
 GRID_STEPS_MM = (5, 10, 25, 50)
 HANDLE_PX = 4  # half-size of a resize handle square
 HIT_PX = 8  # grab radius around a handle centre
-MIN_BOX_PX = 3
+MIN_BOX_MM = 1.0
+
+UNIT_MM = "mm"
+UNIT_PERCENT = "percent"
 
 BOX_COLOR = "#e11d48"
 BOX_SELECTED_COLOR = "#2563eb"
 GRID_MINOR_COLOR = "#d7dee8"
 GRID_MAJOR_COLOR = "#b5c0cf"
+SHEET_EDGE_COLOR = "#94a3b8"
+SHEET_FRAME_COLOR = "#64748b"
 
 # Resize handles: id -> (x factor, y factor) inside the box rectangle.
 HANDLES: dict[str, tuple[float, float]] = {
@@ -63,8 +76,6 @@ HANDLE_CURSORS = {
     "e": "size_we", "w": "size_we",
 }
 
-# Region anchor: which page corner x/y are measured from. bottom_right keeps
-# a stamp zone in place on sheets of different formats.
 ANCHORS = ("top_left", "top_right", "bottom_left", "bottom_right")
 ANCHOR_ALIASES = {
     "top_left": "top_left", "left_top": "top_left", "tl": "top_left",
@@ -73,6 +84,16 @@ ANCHOR_ALIASES = {
     "bottom_right": "bottom_right", "right_bottom": "bottom_right", "br": "bottom_right",
 }
 ANCHOR_ARROWS = {"top_left": "↖", "top_right": "↗", "bottom_left": "↙", "bottom_right": "↘"}
+ANCHOR_KEYS = {
+    "top_left": "pick_anchor_tl",
+    "top_right": "pick_anchor_tr",
+    "bottom_left": "pick_anchor_bl",
+    "bottom_right": "pick_anchor_br",
+}
+
+# Reference title block drawn on the schematic sheet (GOST form 1).
+STAMP_W_MM = 185.0
+STAMP_H_MM = 55.0
 
 
 def _canonical_anchor(raw: object) -> str:
@@ -80,21 +101,73 @@ def _canonical_anchor(raw: object) -> str:
     return ANCHOR_ALIASES.get(text, "top_left")
 
 
+def region_rect_mm(region: dict[str, Any], sheet_w: float, sheet_h: float) -> tuple[float, float, float, float]:
+    """Anchored region -> (left, top, w, h) in mm from the sheet's top-left."""
+    anchor = _canonical_anchor(region.get("anchor"))
+    x, y = float(region["x_mm"]), float(region["y_mm"])
+    w, h = float(region["w_mm"]), float(region["h_mm"])
+    left = x if "left" in anchor else sheet_w - x - w
+    top = y if "top" in anchor else sheet_h - y - h
+    return left, top, w, h
+
+
+def region_from_rect_mm(
+    left: float, top: float, w: float, h: float, anchor: str, sheet_w: float, sheet_h: float
+) -> dict[str, Any]:
+    """(left, top, w, h) in mm from the top-left -> region anchored to a corner."""
+    anchor = _canonical_anchor(anchor)
+    x = left if "left" in anchor else sheet_w - left - w
+    y = top if "top" in anchor else sheet_h - top - h
+    return {"anchor": anchor, "x_mm": max(0.0, x), "y_mm": max(0.0, y), "w_mm": w, "h_mm": h}
+
+
+def region_to_export(region: dict[str, Any], sheet_w: float, sheet_h: float, unit: str) -> dict[str, float | str]:
+    """Export one region in the requested unit.
+
+    ``mm`` keeps the zone physically identical on every sheet format; ``percent``
+    makes it scale with the sheet (relative to the sheet it was drawn on).
+    """
+    anchor = _canonical_anchor(region.get("anchor"))
+    x, y = float(region["x_mm"]), float(region["y_mm"])
+    w, h = float(region["w_mm"]), float(region["h_mm"])
+    if unit == UNIT_PERCENT:
+        return {
+            "x": round(x / sheet_w * 100.0, 4),
+            "y": round(y / sheet_h * 100.0, 4),
+            "w": round(w / sheet_w * 100.0, 4),
+            "h": round(h / sheet_h * 100.0, 4),
+            "unit": UNIT_PERCENT,
+            "anchor": anchor,
+        }
+    return {
+        "x": round(x, 2),
+        "y": round(y, 2),
+        "w": round(w, 2),
+        "h": round(h, 2),
+        "unit": UNIT_MM,
+        "anchor": anchor,
+    }
+
+
 def format_regions_for_field(regions: list[dict[str, float | str]]) -> str:
     """Serialize picker output for the "Exclude regions" entry field.
 
-    Plain ``x,y,w,h;…`` percent text while every region is top_left-anchored
-    (backwards compatible); compact JSON once any region carries an anchor.
+    Plain ``x,y,w,h;…`` only for the legacy shape (percent, top_left); anything
+    carrying a unit or an anchor becomes compact JSON, which the core parses.
     """
-    if all(_canonical_anchor(r.get("anchor")) == "top_left" for r in regions):
-        return ";".join(f"{r['x']:.4g},{r['y']:.4g},{r['w']:.4g},{r['h']:.4g}" for r in regions)
+    def is_legacy(region: dict[str, float | str]) -> bool:
+        unit = str(region.get("unit") or UNIT_PERCENT).casefold()
+        return unit in {UNIT_PERCENT, "%"} and _canonical_anchor(region.get("anchor")) == "top_left"
+
+    if regions and all(is_legacy(r) for r in regions):
+        return ";".join(f"{float(r['x']):.4g},{float(r['y']):.4g},{float(r['w']):.4g},{float(r['h']):.4g}" for r in regions)
     items = [
         {
-            "x": round(float(r["x"]), 3),
-            "y": round(float(r["y"]), 3),
-            "w": round(float(r["w"]), 3),
-            "h": round(float(r["h"]), 3),
-            "unit": "percent",
+            "x": float(r["x"]),
+            "y": float(r["y"]),
+            "w": float(r["w"]),
+            "h": float(r["h"]),
+            "unit": str(r.get("unit") or UNIT_PERCENT),
             "anchor": _canonical_anchor(r.get("anchor")),
         }
         for r in regions
@@ -118,15 +191,15 @@ class _RegionPicker:
         page_number: int,
         existing: list[dict[str, float | str]] | None,
         initial_anchor: str = "top_left",
+        lang: str = "ru",
     ) -> None:
         self.parent = parent
         self.doc = doc
         self.page_index = min(max(int(page_number) - 1, 0), doc.page_count - 1)
         self.result: dict[str, Any] = {}
+        self.lang = "en" if str(lang).lower().startswith("en") else "ru"
 
-        # Model: regions as percent-of-page dicts {x, y, w, h} in top-left
-        # coordinates (canvas space); "anchor" only changes how the region is
-        # exported on OK and how the readout counts offsets.
+        # Model: physical regions — mm offsets from the region's anchor corner.
         self.regions: list[dict[str, Any]] = []
         self.selected: int | None = None
         self.default_anchor = _canonical_anchor(initial_anchor)
@@ -137,9 +210,10 @@ class _RegionPicker:
         self._orig_px: tuple[float, float, float, float] | None = None
         self._handle: str | None = None
         self._draw_rect_px: tuple[float, float, float, float] | None = None
+        self._syncing_list = False
 
         self.dialog = tk.Toplevel(parent)
-        self.dialog.title(self._tr("pick_title", "PDFCompare: select exclude regions"))
+        self.dialog.title(self._tr("pick_title"))
         # A transient of an unmapped owner never maps on Windows — skip it when
         # the parent is a hidden service root (e.g. the MCP picker).
         try:
@@ -152,80 +226,40 @@ class _RegionPicker:
 
         screen_w = self.dialog.winfo_screenwidth()
         screen_h = self.dialog.winfo_screenheight()
-        self.max_w = min(1360, max(640, screen_w - 220))
-        self.max_h = min(860, max(480, screen_h - 260))
+        # Leave room for the footer: the sheet must not push OK/Cancel off-screen.
+        self.max_w = min(1060, max(560, screen_w - 560))
+        self.max_h = min(740, max(440, screen_h - 320))
 
-        toolbar = tk.Frame(self.dialog)
-        toolbar.pack(fill=tk.X, padx=8, pady=(8, 2))
-
-        ttk.Label(toolbar, text=self._tr("pick_format", "Format:")).pack(side=tk.LEFT)
-        self.format_var = tk.StringVar()
-        self.format_combo = ttk.Combobox(toolbar, textvariable=self.format_var, state="readonly", width=22)
-        self.format_combo.pack(side=tk.LEFT, padx=(4, 14))
-        self.format_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_format_change())
-
-        ttk.Label(toolbar, text=self._tr("pick_grid", "Grid:")).pack(side=tk.LEFT)
-        self.grid_var = tk.StringVar(value=f"10 {self._mm()}")
-        grid_values = [self._tr("pick_grid_off", "Off")] + [f"{step} {self._mm()}" for step in GRID_STEPS_MM]
-        self.grid_combo = ttk.Combobox(toolbar, textvariable=self.grid_var, state="readonly", width=8, values=grid_values)
-        self.grid_combo.pack(side=tk.LEFT, padx=(4, 14))
-        self.grid_combo.bind("<<ComboboxSelected>>", lambda _e: self._redraw())
-
-        ttk.Label(toolbar, text=self._tr("pick_anchor", "Anchor:")).pack(side=tk.LEFT)
-        self._anchor_labels = {
-            "top_left": self._tr("pick_anchor_tl", "↖ top-left"),
-            "top_right": self._tr("pick_anchor_tr", "↗ top-right"),
-            "bottom_left": self._tr("pick_anchor_bl", "↙ bottom-left"),
-            "bottom_right": self._tr("pick_anchor_br", "↘ bottom-right"),
-        }
-        self.anchor_var = tk.StringVar(value=self._anchor_labels[self.default_anchor])
-        self.anchor_combo = ttk.Combobox(
-            toolbar, textvariable=self.anchor_var, state="readonly", width=16,
-            values=[self._anchor_labels[a] for a in ANCHORS],
-        )
-        self.anchor_combo.pack(side=tk.LEFT, padx=(4, 14))
-        self.anchor_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_anchor_change())
-
-        ttk.Label(toolbar, text=self._tr("pick_page", "Page:")).pack(side=tk.LEFT)
-        self.page_var: tk.StringVar | None = tk.StringVar(value=str(self.page_index + 1))
-        self.page_spin = ttk.Spinbox(
-            toolbar, from_=1, to=max(1, doc.page_count), textvariable=self.page_var, width=5,
-            command=self._on_page_change,
-        )
-        self.page_spin.pack(side=tk.LEFT, padx=(4, 2))
-        self.page_spin.bind("<Return>", lambda _e: self._on_page_change())
-        self.page_total_label = ttk.Label(toolbar, text=f"/ {doc.page_count}")
-        self.page_total_label.pack(side=tk.LEFT, padx=(0, 14))
-
-        # Any PDF can serve as the drawing backdrop: pick a cleaner revision or
-        # a template sheet and trace exclusion zones over it. Zones stay in
-        # percent of the page, so they apply to the compared documents as-is.
         self._owned_docs: list[fitz.Document] = []
         self.backdrop_path = ""
-        ttk.Button(toolbar, text=self._tr("pick_backdrop", "Backdrop…"), command=self._choose_backdrop).pack(side=tk.LEFT)
 
-        self.readout = ttk.Label(toolbar, text="")
-        self.readout.pack(side=tk.RIGHT)
+        self.format_var = tk.StringVar(value=AUTO_FORMAT)
+        self.orient_var = tk.StringVar(value="portrait")
+        self.grid_var = tk.StringVar(value="10")
+        self.anchor_var = tk.StringVar(value=self.default_anchor)
+        self.unit_var = tk.StringVar(value=UNIT_MM)
+        self.page_var = tk.StringVar(value=str(self.page_index + 1))
 
-        hint = ttk.Label(
-            self.dialog,
-            text=self._tr(
-                "pick_hint",
-                "Drag to draw a region · drag a box to move it · drag handles to resize · Del removes selected · Esc cancels.",
-            ),
-            anchor="w",
+        # Footer first: packed against the window bottom it can never be clipped
+        # by a tall sheet, whatever format is picked.
+        footer = tk.Frame(self.dialog)
+        footer.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+        ttk.Button(footer, text=self._tr("pick_ok"), command=self._accept, width=14).pack(side=tk.RIGHT)
+        ttk.Button(footer, text=self._tr("pick_cancel"), command=self._cancel, width=12).pack(side=tk.RIGHT, padx=(0, 6))
+
+        body = tk.Frame(self.dialog)
+        body.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self._build_side_panel(body)
+
+        right = tk.Frame(body)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(12, 0))
+        self.canvas = tk.Canvas(
+            right, bg="white", cursor="crosshair", highlightthickness=1, highlightbackground="#c9d2de"
         )
-        hint.pack(fill=tk.X, padx=8, pady=(0, 4))
-
-        self.canvas = tk.Canvas(self.dialog, bg="white", cursor="crosshair", highlightthickness=1, highlightbackground="#c9d2de")
-        self.canvas.pack(padx=8, pady=2)
-
-        buttons = tk.Frame(self.dialog)
-        buttons.pack(fill=tk.X, padx=8, pady=(4, 8))
-        tk.Button(buttons, text=self._tr("pick_ok", "OK"), command=self._accept, width=12).pack(side=tk.RIGHT, padx=(6, 0))
-        tk.Button(buttons, text=self._tr("pick_cancel", "Cancel"), command=self._cancel, width=12).pack(side=tk.RIGHT)
-        tk.Button(buttons, text=self._tr("pick_delete", "Delete selected"), command=self._delete_selected, width=18).pack(side=tk.LEFT)
-        tk.Button(buttons, text=self._tr("pick_undo", "Undo last"), command=self._undo_last, width=18).pack(side=tk.LEFT, padx=(6, 0))
+        self.canvas.pack()
+        self.hint_label = ttk.Label(right, text=self._tr("pick_hint"), anchor="w", foreground="#6b7280")
+        self.hint_label.pack(fill=tk.X, pady=(6, 0))
 
         self._load_page()
         self._import_existing(existing or [])
@@ -244,21 +278,160 @@ class _RegionPicker:
 
     # ----- i18n -----
 
-    def _tr(self, key: str, fallback: str, **kwargs: object) -> str:
-        tr = getattr(self.parent, "_tr", None)
-        if callable(tr):
-            try:
-                text = tr(key, **kwargs)
-                if text != key:
-                    return text
-            except Exception:
-                pass
-        return fallback.format(**kwargs) if kwargs else fallback
+    def _tr(self, key: str, **kwargs: object) -> str:
+        text = str(I18N[self.lang].get(key, I18N["ru"].get(key, key)))
+        return text.format(**kwargs) if kwargs else text
 
     def _mm(self) -> str:
-        return self._tr("pick_mm", "mm")
+        return self._tr("pick_mm")
 
-    # ----- page rendering / geometry -----
+    # ----- side panel -----
+
+    def _build_side_panel(self, parent: tk.Frame) -> None:
+        """Everything the user sets lives in one vertical column next to the
+        sheet, as visible toggles rather than dropdowns: the whole state of the
+        picker is readable at a glance."""
+        panel = tk.Frame(parent, width=290)
+        panel.pack(side=tk.LEFT, fill=tk.Y)
+        panel.pack_propagate(False)
+
+        self.format_group = self._group(panel, "pick_format")
+        row1 = tk.Frame(self.format_group)
+        row1.pack(fill=tk.X)
+        self.auto_btn = ttk.Radiobutton(
+            row1, text=self._tr("pick_auto"), value=AUTO_FORMAT, variable=self.format_var,
+            style="Toolbutton", command=self._on_format_change, width=7,
+        )
+        self.auto_btn.pack(side=tk.LEFT, padx=(0, 4))
+        for name in FORMAT_NAMES:
+            ttk.Radiobutton(
+                row1, text=name, value=name, variable=self.format_var,
+                style="Toolbutton", command=self._on_format_change, width=4,
+            ).pack(side=tk.LEFT, padx=(0, 2))
+        self.sheet_label = ttk.Label(self.format_group, text="", foreground="#6b7280")
+        self.sheet_label.pack(anchor="w", pady=(6, 0))
+
+        self.orient_group = self._group(panel, "pick_orientation")
+        orow = tk.Frame(self.orient_group)
+        orow.pack(fill=tk.X)
+        self.portrait_btn = ttk.Radiobutton(
+            orow, text=self._tr("pick_portrait"), value="portrait", variable=self.orient_var,
+            style="Toolbutton", command=self._on_format_change, width=16,
+        )
+        self.portrait_btn.pack(side=tk.LEFT, padx=(0, 4))
+        self.landscape_btn = ttk.Radiobutton(
+            orow, text=self._tr("pick_landscape"), value="landscape", variable=self.orient_var,
+            style="Toolbutton", command=self._on_format_change, width=16,
+        )
+        self.landscape_btn.pack(side=tk.LEFT)
+
+        grid_group = self._group(panel, "pick_grid")
+        grow = tk.Frame(grid_group)
+        grow.pack(fill=tk.X)
+        ttk.Radiobutton(
+            grow, text=self._tr("pick_grid_off"), value="off", variable=self.grid_var,
+            style="Toolbutton", command=self._redraw, width=6,
+        ).pack(side=tk.LEFT, padx=(0, 3))
+        for step in GRID_STEPS_MM:
+            ttk.Radiobutton(
+                grow, text=str(step), value=str(step), variable=self.grid_var,
+                style="Toolbutton", command=self._redraw, width=4,
+            ).pack(side=tk.LEFT, padx=(0, 2))
+
+        anchor_group = self._group(panel, "pick_anchor")
+        arow = tk.Frame(anchor_group)
+        arow.pack(fill=tk.X)
+        # 2x2, mirroring the corners they stand for.
+        for idx, anchor in enumerate(ANCHORS):
+            ttk.Radiobutton(
+                arow,
+                text=f"{ANCHOR_ARROWS[anchor]} {self._tr(ANCHOR_KEYS[anchor])}",
+                value=anchor,
+                variable=self.anchor_var,
+                style="Toolbutton",
+                command=self._on_anchor_change,
+                width=14,
+            ).grid(row=idx // 2, column=idx % 2, padx=(0, 4), pady=(0, 4), sticky="ew")
+        ttk.Label(anchor_group, text=self._tr("pick_anchor_hint"), foreground="#6b7280", wraplength=280).pack(
+            anchor="w", pady=(6, 0)
+        )
+
+        unit_group = self._group(panel, "pick_units")
+        urow = tk.Frame(unit_group)
+        urow.pack(fill=tk.X)
+        ttk.Radiobutton(
+            urow, text=self._tr("pick_unit_mm"), value=UNIT_MM, variable=self.unit_var,
+            style="Toolbutton", command=self._update_readout, width=12,
+        ).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Radiobutton(
+            urow, text=self._tr("pick_unit_percent"), value=UNIT_PERCENT, variable=self.unit_var,
+            style="Toolbutton", command=self._update_readout, width=12,
+        ).pack(side=tk.LEFT)
+        self.unit_hint = ttk.Label(unit_group, text=self._tr("pick_unit_mm_hint"), foreground="#6b7280", wraplength=280)
+        self.unit_hint.pack(anchor="w", pady=(6, 0))
+
+        source_group = self._group(panel, "pick_source")
+        srow = tk.Frame(source_group)
+        srow.pack(fill=tk.X)
+        ttk.Label(srow, text=self._tr("pick_page")).pack(side=tk.LEFT)
+        self.page_spin = ttk.Spinbox(
+            srow, from_=1, to=max(1, self.doc.page_count), textvariable=self.page_var, width=5,
+            command=self._on_page_change,
+        )
+        self.page_spin.pack(side=tk.LEFT, padx=(4, 2))
+        self.page_spin.bind("<Return>", lambda _e: self._on_page_change())
+        self.page_total_label = ttk.Label(srow, text=f"/ {self.doc.page_count}")
+        self.page_total_label.pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(srow, text=self._tr("pick_backdrop"), command=self._choose_backdrop).pack(side=tk.LEFT)
+
+        list_group = self._group(panel, "pick_regions")
+        self.region_list = ttk.Treeview(
+            list_group, columns=("n", "size", "anchor"), show="headings", height=6, selectmode="browse"
+        )
+        self.region_list.heading("n", text="#")
+        self.region_list.heading("size", text=self._tr("pick_col_size"))
+        self.region_list.heading("anchor", text=self._tr("pick_col_anchor"))
+        self.region_list.column("n", width=30, anchor="center", stretch=False)
+        self.region_list.column("size", width=120, anchor="w")
+        self.region_list.column("anchor", width=110, anchor="w")
+        self.region_list.pack(fill=tk.X)
+        self.region_list.bind("<<TreeviewSelect>>", self._on_list_select)
+
+        lrow = tk.Frame(list_group)
+        lrow.pack(fill=tk.X, pady=(6, 0))
+        ttk.Button(lrow, text=self._tr("pick_delete"), command=self._delete_selected).pack(side=tk.LEFT)
+        ttk.Button(lrow, text=self._tr("pick_clear"), command=self._clear_regions).pack(side=tk.LEFT, padx=(6, 0))
+        self.readout = ttk.Label(list_group, text="", foreground="#374151")
+        self.readout.pack(anchor="w", pady=(6, 0))
+
+    def _group(self, parent: tk.Frame, title_key: str) -> tk.Frame:
+        wrap = tk.Frame(parent)
+        wrap.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(wrap, text=self._tr(title_key), font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
+        inner = tk.Frame(wrap)
+        inner.pack(fill=tk.X)
+        return inner
+
+    # ----- sheet geometry -----
+
+    def _is_schematic(self) -> bool:
+        """An explicit format shows a blank sheet of that format instead of the
+        real page: the point is to check where the zones land on A0, not to look
+        at this particular drawing."""
+        return self.format_var.get() != AUTO_FORMAT
+
+    def _sheet_mm(self) -> tuple[float, float]:
+        choice = self.format_var.get()
+        for name, fw, fh in ISO_FORMATS:
+            if choice == name:
+                if self.orient_var.get() == "landscape":
+                    return max(fw, fh), min(fw, fh)
+                return min(fw, fh), max(fw, fh)
+        return self.page_w_mm, self.page_h_mm
+
+    def _px_per_mm(self) -> tuple[float, float]:
+        sheet_w, sheet_h = self._sheet_mm()
+        return self.disp_w / sheet_w, self.disp_h / sheet_h
 
     def _load_page(self) -> None:
         page = self.doc[self.page_index]
@@ -270,85 +443,65 @@ class _RegionPicker:
         self.photo = tk.PhotoImage(data=base64.b64encode(pix.tobytes("png")))
         self.page_view_w = self.photo.width()
         self.page_view_h = self.photo.height()
-        self._refresh_format_choices()
+        if self.page_w_mm >= self.page_h_mm:
+            self.orient_var.set("landscape")
+        else:
+            self.orient_var.set("portrait")
         self._apply_view()
 
-    def _is_schematic(self) -> bool:
-        """An explicit format override shows a blank schematic sheet instead of
-        the real page — the user asked to trace stamp zones on a clean sheet
-        of the target format, not on a live drawing."""
-        return self.format_var.get() != self._auto_label
-
     def _apply_view(self) -> None:
-        """Size the canvas: real page render in Auto mode, blank sheet of the
-        chosen format (true proportions) in schematic mode."""
         if self._is_schematic():
-            fmt_w, fmt_h = self._format_mm()
-            px_per_mm = min(self.max_w / fmt_w, self.max_h / fmt_h)
-            self.disp_w = max(1, int(round(fmt_w * px_per_mm)))
-            self.disp_h = max(1, int(round(fmt_h * px_per_mm)))
+            sheet_w, sheet_h = self._sheet_mm()
+            px_per_mm = min(self.max_w / sheet_w, self.max_h / sheet_h)
+            self.disp_w = max(1, int(round(sheet_w * px_per_mm)))
+            self.disp_h = max(1, int(round(sheet_h * px_per_mm)))
         else:
             self.disp_w = self.page_view_w
             self.disp_h = self.page_view_h
         self.canvas.configure(width=self.disp_w, height=self.disp_h)
+        self._update_sheet_label()
+
+    def _update_sheet_label(self) -> None:
+        sheet_w, sheet_h = self._sheet_mm()
+        if self._is_schematic():
+            orient = self._tr("pick_landscape" if self.orient_var.get() == "landscape" else "pick_portrait")
+            name = f"{self.format_var.get()} · {orient}"
+        else:
+            detected = _detect_format(self.page_w_mm, self.page_h_mm)
+            name = self._tr("pick_auto_sheet", name=detected) if detected else self._tr("pick_auto_custom")
+        self.sheet_label.configure(text=f"{name} · {sheet_w:.0f}×{sheet_h:.0f} {self._mm()}")
+        state = "normal" if self._is_schematic() else "disabled"
+        self.portrait_btn.configure(state=state)
+        self.landscape_btn.configure(state=state)
 
     def _on_format_change(self) -> None:
+        # Regions are physical (mm from a corner), so they survive the switch —
+        # that is exactly what the format switch is for: seeing where the same
+        # zone lands on another sheet.
         self._apply_view()
         self._redraw()
 
-    def _refresh_format_choices(self) -> None:
-        detected = _detect_format(self.page_w_mm, self.page_h_mm)
-        if detected:
-            auto_size = f"{detected} · {self.page_w_mm:.0f}×{self.page_h_mm:.0f} {self._mm()}"
-        else:
-            auto_size = f"{self.page_w_mm:.0f}×{self.page_h_mm:.0f} {self._mm()}"
-        auto_label = self._tr("pick_format_auto", "Auto: {size}", size=auto_size)
-        values = [auto_label] + [name for name, _w, _h in ISO_FORMATS]
-        current = self.format_var.get()
-        self.format_combo.configure(values=values)
-        # Keep an explicit override across page switches; otherwise track auto.
-        if current not in values:
-            self.format_var.set(auto_label)
-        self._auto_label = auto_label
-
-    def _format_mm(self) -> tuple[float, float]:
-        """Sheet size in mm used for the grid and size labels."""
-        choice = self.format_var.get()
-        for name, fw, fh in ISO_FORMATS:
-            if choice == name:
-                # Orient the chosen format to match the page orientation
-                # (from the page's physical size, not the current canvas).
-                if self.page_w_mm >= self.page_h_mm:
-                    return max(fw, fh), min(fw, fh)
-                return min(fw, fh), max(fw, fh)
-        return self.page_w_mm, self.page_h_mm
-
     def _grid_step_mm(self) -> float | None:
-        raw = self.grid_var.get().split()[0]
         try:
-            return float(raw)
+            return float(self.grid_var.get())
         except ValueError:
-            return None  # "Off"
+            return None  # "off"
 
-    # ----- model/coordinate helpers -----
+    # ----- model <-> canvas -----
 
     def _to_px(self, region: dict[str, Any]) -> tuple[float, float, float, float]:
-        return (
-            float(region["x"]) / 100.0 * self.disp_w,
-            float(region["y"]) / 100.0 * self.disp_h,
-            float(region["w"]) / 100.0 * self.disp_w,
-            float(region["h"]) / 100.0 * self.disp_h,
-        )
+        sheet_w, sheet_h = self._sheet_mm()
+        ppx, ppy = self._px_per_mm()
+        left, top, w, h = region_rect_mm(region, sheet_w, sheet_h)
+        return left * ppx, top * ppy, w * ppx, h * ppy
 
     def _set_from_px(self, region: dict[str, Any], x: float, y: float, w: float, h: float) -> None:
-        region["x"] = x / self.disp_w * 100.0
-        region["y"] = y / self.disp_h * 100.0
-        region["w"] = w / self.disp_w * 100.0
-        region["h"] = h / self.disp_h * 100.0
-
-    def _size_mm(self, region: dict[str, Any]) -> tuple[float, float]:
-        fmt_w, fmt_h = self._format_mm()
-        return float(region["w"]) / 100.0 * fmt_w, float(region["h"]) / 100.0 * fmt_h
+        sheet_w, sheet_h = self._sheet_mm()
+        ppx, ppy = self._px_per_mm()
+        updated = region_from_rect_mm(
+            x / ppx, y / ppy, w / ppx, h / ppy, _canonical_anchor(region.get("anchor")), sheet_w, sheet_h
+        )
+        region.update(updated)
 
     def _clamp_x(self, x: float) -> float:
         return max(0.0, min(float(self.disp_w), x))
@@ -357,12 +510,13 @@ class _RegionPicker:
         return max(0.0, min(float(self.disp_h), y))
 
     def _import_existing(self, existing: list[dict[str, float | str]]) -> None:
-        """Convert incoming regions (any supported unit/anchor) to percent boxes.
+        """Convert incoming regions (any unit/anchor) into the mm model.
 
-        Converted one by one so each region keeps its own anchor even if a
-        malformed neighbour gets dropped.
+        Converted one by one so a malformed neighbour cannot drop the rest.
         """
-        display_dpi = self.disp_w / self.page_w_mm * 25.4
+        sheet_w, sheet_h = self._sheet_mm()
+        ppx, _ppy = self._px_per_mm()
+        display_dpi = ppx * 25.4
         for raw in existing or []:
             try:
                 boxes = exclusion_regions_to_pixel_boxes([raw], self.disp_w, self.disp_h, dpi=display_dpi)
@@ -371,9 +525,11 @@ class _RegionPicker:
             if not boxes:
                 continue
             x_px, y_px, w_px, h_px = boxes[0]
-            region: dict[str, Any] = {"anchor": _canonical_anchor(raw.get("anchor") if isinstance(raw, dict) else None)}
-            self._set_from_px(region, float(x_px), float(y_px), max(float(w_px), 1.0), max(float(h_px), 1.0))
-            self.regions.append(region)
+            anchor = _canonical_anchor(raw.get("anchor") if isinstance(raw, dict) else None)
+            ppx, ppy = self._px_per_mm()
+            self.regions.append(
+                region_from_rect_mm(x_px / ppx, y_px / ppy, w_px / ppx, h_px / ppy, anchor, sheet_w, sheet_h)
+            )
 
     # ----- drawing -----
 
@@ -390,56 +546,55 @@ class _RegionPicker:
         if self._draw_rect_px is not None:
             x, y, w, h = self._draw_rect_px
             canvas.create_rectangle(x, y, x + w, y + h, outline=BOX_COLOR, width=2, dash=(4, 3))
+        self._refresh_region_list()
         self._update_readout()
 
     def _draw_schematic_sheet(self) -> None:
-        """Blank sheet of the chosen format: GOST-style frame (20 mm binding
-        margin on the left, 5 mm elsewhere) and a dashed reference title block
-        185×55 mm in the bottom-right corner, so the user immediately sees
-        where stamps live and can trace them."""
-        fmt_w, fmt_h = self._format_mm()
-        ppx = self.disp_w / fmt_w
-        ppy = self.disp_h / fmt_h
+        """Blank sheet of the chosen format: the drawing frame (20 mm binding
+        margin, 5 mm elsewhere) and a dashed 185×55 mm title block, so the user
+        sees where the stamp sits and can trace it."""
+        sheet_w, sheet_h = self._sheet_mm()
+        ppx, ppy = self._px_per_mm()
         canvas = self.canvas
-        canvas.create_rectangle(0, 0, self.disp_w, self.disp_h, fill="#ffffff", outline="#94a3b8")
+        canvas.create_rectangle(0, 0, self.disp_w, self.disp_h, fill="#ffffff", outline=SHEET_EDGE_COLOR)
         frame_x0, frame_y0 = 20.0 * ppx, 5.0 * ppy
         frame_x1, frame_y1 = self.disp_w - 5.0 * ppx, self.disp_h - 5.0 * ppy
-        canvas.create_rectangle(frame_x0, frame_y0, frame_x1, frame_y1, outline="#64748b", width=2)
-        stamp_w, stamp_h = 185.0 * ppx, 55.0 * ppy
+        canvas.create_rectangle(frame_x0, frame_y0, frame_x1, frame_y1, outline=SHEET_FRAME_COLOR, width=2)
+        stamp_w, stamp_h = STAMP_W_MM * ppx, STAMP_H_MM * ppy
         stamp_x0, stamp_y0 = frame_x1 - stamp_w, frame_y1 - stamp_h
         if stamp_x0 > frame_x0 and stamp_y0 > frame_y0:
-            canvas.create_rectangle(stamp_x0, stamp_y0, frame_x1, frame_y1, outline="#94a3b8", dash=(5, 3))
+            canvas.create_rectangle(stamp_x0, stamp_y0, frame_x1, frame_y1, outline=SHEET_EDGE_COLOR, dash=(5, 3))
             canvas.create_text(
                 (stamp_x0 + frame_x1) / 2,
                 (stamp_y0 + frame_y1) / 2,
-                text=self._tr("pick_stamp_ref", "Title block 185×55 mm"),
-                fill="#94a3b8",
+                text=self._tr("pick_stamp_ref"),
+                fill=SHEET_EDGE_COLOR,
                 font=("TkDefaultFont", 9),
             )
-        caption = f"{self.format_var.get()} · {fmt_w:.0f}×{fmt_h:.0f} {self._mm()}"
-        canvas.create_text(self.disp_w / 2, frame_y0 + 16, text=caption, fill="#94a3b8", font=("TkDefaultFont", 10, "bold"))
+        caption = f"{self.format_var.get()} · {sheet_w:.0f}×{sheet_h:.0f} {self._mm()}"
+        canvas.create_text(
+            self.disp_w / 2, frame_y0 + 16, text=caption, fill=SHEET_EDGE_COLOR, font=("TkDefaultFont", 10, "bold")
+        )
 
     def _draw_grid(self) -> None:
         step = self._grid_step_mm()
         if not step:
             return
-        fmt_w, fmt_h = self._format_mm()
-        px_per_mm_x = self.disp_w / fmt_w
-        px_per_mm_y = self.disp_h / fmt_h
+        ppx, ppy = self._px_per_mm()
         i = 1
-        x = step * px_per_mm_x
+        x = step * ppx
         while x < self.disp_w:
             major = (i * step) % 50 == 0
             self.canvas.create_line(x, 0, x, self.disp_h, fill=GRID_MAJOR_COLOR if major else GRID_MINOR_COLOR)
             i += 1
-            x = i * step * px_per_mm_x
+            x = i * step * ppx
         i = 1
-        y = step * px_per_mm_y
+        y = step * ppy
         while y < self.disp_h:
             major = (i * step) % 50 == 0
             self.canvas.create_line(0, y, self.disp_w, y, fill=GRID_MAJOR_COLOR if major else GRID_MINOR_COLOR)
             i += 1
-            y = i * step * px_per_mm_y
+            y = i * step * ppy
 
     def _draw_region(self, idx: int, region: dict[str, Any]) -> None:
         x, y, w, h = self._to_px(region)
@@ -447,15 +602,14 @@ class _RegionPicker:
         color = BOX_SELECTED_COLOR if selected else BOX_COLOR
         self.canvas.create_rectangle(x, y, x + w, y + h, outline=color, width=2)
         anchor = _canonical_anchor(region.get("anchor"))
-        if anchor != "top_left":
-            # Mark the anchored corner with a small filled square.
-            ax = x if "left" in anchor else x + w
-            ay = y if "top" in anchor else y + h
-            self.canvas.create_rectangle(ax - 5, ay - 5, ax + 5, ay + 5, fill=color, outline="#ffffff", width=1)
-        w_mm, h_mm = self._size_mm(region)
-        arrow = "" if anchor == "top_left" else ANCHOR_ARROWS[anchor] + " "
-        label = f"{arrow}{w_mm:.0f}×{h_mm:.0f} {self._mm()}"
-        text_id = self.canvas.create_text(x + 4, y + 3, text=label, anchor="nw", fill=color, font=("TkDefaultFont", 8, "bold"))
+        # Mark the anchored corner: that is the corner the zone is measured from.
+        ax = x if "left" in anchor else x + w
+        ay = y if "top" in anchor else y + h
+        self.canvas.create_rectangle(ax - 5, ay - 5, ax + 5, ay + 5, fill=color, outline="#ffffff", width=1)
+        label = f"{idx + 1} · {ANCHOR_ARROWS[anchor]} {float(region['w_mm']):.0f}×{float(region['h_mm']):.0f} {self._mm()}"
+        text_id = self.canvas.create_text(
+            x + 4, y + 3, text=label, anchor="nw", fill=color, font=("TkDefaultFont", 8, "bold")
+        )
         bbox = self.canvas.bbox(text_id)
         if bbox:
             bg = self.canvas.create_rectangle(bbox[0] - 1, bbox[1], bbox[2] + 1, bbox[3], fill="#ffffff", outline="")
@@ -467,15 +621,13 @@ class _RegionPicker:
                     fill="#ffffff", outline=color, width=2,
                 )
 
-    def _handle_positions(self, region: dict[str, float]) -> dict[str, tuple[float, float]]:
+    def _handle_positions(self, region: dict[str, Any]) -> dict[str, tuple[float, float]]:
         x, y, w, h = self._to_px(region)
         return {hid: (x + fx * w, y + fy * h) for hid, (fx, fy) in HANDLES.items()}
 
     def _draw_live_label(self, x: float, y: float, w_px: float, h_px: float) -> None:
-        fmt_w, fmt_h = self._format_mm()
-        w_mm = w_px / self.disp_w * fmt_w
-        h_mm = h_px / self.disp_h * fmt_h
-        label = f"{w_mm:.0f}×{h_mm:.0f} {self._mm()}"
+        ppx, ppy = self._px_per_mm()
+        label = f"{w_px / ppx:.0f}×{h_px / ppy:.0f} {self._mm()}"
         tx = min(x + 14, self.disp_w - 40)
         ty = max(y - 12, 8)
         text_id = self.canvas.create_text(tx, ty, text=label, anchor="w", fill="#111827", font=("TkDefaultFont", 9, "bold"))
@@ -484,41 +636,78 @@ class _RegionPicker:
             bg = self.canvas.create_rectangle(bbox[0] - 2, bbox[1] - 1, bbox[2] + 2, bbox[3] + 1, fill="#fef3c7", outline="#f59e0b")
             self.canvas.tag_lower(bg, text_id)
 
+    # ----- region list -----
+
+    def _refresh_region_list(self) -> None:
+        self._syncing_list = True
+        try:
+            self.region_list.delete(*self.region_list.get_children())
+            for idx, region in enumerate(self.regions):
+                anchor = _canonical_anchor(region.get("anchor"))
+                self.region_list.insert(
+                    "",
+                    tk.END,
+                    iid=str(idx),
+                    values=(
+                        idx + 1,
+                        f"{float(region['w_mm']):.0f}×{float(region['h_mm']):.0f} {self._mm()}",
+                        f"{ANCHOR_ARROWS[anchor]} {self._tr(ANCHOR_KEYS[anchor])}",
+                    ),
+                )
+            if self.selected is not None and self.selected < len(self.regions):
+                self.region_list.selection_set(str(self.selected))
+        finally:
+            self._syncing_list = False
+
+    def _on_list_select(self, _event: tk.Event) -> None:
+        # Guard against a feedback loop: _refresh_region_list re-selects the row,
+        # which fires this event again. The flag alone is not enough — Tk delivers
+        # <<TreeviewSelect>> asynchronously, after the flag is cleared — so bail
+        # out when the selection already matches the model.
+        if self._syncing_list:
+            return
+        sel = self.region_list.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        if idx == self.selected:
+            return
+        self.selected = idx
+        self._sync_anchor_control()
+        self._redraw()
+
     def _update_readout(self) -> None:
+        unit_mm = self.unit_var.get() == UNIT_MM
+        self.unit_hint.configure(text=self._tr("pick_unit_mm_hint" if unit_mm else "pick_unit_percent_hint"))
         if self.selected is None or self.selected >= len(self.regions):
-            self.readout.configure(text=self._tr("pick_count", "Regions: {count}", count=len(self.regions)))
+            self.readout.configure(text=self._tr("pick_count", count=len(self.regions)))
             return
         region = self.regions[self.selected]
-        fmt_w, fmt_h = self._format_mm()
         anchor = _canonical_anchor(region.get("anchor"))
-        # Offsets are measured from the anchored corner, matching the export.
-        x_pct, y_pct = float(region["x"]), float(region["y"])
-        w_pct, h_pct = float(region["w"]), float(region["h"])
-        x_off = (100.0 - x_pct - w_pct) if "right" in anchor else x_pct
-        y_off = (100.0 - y_pct - h_pct) if "bottom" in anchor else y_pct
-        x_mm = x_off / 100.0 * fmt_w
-        y_mm = y_off / 100.0 * fmt_h
-        w_mm, h_mm = self._size_mm(region)
         arrow = ANCHOR_ARROWS[anchor]
-        self.readout.configure(text=f"{arrow} x {x_mm:.0f} · y {y_mm:.0f} · {w_mm:.0f}×{h_mm:.0f} {self._mm()}")
+        x, y = float(region["x_mm"]), float(region["y_mm"])
+        w, h = float(region["w_mm"]), float(region["h_mm"])
+        self.readout.configure(text=f"{arrow} x {x:.0f} · y {y:.0f} · {w:.0f}×{h:.0f} {self._mm()}")
 
     # ----- anchor -----
 
-    def _sync_anchor_combo(self) -> None:
+    def _sync_anchor_control(self) -> None:
         anchor = self.default_anchor
         if self.selected is not None and self.selected < len(self.regions):
             anchor = _canonical_anchor(self.regions[self.selected].get("anchor"))
-        self.anchor_var.set(self._anchor_labels[anchor])
+        self.anchor_var.set(anchor)
 
     def _on_anchor_change(self) -> None:
-        idx = self.anchor_combo.current()
-        if idx < 0 or idx >= len(ANCHORS):
-            return
-        anchor = ANCHORS[idx]
-        # New boxes inherit the last chosen anchor; a selected box changes too.
+        anchor = _canonical_anchor(self.anchor_var.get())
+        # New boxes inherit the last chosen anchor; a selected box is re-anchored
+        # in place (its screen rectangle does not move, only what it is measured
+        # from — so it now follows that corner on other formats).
         self.default_anchor = anchor
         if self.selected is not None and self.selected < len(self.regions):
-            self.regions[self.selected]["anchor"] = anchor
+            region = self.regions[self.selected]
+            sheet_w, sheet_h = self._sheet_mm()
+            left, top, w, h = region_rect_mm(region, sheet_w, sheet_h)
+            region.update(region_from_rect_mm(left, top, w, h, anchor, sheet_w, sheet_h))
         self._redraw()
 
     # ----- interaction -----
@@ -552,13 +741,13 @@ class _RegionPicker:
             self.selected = idx
             self._mode = "move"
             self._orig_px = self._to_px(self.regions[idx])
-            self._sync_anchor_combo()
+            self._sync_anchor_control()
             self._redraw()
             return
         self.selected = None
         self._mode = "draw"
         self._draw_rect_px = (x, y, 0.0, 0.0)
-        self._sync_anchor_combo()
+        self._sync_anchor_control()
         self._redraw()
 
     def _on_drag(self, event: tk.Event) -> None:
@@ -586,28 +775,32 @@ class _RegionPicker:
 
     def _apply_resize(self, x: float, y: float) -> None:
         assert self._orig_px is not None and self._handle is not None and self.selected is not None
+        ppx, ppy = self._px_per_mm()
+        min_w, min_h = MIN_BOX_MM * ppx, MIN_BOX_MM * ppy
         ox, oy, ow, oh = self._orig_px
         left, top, right, bottom = ox, oy, ox + ow, oy + oh
         h = self._handle
         if "w" in h:
-            left = min(x, right - MIN_BOX_PX)
+            left = min(x, right - min_w)
         if "e" in h:
-            right = max(x, left + MIN_BOX_PX)
+            right = max(x, left + min_w)
         if "n" in h:
-            top = min(y, bottom - MIN_BOX_PX)
+            top = min(y, bottom - min_h)
         if "s" in h:
-            bottom = max(y, top + MIN_BOX_PX)
+            bottom = max(y, top + min_h)
         left, right = self._clamp_x(left), self._clamp_x(right)
         top, bottom = self._clamp_y(top), self._clamp_y(bottom)
         self._set_from_px(self.regions[self.selected], left, top, right - left, bottom - top)
 
-    def _on_release(self, event: tk.Event) -> None:
+    def _on_release(self, _event: tk.Event) -> None:
         if self._mode == "draw" and self._draw_rect_px is not None:
             x, y, w, h = self._draw_rect_px
-            if w >= MIN_BOX_PX and h >= MIN_BOX_PX:
-                region: dict[str, Any] = {"anchor": self.default_anchor}
-                self._set_from_px(region, x, y, w, h)
-                self.regions.append(region)
+            ppx, ppy = self._px_per_mm()
+            if w / ppx >= MIN_BOX_MM and h / ppy >= MIN_BOX_MM:
+                sheet_w, sheet_h = self._sheet_mm()
+                self.regions.append(
+                    region_from_rect_mm(x / ppx, y / ppy, w / ppx, h / ppy, self.default_anchor, sheet_w, sheet_h)
+                )
                 self.selected = len(self.regions) - 1
         self._mode = None
         self._handle = None
@@ -629,14 +822,12 @@ class _RegionPicker:
     def _on_escape(self, _event: tk.Event | None = None) -> None:
         if self.selected is not None:
             self.selected = None
-            self._sync_anchor_combo()
+            self._sync_anchor_control()
             self._redraw()
             return
         self._cancel()
 
     def _on_page_change(self) -> None:
-        if self.page_var is None:
-            return
         try:
             page = int(self.page_var.get())
         except (ValueError, tk.TclError):
@@ -655,7 +846,7 @@ class _RegionPicker:
 
         path = filedialog.askopenfilename(
             parent=self.dialog,
-            title=self._tr("pick_backdrop_dlg", "Choose backdrop PDF"),
+            title=self._tr("pick_backdrop_dlg"),
             filetypes=[("PDF", "*.pdf")],
         )
         if path:
@@ -674,11 +865,10 @@ class _RegionPicker:
         self.doc = doc
         self.backdrop_path = str(path)
         self.page_index = 0
-        if self.page_var is not None:
-            self.page_var.set("1")
+        self.page_var.set("1")
         self.page_spin.configure(to=doc.page_count)
         self.page_total_label.configure(text=f"/ {doc.page_count}")
-        self.dialog.title(f"{self._tr('pick_title', 'PDFCompare: select exclude regions')} — {Path(path).name}")
+        self.dialog.title(f"{self._tr('pick_title')} — {Path(path).name}")
         self._load_page()
         self._redraw()
         return True
@@ -690,6 +880,8 @@ class _RegionPicker:
             except Exception:
                 pass
         self._owned_docs.clear()
+
+    # ----- region actions -----
 
     def _on_delete_key(self, _event: tk.Event | None = None) -> None:
         widget = self.dialog.focus_get()
@@ -703,35 +895,24 @@ class _RegionPicker:
             return
         self.regions.pop(self.selected)
         self.selected = None
-        self._sync_anchor_combo()
+        self._sync_anchor_control()
         self._redraw()
 
-    def _undo_last(self) -> None:
-        if not self.regions:
-            return
-        self.regions.pop()
-        if self.selected is not None and self.selected >= len(self.regions):
-            self.selected = None
+    def _clear_regions(self) -> None:
+        self.regions.clear()
+        self.selected = None
         self._redraw()
 
     # ----- dialog result -----
 
     def _accept(self) -> None:
+        sheet_w, sheet_h = self._sheet_mm()
+        unit = self.unit_var.get()
         out: list[dict[str, float | str]] = []
         for region in self.regions:
-            x = round(max(0.0, min(100.0, float(region["x"]))), 4)
-            y = round(max(0.0, min(100.0, float(region["y"]))), 4)
-            w = round(max(0.0, float(region["w"])), 4)
-            h = round(max(0.0, float(region["h"])), 4)
-            w = min(w, round(100.0 - x, 4))
-            h = min(h, round(100.0 - y, 4))
-            if w <= 0 or h <= 0:
+            if float(region["w_mm"]) <= 0 or float(region["h_mm"]) <= 0:
                 continue
-            anchor = _canonical_anchor(region.get("anchor"))
-            # Model x/y are top-left based; export offsets from the anchored corner.
-            out_x = round(max(0.0, 100.0 - x - w), 4) if "right" in anchor else x
-            out_y = round(max(0.0, 100.0 - y - h), 4) if "bottom" in anchor else y
-            out.append({"x": out_x, "y": out_y, "w": w, "h": h, "unit": "percent", "anchor": anchor})
+            out.append(region_to_export(region, sheet_w, sheet_h, unit))
         self.result["regions"] = out
         self.dialog.destroy()
 
@@ -750,16 +931,16 @@ def pick_exclude_regions(
     initial_anchor: str = "top_left",
     backdrop: str | Path | None = None,
     backdrop_out: dict[str, str] | None = None,
+    lang: str = "ru",
 ) -> list[dict[str, float | str]] | None:
     """Open a modal window to draw/edit exclude regions.
 
-    ``backdrop`` preloads another PDF as the visual reference; ``backdrop_out``
-    (if given) receives {"path": …} with the backdrop in effect when the
-    dialog closed, so the caller can persist the choice. Returns a list of
-    ``{x, y, w, h, unit, anchor}`` dicts in ``percent`` coordinates (offsets
-    measured from each region's anchor corner). An empty list means the user
-    removed all regions and confirmed; ``None`` means the dialog was
-    cancelled.
+    Returns ``{x, y, w, h, unit, anchor}`` dicts — by default in ``mm`` measured
+    from each region's anchor corner, which is what makes a zone valid on every
+    sheet format. ``backdrop`` preloads another PDF as the visual reference;
+    ``backdrop_out`` (if given) receives {"path": …} with the backdrop in effect
+    when the dialog closed. An empty list means the user removed all regions and
+    confirmed; ``None`` means cancelled.
     """
     del dpi
     pdf = Path(pdf_path)
@@ -773,7 +954,7 @@ def pick_exclude_regions(
     try:
         if doc.page_count < 1:
             return None
-        picker = _RegionPicker(parent, doc, page_number, existing, initial_anchor=initial_anchor)
+        picker = _RegionPicker(parent, doc, page_number, existing, initial_anchor=initial_anchor, lang=lang)
         if backdrop:
             backdrop_path = Path(backdrop)
             if backdrop_path.exists() and backdrop_path.resolve() != pdf.resolve():

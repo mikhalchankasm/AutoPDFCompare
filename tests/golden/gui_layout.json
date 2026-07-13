@@ -545,7 +545,7 @@
     "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!label",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Исключить области (%):",
+    "text": "Исключить области:",
     "style": "SubHeader.TLabel",
     "state": "normal"
   },
@@ -577,7 +577,7 @@
     "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!label2",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Формат: x,y,w,h; например 70,80,30,20 — нижний правый штамп",
+    "text": "Проценты x,y,w,h; либо JSON с мм и привязкой к углу. Кнопка «Выбрать…» рисует зоны в мм — они одинаковы на A4…A0.",
     "style": "Hint.TLabel",
     "state": "normal"
   },

@@ -920,16 +920,22 @@ def pick_pdf_exclude_region(
     anchor: str = "top_left",
     label: str = "exclude_region",
     existing: str | list[dict[str, Any]] | None = None,
+    lang: str = "ru",
 ) -> dict[str, Any]:
     """Open the visual picker to draw/edit rectangular exclude regions on a PDF page.
 
-    Same dialog as the GUI: mm grid overlay, paper-format detection (A4..A0),
-    live size labels in mm, multiple regions, move/resize via handles, and a
-    per-region corner anchor (top_left/top_right/bottom_left/bottom_right).
-    `anchor` preselects the anchor for newly drawn regions; `existing` accepts
-    the same forms as start_pdf_comparison.exclude_regions and opens those
-    zones for editing. `dpi` and `unit` are kept for backwards compatibility
-    and ignored — regions are returned in percent with per-region anchors.
+    Same dialog as the GUI: sheet format A4..A0 with portrait/landscape preview,
+    mm grid, several regions with move/resize handles, and a per-region corner
+    anchor (top_left/top_right/bottom_left/bottom_right).
+
+    Regions come back in **millimetres from their anchor corner**
+    (`unit: "mm"`), which is what makes one zone valid on every sheet format: a
+    185x55 mm title block anchored bottom_right stays 185x55 mm on A4 and on A0.
+    (A percent region would scale with the sheet and cover far too much of a
+    large one.) `anchor` preselects the anchor for newly drawn regions;
+    `existing` accepts the same forms as start_pdf_comparison.exclude_regions and
+    opens those zones for editing. `dpi` and `unit` are legacy knobs and ignored.
+
     Returns exclude_regions (list) ready to pass to start_pdf_comparison or
     rerender_pdf_comparison_pages; exclude_region keeps the first region for
     older callers.
@@ -939,7 +945,7 @@ def pick_pdf_exclude_region(
 
         from pdfcompare_ui.exclusion_picker import pick_exclude_regions
 
-        del dpi, unit  # legacy knobs; the picker renders to fit and returns percent
+        del dpi, unit  # legacy knobs; the picker renders to fit and returns mm
 
         pdf = resolve_path(pdf_path, must_exist=True)
         if int(page_number) < 1:
@@ -955,6 +961,7 @@ def pick_pdf_exclude_region(
                 page_number=int(page_number),
                 existing=list(existing_regions),
                 initial_anchor=anchor,
+                lang=str(lang),
             )
         finally:
             root.destroy()
