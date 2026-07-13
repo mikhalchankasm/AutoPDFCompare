@@ -1,0 +1,1241 @@
+[
+  {
+    "path": "/!frame",
+    "class": "TFrame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!frame",
+    "class": "TFrame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!frame/!frame",
+    "class": "TFrame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!frame/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "PDFCompare Local",
+    "style": "Header.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!frame/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Локальное сравнение PDF · без облака",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!frame/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!frame/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!frame/!frame2/!frame/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "RU",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!frame/!frame2/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "EN",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!frame/!frame2/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "↻",
+    "state": "normal",
+    "width": "3",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!frame/!frame2/!label2",
+    "class": "Label",
+    "manager": "",
+    "text": "★",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook",
+    "class": "TNotebook",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame",
+    "class": "TFrame",
+    "manager": "notebook",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame/!canvas",
+    "class": "Canvas",
+    "manager": "pack",
+    "state": "normal",
+    "width": "8"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Старый PDF",
+    "style": "Red.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Файл не выбран",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Выберите PDF или перетащите его в карточку",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame2/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Выбрать...",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame/!frame2/!button2",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Очистить",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame2",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "36"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame2/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "⇅ Поменять местами",
+    "style": "Small.TButton",
+    "state": "normal",
+    "width": "3"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame/!canvas",
+    "class": "Canvas",
+    "manager": "pack",
+    "state": "normal",
+    "width": "8"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Новый PDF",
+    "style": "Green.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Файл не выбран",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Выберите PDF или перетащите его в карточку",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame2/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Выбрать...",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame2/!button2",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Очистить",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "⤓  Перетащите 2 PDF-файла прямо сюда — они автоматически попадут в «Старый» и «Новый»",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Папка вывода",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Выбрать...",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Имя отчёта:",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame2/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Необязательно: имя папки результата. Пусто — авто-имя по дате и времени.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Параметры сравнения",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "по умолчанию",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Разрешение (DPI):",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "250",
+    "state": "normal",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame2/!scale",
+    "class": "Scale",
+    "manager": "pack",
+    "state": "normal",
+    "orient": "horizontal",
+    "width": "15"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Выше = точнее, но медленнее",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Допуск штриха (px):",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "2.0",
+    "state": "normal",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame2/!scale",
+    "class": "Scale",
+    "manager": "pack",
+    "state": "normal",
+    "orient": "horizontal",
+    "width": "15"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Больше — игнорирует более толстые линии и мелкий шум. Меньше — фиксирует тонкие отличия.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Строгость:",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Strict",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Normal",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame/!label3",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Loose",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Strict ищет больше мелких отличий, Loose сильнее игнорирует шум",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Исключить области (%):",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "✏ Выбрать…",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Формат: x,y,w,h; например 70,80,30,20 — нижний правый штамп",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Объединение рамок (эксперимент):",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame/!checkbutton",
+    "class": "TCheckbutton",
+    "manager": "pack",
+    "text": "Включить",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Gap (мм):",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "state": "disabled",
+    "width": "6",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Max ratio:",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!entry2",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "state": "disabled",
+    "width": "6",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Объединяет близкие изменения в рамки. Gap (мм) — расстояние слияния; Ratio — макс. площадь рамки к листу.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Отладочные изображения:",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!frame/!checkbutton",
+    "class": "TCheckbutton",
+    "manager": "pack",
+    "text": "Включить",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Сохранять полноразмерные изображения выравнивания (увеличивает размер отчёта).",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame5",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame5/!button",
+    "class": "Button",
+    "manager": "pack",
+    "text": "Сравнить ⏎",
+    "state": "disabled",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame5/!button2",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Из истории",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame5/!button3",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Очистить",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame5/!button4",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Открыть отчёт",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame5/!button5",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Открыть папку",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!canvas",
+    "class": "Canvas",
+    "manager": "pack",
+    "state": "normal",
+    "width": "8"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Перетаскивание недоступно (invalid command name \"tkdnd::drop_target\"). Используйте кнопки «Выбрать...».",
+    "state": "normal",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!label2",
+    "class": "Label",
+    "manager": "",
+    "text": "✓ Отчёт можно открыть",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!progressbar",
+    "class": "TProgressbar",
+    "manager": "",
+    "style": "Horizontal.TProgressbar",
+    "orient": "horizontal",
+    "mode": "determinate",
+    "maximum": "100"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!label3",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "00:00",
+    "state": "normal",
+    "width": "7"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!label4",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "0%",
+    "state": "normal",
+    "width": "6"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2",
+    "class": "TFrame",
+    "manager": "notebook",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!frame/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "⌕",
+    "state": "normal",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!frame/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Все",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Готово",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!label3",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Отменено",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "↻ Обновить",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame2",
+    "class": "TFrame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame2/!treeview",
+    "class": "Treeview",
+    "manager": "pack",
+    "style": "History.Treeview"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame2/!scrollbar",
+    "class": "TScrollbar",
+    "manager": "pack",
+    "orient": "vertical"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame3",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame3/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Двойной клик по строке восстанавливает файлы, папку вывода и параметры.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame3/!button",
+    "class": "Button",
+    "manager": "pack",
+    "text": "Восстановить",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame3/!button2",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Сохранить снимок",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame2/!frame3/!button3",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Открыть папку",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3",
+    "class": "TFrame",
+    "manager": "notebook",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Перегенерация выбранных листов с повышенным DPI",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Загрузите готовый отчёт, выделите строки и пересчитайте только эти листы. Карта соответствия PDF не меняется.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Папка отчёта",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Текущий отчёт",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame/!button2",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Выбрать папку...",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame/!button3",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Загрузить",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Новый DPI:",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "state": "normal",
+    "width": "8",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Процессы:",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame/!entry2",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "state": "normal",
+    "width": "8",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Открыть отчёт",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame/!button2",
+    "class": "Button",
+    "manager": "pack",
+    "text": "Перегенерировать выбранные",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Режим:",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame2/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Единые настройки",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame2/!label3",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Постранично",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame2/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Изменить настройки выбранных…",
+    "style": "Small.TButton",
+    "state": "disabled"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Допуск штриха:",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "state": "normal",
+    "width": "6",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Строгость:",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!frame/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Strict",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Normal",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!frame/!label3",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Loose",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!label3",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Объединение рамок (мм gap):",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!entry2",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "state": "normal",
+    "width": "6",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame4",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame4/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Исключить (%):",
+    "style": "FileLabel.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame4/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame4/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "✏ Выбрать…",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Пустые поля = наследуются из исходного отчёта.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame3",
+    "class": "TFrame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame3/!treeview",
+    "class": "Treeview",
+    "manager": "pack",
+    "style": "History.Treeview"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame3/!scrollbar",
+    "class": "TScrollbar",
+    "manager": "pack",
+    "orient": "vertical"
+  }
+]
