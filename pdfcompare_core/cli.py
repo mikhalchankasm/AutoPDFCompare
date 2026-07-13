@@ -7,6 +7,7 @@ import multiprocessing
 from pathlib import Path
 
 from .constants import APP_NAME, APP_VERSION, START_REPORT_FILE
+from .errors import RunFailed
 from .diff_engine import DIFF_STRICTNESS_CHOICES
 from .exclusions import normalize_exclude_regions
 from .runner import compare_pdfs, validate_render_dpi
@@ -15,7 +16,7 @@ from .runner import compare_pdfs, validate_render_dpi
 def pick_two_pdfs(folder: Path) -> tuple[Path, Path]:
     pdfs = sorted(folder.glob("*.pdf"))
     if len(pdfs) != 2:
-        raise RuntimeError(f"Ожидалось ровно 2 PDF-файла в {folder}, найдено {len(pdfs)}")
+        raise RunFailed("input_pdf_count", folder=folder, count=len(pdfs))
     return pdfs[0], pdfs[1]
 
 

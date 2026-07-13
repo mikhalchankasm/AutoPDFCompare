@@ -29,6 +29,7 @@ from compare_pdfs import (
     normalize_exclude_regions,
     sanitize_run_folder_name,
 )
+from pdfcompare_core.errors import localize_error
 from pdfcompare_ui.compare_tab import CompareTabMixin
 from pdfcompare_ui.dnd import DragDropMixin
 from pdfcompare_ui.exclusion_picker import format_regions_for_field, pick_exclude_regions
@@ -974,7 +975,10 @@ class PDFCompareApp(
             bbox_merge_gap = float(self.bbox_merge_gap.get().strip()) if self.bbox_merge.get() == "on" else 0.0
             bbox_merge_ratio = float(self.bbox_merge_max_ratio.get().strip()) if self.bbox_merge.get() == "on" else 16.0
         except ValueError as exc:
-            messagebox.showerror(self._tr("err_invalid_option_title"), f"{self._tr('err_invalid_option_parse')}\n\n{exc}")
+            messagebox.showerror(
+                self._tr("err_invalid_option_title"),
+                f"{self._tr('err_invalid_option_parse')}\n\n{localize_error(exc, self.lang.get())}",
+            )
             return
         diff_strictness = self.diff_strictness.get().strip().lower() or "normal"
         keep_debug = self.keep_debug.get() == "on"
@@ -1002,7 +1006,7 @@ class PDFCompareApp(
             try:
                 run_name = sanitize_run_folder_name(run_name)
             except ValueError as exc:
-                messagebox.showerror(self._tr("err_invalid_option_title"), str(exc))
+                messagebox.showerror(self._tr("err_invalid_option_title"), localize_error(exc, self.lang.get()))
                 return
             self.run_name.set(run_name)
             if (out_path / run_name).exists():
@@ -1078,7 +1082,8 @@ class PDFCompareApp(
             if isinstance(exc, RunCancelled) or str(exc) == "__CANCELLED__":
                 self.worker_events.put(("cancelled", old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
                 return
-            self.worker_events.put(("error", str(exc), traceback.format_exc(), old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
+            # report_lang was captured in the UI thread — Tk vars must not be read here.
+            self.worker_events.put(("error", localize_error(exc, report_lang), traceback.format_exc(), old, new, out_path, dpi, stroke_tol, workers, diff_strictness, exclude_regions))
 
     def _poll_worker_events(self) -> None:
         has_more = False

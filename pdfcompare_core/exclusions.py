@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 
+from .errors import InvalidInput
+
 type ExcludeRegion = dict[str, float | str]
 type PixelBox = tuple[int, int, int, int]
 
@@ -30,10 +32,10 @@ def normalize_exclude_regions(raw_regions: object) -> list[ExcludeRegion]:
             try:
                 return normalize_exclude_regions(json.loads(raw_text))
             except json.JSONDecodeError as exc:
-                raise ValueError(f"Некорректный JSON исключений: {exc}") from exc
+                raise InvalidInput("zones_bad_json", error=str(exc)) from exc
         return _parse_region_text(raw_text)
     if not isinstance(raw_regions, (list, tuple)):
-        raise ValueError("Исключаемые области должны быть списком или строкой")
+        raise InvalidInput("zones_not_a_list")
 
     regions: list[ExcludeRegion] = []
     for idx, item in enumerate(raw_regions, start=1):
@@ -90,7 +92,7 @@ def exclusion_regions_to_pixel_boxes(regions: object, width: int, height: int, d
             bottom = round(height - y_px)
             top = round(bottom - h_px)
         else:
-            raise ValueError(f"Некорректная привязка исключаемой области: {anchor}")
+            raise InvalidInput("zone_bad_anchor", anchor=anchor)
 
         left = max(0, min(width, int(left)))
         top = max(0, min(height, int(top)))
@@ -108,7 +110,7 @@ def _parse_region_text(raw_text: str) -> list[ExcludeRegion]:
         cleaned = part.strip().strip("()[]{}")
         values = [value for value in re.split(r"[,\s]+", cleaned) if value]
         if len(values) != 4:
-            raise ValueError(f"Область #{idx}: нужен формат x,y,w,h в процентах")
+            raise InvalidInput("zone_text_format", idx=idx)
         regions.append(_normalize_region_values(values, idx, unit="percent"))
     return regions
 
@@ -128,14 +130,14 @@ def _normalize_region_item(item: object, idx: int) -> ExcludeRegion:
         return region
     if isinstance(item, (list, tuple)) and len(item) == 4:
         return _normalize_region_values(list(item), idx, unit="percent")
-    raise ValueError(f"Область #{idx}: нужен объект {{x,y,w,h}} или список из 4 чисел")
+    raise InvalidInput("zone_bad_shape", idx=idx)
 
 
 def _normalize_region_values(values: list[object], idx: int, *, unit: str, label: str | None = None) -> ExcludeRegion:
     try:
         x, y, w, h = (float(str(value)) for value in values)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Область #{idx}: x,y,w,h должны быть числами") from exc
+        raise InvalidInput("zone_not_numbers", idx=idx) from exc
 
     unit = unit.casefold()
     if unit in {"ratio", "relative"}:
@@ -148,12 +150,10 @@ def _normalize_region_values(values: list[object], idx: int, *, unit: str, label
     else:
         # A typo like unit: "cm" used to become a valid percent region — silently
         # excluding a completely different part of the page.
-        raise ValueError(
-            f"Область #{idx}: неизвестная единица {unit!r}. Допустимо: percent, %, mm, px, ratio"
-        )
+        raise InvalidInput("zone_bad_unit", idx=idx, unit=unit)
 
     if x < 0 or y < 0 or w <= 0 or h <= 0:
-        raise ValueError(f"Область #{idx}: x/y должны быть >= 0, w/h > 0")
+        raise InvalidInput("zone_negative", idx=idx)
     # Allow a tiny tolerance for rounding (e.g. a picker that rounds x and w
     # independently may produce x+w = 100.0002). Clamp small overflows instead
     # of rejecting; large overflows are still a user error.
@@ -161,16 +161,16 @@ def _normalize_region_values(values: list[object], idx: int, *, unit: str, label
     if limit is not None:
         if x > limit + eps or y > limit + eps:
             label_text = "0..1" if unit == "ratio" else "0..100%"
-            raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+            raise InvalidInput("zone_out_of_range", idx=idx, range=label_text)
         if x + w > limit:
             if x + w > limit + eps:
                 label_text = "0..1" if unit == "ratio" else "0..100%"
-                raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+                raise InvalidInput("zone_out_of_range", idx=idx, range=label_text)
             w = limit - x
         if y + h > limit:
             if y + h > limit + eps:
                 label_text = "0..1" if unit == "ratio" else "0..100%"
-                raise ValueError(f"Область #{idx}: координаты должны помещаться в диапазон {label_text}")
+                raise InvalidInput("zone_out_of_range", idx=idx, range=label_text)
             h = limit - y
 
     region: ExcludeRegion = {"x": x, "y": y, "w": w, "h": h, "unit": unit}

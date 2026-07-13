@@ -26,6 +26,7 @@ from .classification import classify
 from .constants import APP_NAME, APP_VERSION, LIVE_REPORT_EVENT_PREFIX, MAX_RENDER_DPI, MIN_RENDER_DPI
 from .diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff_detailed, harmonize_canvas
 from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes, normalize_exclude_regions
+from .errors import InvalidInput, RunFailed
 from .html_report import generate_html_report
 from .live_report import format_eta, write_live_detail_view, write_live_html_report
 from .markdown_report import write_engineer_report_md, write_summary_md
@@ -80,22 +81,22 @@ def sanitize_run_folder_name(raw_name: str) -> str:
     raw = str(raw_name or "")
     name = raw.strip()
     if not name:
-        raise ValueError("Имя папки сравнения не может быть пустым")
+        raise InvalidInput("run_name_empty")
     if INVALID_RUN_NAME_CHARS_RE.search(name) or Path(name).name != name or Path(name).is_absolute():
-        raise ValueError(f"Имя папки сравнения должно быть одним именем, без пути: {raw_name}")
+        raise InvalidInput("run_name_not_a_name", name=raw_name)
     if name != name.rstrip(" ."):
-        raise ValueError("Имя папки сравнения не должно заканчиваться пробелом или точкой")
+        raise InvalidInput("run_name_trailing")
 
     name = re.sub(r"\s+", "_", name, flags=re.UNICODE)
     name = re.sub(r"_+", "_", name).strip(" ._")
     if not name:
-        raise ValueError("Имя папки сравнения не может быть пустым")
+        raise InvalidInput("run_name_empty")
     if name in {".", ".."}:
-        raise ValueError(f"Имя папки сравнения должно быть одним именем, без пути: {raw_name}")
+        raise InvalidInput("run_name_not_a_name", name=raw_name)
     if name.split(".")[0].upper() in WINDOWS_RESERVED_RUN_NAMES:
-        raise ValueError(f"Зарезервированное имя папки Windows: {name}")
+        raise InvalidInput("run_name_reserved", name=name)
     if len(name) > MAX_RUN_FOLDER_NAME_LEN:
-        raise ValueError(f"Имя папки сравнения не должно быть длиннее {MAX_RUN_FOLDER_NAME_LEN} символов")
+        raise InvalidInput("run_name_too_long", limit=MAX_RUN_FOLDER_NAME_LEN)
     return name
 
 
@@ -133,9 +134,9 @@ def validate_render_dpi(value: object) -> int:
     try:
         dpi = int(str(value).strip())
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"DPI должен быть целым числом, получено: {value!r}") from exc
+        raise InvalidInput("dpi_not_int", value=value) from exc
     if not (MIN_RENDER_DPI <= dpi <= MAX_RENDER_DPI):
-        raise ValueError(f"DPI должен быть в диапазоне {MIN_RENDER_DPI}–{MAX_RENDER_DPI}, получено: {dpi}")
+        raise InvalidInput("dpi_out_of_range", min=MIN_RENDER_DPI, max=MAX_RENDER_DPI, value=dpi)
     return dpi
 
 
@@ -707,34 +708,34 @@ def regenerate_report_pages(
     summary_path = find_summary_json_path(run_dir)
     pages_dir = find_pages_dir(run_dir)
     if not summary_path.exists():
-        raise RuntimeError(f"Не найден summary.json: {summary_path}")
+        raise RunFailed("summary_missing", path=summary_path)
     if not pages_dir.exists():
-        raise RuntimeError(f"Не найдена папка pages: {pages_dir}")
+        raise RunFailed("pages_dir_missing", path=pages_dir)
 
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     file_a = Path(str(payload.get("file_a") or ""))
     file_b = Path(str(payload.get("file_b") or ""))
     if not file_a.exists() or not file_b.exists():
-        raise RuntimeError("Исходные PDF из summary.json не найдены на диске")
+        raise RunFailed("source_pdfs_missing")
 
     details = [dict(row) for row in payload.get("pairs") or []]
     if not details:
-        raise RuntimeError("В summary.json нет данных по листам")
+        raise RunFailed("summary_no_pages")
 
     selected = {int(seq) for seq in seqs}
     if not selected:
-        raise RuntimeError("Не выбраны листы для перегенерации")
+        raise RunFailed("no_pages_selected")
 
     def required_seq(row: dict) -> int:
         seq = _value_to_int(row.get("seq"))
         if seq is None:
-            raise RuntimeError(f"Некорректный номер листа в summary.json: {row.get('seq')!r}")
+            raise RunFailed("page_seq_invalid", value=row.get("seq"))
         return seq
 
     by_seq = {required_seq(row): row for row in details}
     missing = sorted(selected.difference(by_seq))
     if missing:
-        raise RuntimeError(f"Не найдены листы в отчёте: {', '.join(map(str, missing))}")
+        raise RunFailed("pages_not_in_report", seqs=", ".join(map(str, missing)))
 
     dpi = validate_render_dpi(high_dpi)
     tol = float(stroke_tol_px if stroke_tol_px is not None else payload.get("stroke_tol_px", 2.0))
@@ -866,10 +867,10 @@ def _spec_seqs(spec: dict) -> list[int]:
     for raw_seq in raw_seqs:
         parsed = _value_to_int(raw_seq)
         if parsed is None or parsed <= 0:
-            raise RuntimeError(f"Некорректный номер строки отчёта: {raw_seq!r}")
+            raise RunFailed("page_settings_bad_seq", value=raw_seq)
         seqs.append(parsed)
     if not seqs:
-        raise RuntimeError("В настройке страницы нет seq/seqs")
+        raise RunFailed("page_settings_no_seq")
     return seqs
 
 
@@ -902,26 +903,26 @@ def regenerate_report_pages_mixed(
     summary_path = find_summary_json_path(run_dir)
     pages_dir = find_pages_dir(run_dir)
     if not summary_path.exists():
-        raise RuntimeError(f"Не найден summary.json: {summary_path}")
+        raise RunFailed("summary_missing", path=summary_path)
     if not pages_dir.exists():
-        raise RuntimeError(f"Не найдена папка pages: {pages_dir}")
+        raise RunFailed("pages_dir_missing", path=pages_dir)
 
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     file_a = Path(str(payload.get("file_a") or ""))
     file_b = Path(str(payload.get("file_b") or ""))
     if not file_a.exists() or not file_b.exists():
-        raise RuntimeError("Исходные PDF из summary.json не найдены на диске")
+        raise RunFailed("source_pdfs_missing")
 
     details = [dict(row) for row in payload.get("pairs") or []]
     if not details:
-        raise RuntimeError("В summary.json нет данных по листам")
+        raise RunFailed("summary_no_pages")
     if not page_settings:
-        raise RuntimeError("Не переданы настройки страниц для перегенерации")
+        raise RunFailed("no_page_settings")
 
     def required_seq(row: dict) -> int:
         seq = _value_to_int(row.get("seq"))
         if seq is None:
-            raise RuntimeError(f"Некорректный номер листа в summary.json: {row.get('seq')!r}")
+            raise RunFailed("page_seq_invalid", value=row.get("seq"))
         return seq
 
     by_seq = {required_seq(row): row for row in details}
@@ -931,7 +932,7 @@ def regenerate_report_pages_mixed(
     )
     default_strictness = str(diff_strictness or payload.get("diff_strictness") or "normal").strip().lower()
     if default_strictness not in DIFF_STRICTNESS_CHOICES:
-        raise RuntimeError(f"Некорректная строгость сравнения: {default_strictness}")
+        raise InvalidInput("strictness_invalid", value=default_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES))
     default_merge_gap = float(
         bbox_merge_gap_mm if bbox_merge_gap_mm is not None else payload.get("bbox_merge_gap_mm", 0.0)
     )
@@ -946,12 +947,12 @@ def regenerate_report_pages_mixed(
     pages_root_resolved = pages_dir.resolve()
     for spec in page_settings:
         if not isinstance(spec, dict):
-            raise RuntimeError("Каждая настройка страницы должна быть объектом")
+            raise RunFailed("page_settings_not_object")
         spec_dpi = validate_render_dpi(spec.get("dpi", spec.get("high_dpi", high_dpi)))
         spec_tol = float(spec.get("stroke_tol", spec.get("stroke_tol_px", default_tol)))
         spec_strictness = str(spec.get("diff_strictness", default_strictness)).strip().lower()
         if spec_strictness not in DIFF_STRICTNESS_CHOICES:
-            raise RuntimeError(f"Некорректная строгость сравнения: {spec_strictness}")
+            raise InvalidInput("strictness_invalid", value=spec_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES))
         spec_exclusions = normalize_exclude_regions(
             spec.get("exclude_regions") if "exclude_regions" in spec else default_exclusions
         )
@@ -960,9 +961,9 @@ def regenerate_report_pages_mixed(
 
         for seq in _spec_seqs(spec):
             if seq in settings_by_seq:
-                raise RuntimeError(f"Повторная настройка для seq={seq}")
+                raise RunFailed("page_settings_duplicate", seq=seq)
             if seq not in by_seq:
-                raise RuntimeError(f"Не найден лист в отчёте: {seq}")
+                raise RunFailed("page_not_in_report", seq=seq)
             settings_by_seq[seq] = {
                 "dpi": spec_dpi,
                 "stroke_tol_px": spec_tol,
@@ -1115,13 +1116,13 @@ def compare_pdfs(
     normalized_exclusions = normalize_exclude_regions(exclude_regions)
     strictness = str(diff_strictness or "normal").strip().lower()
     if strictness not in DIFF_STRICTNESS_CHOICES:
-        raise ValueError(f"Некорректная строгость сравнения: {diff_strictness}")
+        raise InvalidInput("strictness_invalid", value=diff_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES))
     try:
         run_dir.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
-        raise RuntimeError(f"Папка результата уже существует: {run_dir}") from None
+        raise RunFailed("run_dir_exists", path=run_dir) from None
     except OSError as exc:
-        raise RuntimeError(f"Не удалось создать папку результата: {run_dir}") from exc
+        raise RunFailed("run_dir_create_failed", path=run_dir) from exc
     pages_dir = report_pages_dir(run_dir)
     pages_dir.mkdir(parents=True, exist_ok=True)
 

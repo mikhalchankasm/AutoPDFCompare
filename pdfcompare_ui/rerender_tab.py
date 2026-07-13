@@ -17,6 +17,7 @@ from compare_pdfs import (
     regenerate_report_pages_mixed,
 )
 from pdfcompare_core.constants import MAX_RENDER_DPI, MIN_RENDER_DPI
+from pdfcompare_core.errors import localize_error
 from pdfcompare_core.exclusions import normalize_exclude_regions
 from pdfcompare_core.runner import RunCancelled
 
@@ -554,7 +555,7 @@ class RerenderTabMixin:
             # The run rolled itself back; the report is untouched.
             self.worker_events.put(("rerender_cancelled",))
         except Exception as exc:
-            self.worker_events.put(("rerender_error", str(exc), traceback.format_exc()))
+            self.worker_events.put(("rerender_error", localize_error(exc, report_lang), traceback.format_exc()))
 
     def _rerender_mixed_worker(self: AppProtocol, run_dir: Path, page_settings: list[dict[str, Any]], dpi: int, workers: int, report_lang: str) -> None:
         try:
@@ -574,4 +575,4 @@ class RerenderTabMixin:
         except RunCancelled:
             self.worker_events.put(("rerender_cancelled",))
         except Exception as exc:
-            self.worker_events.put(("rerender_error", str(exc), traceback.format_exc()))
+            self.worker_events.put(("rerender_error", localize_error(exc, report_lang), traceback.format_exc()))

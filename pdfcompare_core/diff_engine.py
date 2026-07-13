@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from .constants import FOREGROUND_SPARSE_THRESHOLD
+from .errors import InvalidInput
 from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes
 
 
@@ -190,11 +191,11 @@ def compute_diff_detailed(
     hb, wb = b_bgr.shape[:2]
     ha, wa = a_bgr.shape[:2]
     if (ha, wa) != (hb, wb):
-        raise ValueError(f"Разные размеры растра: A={wa}x{ha}, B={wb}x{hb}")
+        raise InvalidInput("raster_size_mismatch", a_w=wa, a_h=ha, b_w=wb, b_h=hb)
 
     strictness = str(diff_strictness or "normal").strip().lower()
     if strictness not in STRICTNESS_PROFILES:
-        raise ValueError(f"Некорректная строгость сравнения: {diff_strictness}")
+        raise InvalidInput("strictness_invalid", value=diff_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES))
     profile = STRICTNESS_PROFILES[strictness]
     effective_stroke_tol_px = max(0.0, float(stroke_tol_px) * float(profile["tol_multiplier"]))
     min_contour_area = float(profile["min_area"])

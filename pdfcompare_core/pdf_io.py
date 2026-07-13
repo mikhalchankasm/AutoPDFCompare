@@ -27,6 +27,7 @@ from .constants import (
     THUMB_MAX_WIDTH,
     TOKEN_RE,
 )
+from .errors import InvalidInput
 from .models import PageInfo
 
 
@@ -56,7 +57,7 @@ def capped_render_dpi(page: fitz.Page, dpi: float) -> float:
     """
     requested = float(dpi)
     if requested <= 0:
-        raise ValueError(f"DPI должен быть положительным: {dpi!r}")
+        raise InvalidInput("dpi_not_positive", value=dpi)
     rect = page.rect
     width_px = float(rect.width) * requested / 72.0
     height_px = float(rect.height) * requested / 72.0
