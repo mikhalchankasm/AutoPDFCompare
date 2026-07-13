@@ -1,6 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+#
+# One-FILE build — the standalone download for people who want a single binary.
+# The INSTALLER ships the one-dir build (PDFCompareLocal-dir.spec): a one-file exe
+# unpacks into %TEMP%\_MEI<pid> and deletes it on exit, which races with the
+# installer's silent relaunch.
 
-import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).resolve().parent
@@ -38,7 +42,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX compresses python3xx.dll and the CRT, which is a documented way to get
+    # "Failed to load Python DLL … LoadLibrary: не найден указанный модуль".
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

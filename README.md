@@ -2,7 +2,7 @@
 
 > Локальное сравнение двух ревизий PDF (чертежи, схемы, спецификации) с наглядным HTML-отчётом. Windows, без облака — файлы не покидают ваш компьютер.
 
-Current release: `v0.1.17`
+Current release: `v0.1.18`
 
 [![Download Installer][download-setup-badge]][download-setup]
 [![Download Windows EXE][download-exe-badge]][download-exe]

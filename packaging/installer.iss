@@ -53,7 +53,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; The one-DIR build: the Python runtime sits next to the exe instead of being
+; unpacked into %TEMP% on every start. The one-file build raced with this
+; installer's own silent relaunch (it deletes its _MEI<pid> temp dir on exit,
+; and Windows reuses pids immediately), producing a half-extracted runtime and
+; "Failed to load Python DLL".
+Source: "..\dist\PDFCompareLocal\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"

@@ -78,8 +78,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements/lock.txt
 
-      - name: Build EXE
-        run: pyinstaller --noconfirm packaging/PDFCompareLocal.spec
+      # Two builds on purpose: the standalone download is one file, the installer
+      # ships one dir (no %TEMP% extraction, so nothing races with the silent
+      # relaunch during an auto-update). Separate workpaths — both are named
+      # PDFCompareLocal and would otherwise share build/.
+      - name: Build one-file EXE (standalone download)
+        run: pyinstaller --noconfirm --workpath build_onefile packaging/PDFCompareLocal.spec
+
+      - name: Build one-dir app (installer payload)
+        run: pyinstaller --noconfirm --workpath build_onedir packaging/PDFCompareLocal-dir.spec
+
+      - name: Check the one-dir payload
+        shell: pwsh
+        run: |
+          $exe = "dist/PDFCompareLocal/PDFCompareLocal.exe"
+          if (-not (Test-Path $exe)) { throw "Missing $exe" }
+          $dll = Get-ChildItem -Path "dist/PDFCompareLocal" -Recurse -Filter "python3*.dll" | Select-Object -First 1
+          if (-not $dll) { throw "No python3xx.dll in the one-dir payload" }
+          Write-Output "one-dir ok: $exe, runtime: $($dll.FullName)"
 
       - name: Build portable ZIP
         run: .\scripts\package_portable.ps1

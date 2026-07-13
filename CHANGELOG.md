@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.18 - 2026-07-13
+
+### Fixed
+- **The silent auto-update could leave the app unable to start**: `Failed to load Python DLL '…\_MEI…\python312.dll'. LoadLibrary: не найден указанный модуль`. The installer shipped the one-**file** build, which unpacks the Python runtime into `%TEMP%\_MEI<pid>` on every start and deletes that folder when it exits. During a silent update the installer closes the running app and immediately relaunches the new one — and because Windows reuses process ids straight away, the fresh process could start extracting into the very folder the dying one was deleting. The result was a half-extracted runtime: `python312.dll` was there, its CRT dependencies were not.
+
+  The installer now ships a one-**dir** build: the runtime sits next to the exe and there is no extraction step at all (it also starts faster). The single-file EXE remains as a standalone download — nothing races with it there.
+- **UPX compression is off.** Compressing `python3xx.dll` and the CRT is the other documented way to produce exactly that error, and the size it saved was not worth that class of failure.
+
 ## v0.1.17 - 2026-07-13
 
 The exclusion picker reworked around physical (mm) zones, plus the fixes from an external review of `db8c1d9` — its three `major` findings were reproduced and closed.
