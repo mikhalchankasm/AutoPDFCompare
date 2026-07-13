@@ -62,7 +62,6 @@ class AppProtocol(Protocol):
     rerender_mode: tk.StringVar
     rerender_page_settings: dict[int, dict[str, Any]]
     rerender_source_pdf: Path | None
-    picker_backdrop: str
 
     # --- Runtime flags / worker plumbing -------------------------------- #
     running: bool

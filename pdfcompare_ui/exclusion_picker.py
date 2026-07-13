@@ -8,11 +8,15 @@ this: 185 mm is 62% of an A4 sheet but only 16% of an A0 one, so the same
 percent box would swallow a quarter of a large sheet. Percent export stays
 available for anyone who wants a zone that scales with the sheet.
 
+The preview is always a BLANK sheet, never the drawing itself. Zones are placed
+by size from a corner, so the artwork underneath is noise — and a zone drawn on
+one sheet is meant to be used on all of them. The opened document's format is
+detected and preselected; switching format only changes which sheet the zones
+are drawn on, so you can check where they land on A0 before running anything.
+
 Features:
-- sheet preview: the real page (or a chosen backdrop PDF) in Auto mode, a blank
-  schematic sheet of the picked format when a format is set explicitly;
-- format A4…A0 with portrait/landscape orientation, so the same zones can be
-  checked against every sheet they will be applied to;
+- blank sheet of the chosen format, A4…A0, portrait or landscape, with the
+  drawing frame and a dashed 185×55 mm title-block guide;
 - millimetre grid with selectable step and a live size readout;
 - regions can be drawn, selected, moved, resized by handles and deleted, and are
   listed with their size and anchor;
@@ -21,7 +25,6 @@ Features:
 
 from __future__ import annotations
 
-import base64
 import json
 import tkinter as tk
 from pathlib import Path
@@ -46,7 +49,6 @@ ISO_FORMATS: list[tuple[str, float, float]] = [
 ]
 FORMAT_NAMES = [name for name, _w, _h in ISO_FORMATS]
 FORMAT_TOLERANCE_MM = 8.0
-AUTO_FORMAT = "auto"
 
 GRID_STEPS_MM = (5, 10, 25, 50)
 HANDLE_PX = 4  # half-size of a resize handle square
@@ -91,9 +93,13 @@ ANCHOR_KEYS = {
     "bottom_right": "pick_anchor_br",
 }
 
-# Reference title block drawn on the schematic sheet (GOST form 1).
+# Reference title block drawn on the sheet (GOST form 1).
 STAMP_W_MM = 185.0
 STAMP_H_MM = 55.0
+
+# Paddings around the settings panel (body padx, the gap before the sheet and the
+# canvas border) — what the sheet cannot use, besides the panel itself.
+PANEL_PADDING_PX = 34
 
 
 def _canonical_anchor(raw: object) -> str:
@@ -175,12 +181,19 @@ def format_regions_for_field(regions: list[dict[str, float | str]]) -> str:
     return json.dumps(items, ensure_ascii=False, separators=(",", ":"))
 
 
-def _detect_format(w_mm: float, h_mm: float) -> str | None:
+def detect_format(w_mm: float, h_mm: float) -> str | None:
+    """Exact ISO match within a few mm, or None (a scan, a custom sheet…)."""
     short, long_ = sorted((w_mm, h_mm))
     for name, fw, fh in ISO_FORMATS:
         if abs(short - fw) <= FORMAT_TOLERANCE_MM and abs(long_ - fh) <= FORMAT_TOLERANCE_MM:
             return name
     return None
+
+
+def nearest_format(w_mm: float, h_mm: float) -> str:
+    """Closest ISO format by area — the sheet to show for a non-standard page."""
+    area = max(w_mm * h_mm, 1.0)
+    return min(ISO_FORMATS, key=lambda f: abs(f[1] * f[2] - area))[0]
 
 
 class _RegionPicker:
@@ -194,10 +207,16 @@ class _RegionPicker:
         lang: str = "ru",
     ) -> None:
         self.parent = parent
-        self.doc = doc
-        self.page_index = min(max(int(page_number) - 1, 0), doc.page_count - 1)
         self.result: dict[str, Any] = {}
         self.lang = "en" if str(lang).lower().startswith("en") else "ru"
+
+        # The document is only measured, never drawn: we need its format, not its
+        # artwork. Zones are placed by size from a corner.
+        page_index = min(max(int(page_number) - 1, 0), doc.page_count - 1)
+        rect = doc[page_index].rect
+        self.doc_w_mm = max(rect.width / PT_PER_MM, 1.0)
+        self.doc_h_mm = max(rect.height / PT_PER_MM, 1.0)
+        self.doc_format = detect_format(self.doc_w_mm, self.doc_h_mm)
 
         # Model: physical regions — mm offsets from the region's anchor corner.
         self.regions: list[dict[str, Any]] = []
@@ -224,24 +243,14 @@ class _RegionPicker:
         self.dialog.grab_set()
         self.dialog.resizable(False, False)
 
-        screen_w = self.dialog.winfo_screenwidth()
-        screen_h = self.dialog.winfo_screenheight()
-        # Leave room for the footer: the sheet must not push OK/Cancel off-screen.
-        self.max_w = min(1060, max(560, screen_w - 560))
-        self.max_h = min(740, max(440, screen_h - 320))
-
-        self._owned_docs: list[fitz.Document] = []
-        self.backdrop_path = ""
-
-        self.format_var = tk.StringVar(value=AUTO_FORMAT)
-        self.orient_var = tk.StringVar(value="portrait")
+        self.format_var = tk.StringVar(value=self.doc_format or nearest_format(self.doc_w_mm, self.doc_h_mm))
+        self.orient_var = tk.StringVar(value="landscape" if self.doc_w_mm >= self.doc_h_mm else "portrait")
         self.grid_var = tk.StringVar(value="10")
         self.anchor_var = tk.StringVar(value=self.default_anchor)
         self.unit_var = tk.StringVar(value=UNIT_MM)
-        self.page_var = tk.StringVar(value=str(self.page_index + 1))
 
-        # Footer first: packed against the window bottom it can never be clipped
-        # by a tall sheet, whatever format is picked.
+        # Footer first: packed against the window bottom it can never be pushed
+        # off-screen by a tall sheet.
         footer = tk.Frame(self.dialog)
         footer.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
         ttk.Button(footer, text=self._tr("pick_ok"), command=self._accept, width=14).pack(side=tk.RIGHT)
@@ -261,7 +270,7 @@ class _RegionPicker:
         self.hint_label = ttk.Label(right, text=self._tr("pick_hint"), anchor="w", foreground="#6b7280")
         self.hint_label.pack(fill=tk.X, pady=(6, 0))
 
-        self._load_page()
+        self._fit_sheet_to_screen()
         self._import_existing(existing or [])
 
         self.canvas.bind("<ButtonPress-1>", self._on_press)
@@ -294,36 +303,30 @@ class _RegionPicker:
         panel = tk.Frame(parent, width=290)
         panel.pack(side=tk.LEFT, fill=tk.Y)
         panel.pack_propagate(False)
+        self.panel = panel
 
-        self.format_group = self._group(panel, "pick_format")
-        row1 = tk.Frame(self.format_group)
+        format_group = self._group(panel, "pick_format")
+        row1 = tk.Frame(format_group)
         row1.pack(fill=tk.X)
-        self.auto_btn = ttk.Radiobutton(
-            row1, text=self._tr("pick_auto"), value=AUTO_FORMAT, variable=self.format_var,
-            style="Toolbutton", command=self._on_format_change, width=7,
-        )
-        self.auto_btn.pack(side=tk.LEFT, padx=(0, 4))
         for name in FORMAT_NAMES:
             ttk.Radiobutton(
                 row1, text=name, value=name, variable=self.format_var,
-                style="Toolbutton", command=self._on_format_change, width=4,
-            ).pack(side=tk.LEFT, padx=(0, 2))
-        self.sheet_label = ttk.Label(self.format_group, text="", foreground="#6b7280")
+                style="Toolbutton", command=self._on_format_change, width=6,
+            ).pack(side=tk.LEFT, padx=(0, 3))
+        self.sheet_label = ttk.Label(format_group, text="", foreground="#6b7280", wraplength=280)
         self.sheet_label.pack(anchor="w", pady=(6, 0))
 
-        self.orient_group = self._group(panel, "pick_orientation")
-        orow = tk.Frame(self.orient_group)
+        orient_group = self._group(panel, "pick_orientation")
+        orow = tk.Frame(orient_group)
         orow.pack(fill=tk.X)
-        self.portrait_btn = ttk.Radiobutton(
+        ttk.Radiobutton(
             orow, text=self._tr("pick_portrait"), value="portrait", variable=self.orient_var,
             style="Toolbutton", command=self._on_format_change, width=16,
-        )
-        self.portrait_btn.pack(side=tk.LEFT, padx=(0, 4))
-        self.landscape_btn = ttk.Radiobutton(
+        ).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Radiobutton(
             orow, text=self._tr("pick_landscape"), value="landscape", variable=self.orient_var,
             style="Toolbutton", command=self._on_format_change, width=16,
-        )
-        self.landscape_btn.pack(side=tk.LEFT)
+        ).pack(side=tk.LEFT)
 
         grid_group = self._group(panel, "pick_grid")
         grow = tk.Frame(grid_group)
@@ -370,23 +373,9 @@ class _RegionPicker:
         self.unit_hint = ttk.Label(unit_group, text=self._tr("pick_unit_mm_hint"), foreground="#6b7280", wraplength=280)
         self.unit_hint.pack(anchor="w", pady=(6, 0))
 
-        source_group = self._group(panel, "pick_source")
-        srow = tk.Frame(source_group)
-        srow.pack(fill=tk.X)
-        ttk.Label(srow, text=self._tr("pick_page")).pack(side=tk.LEFT)
-        self.page_spin = ttk.Spinbox(
-            srow, from_=1, to=max(1, self.doc.page_count), textvariable=self.page_var, width=5,
-            command=self._on_page_change,
-        )
-        self.page_spin.pack(side=tk.LEFT, padx=(4, 2))
-        self.page_spin.bind("<Return>", lambda _e: self._on_page_change())
-        self.page_total_label = ttk.Label(srow, text=f"/ {self.doc.page_count}")
-        self.page_total_label.pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(srow, text=self._tr("pick_backdrop"), command=self._choose_backdrop).pack(side=tk.LEFT)
-
         list_group = self._group(panel, "pick_regions")
         self.region_list = ttk.Treeview(
-            list_group, columns=("n", "size", "anchor"), show="headings", height=6, selectmode="browse"
+            list_group, columns=("n", "size", "anchor"), show="headings", height=5, selectmode="browse"
         )
         self.region_list.heading("n", text="#")
         self.region_list.heading("size", text=self._tr("pick_col_size"))
@@ -414,70 +403,74 @@ class _RegionPicker:
 
     # ----- sheet geometry -----
 
-    def _is_schematic(self) -> bool:
-        """An explicit format shows a blank sheet of that format instead of the
-        real page: the point is to check where the zones land on A0, not to look
-        at this particular drawing."""
-        return self.format_var.get() != AUTO_FORMAT
-
     def _sheet_mm(self) -> tuple[float, float]:
-        choice = self.format_var.get()
         for name, fw, fh in ISO_FORMATS:
-            if choice == name:
+            if self.format_var.get() == name:
                 if self.orient_var.get() == "landscape":
                     return max(fw, fh), min(fw, fh)
                 return min(fw, fh), max(fw, fh)
-        return self.page_w_mm, self.page_h_mm
+        return self.doc_w_mm, self.doc_h_mm
 
     def _px_per_mm(self) -> tuple[float, float]:
         sheet_w, sheet_h = self._sheet_mm()
         return self.disp_w / sheet_w, self.disp_h / sheet_h
 
-    def _load_page(self) -> None:
-        page = self.doc[self.page_index]
-        rect = page.rect
-        self.page_w_mm = max(rect.width / PT_PER_MM, 1.0)
-        self.page_h_mm = max(rect.height / PT_PER_MM, 1.0)
-        zoom = min(self.max_w / max(rect.width, 1.0), self.max_h / max(rect.height, 1.0), 4.0)
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-        self.photo = tk.PhotoImage(data=base64.b64encode(pix.tobytes("png")))
-        self.page_view_w = self.photo.width()
-        self.page_view_h = self.photo.height()
-        if self.page_w_mm >= self.page_h_mm:
-            self.orient_var.set("landscape")
-        else:
-            self.orient_var.set("portrait")
+    def _fit_sheet_to_screen(self) -> None:
+        """Size the sheet from the space actually left on this screen.
+
+        A hardcoded cap is wrong: it fits a 1600px monitor and pushes the OK /
+        Cancel buttons off the bottom of a 1080px (or DPI-scaled) one. So measure
+        the window with a 1×1 canvas — that gives everything the dialog needs
+        *besides* the sheet — and give the sheet the rest.
+        """
+        self.canvas.configure(width=1, height=1)
+        self.dialog.update_idletasks()
+
+        screen_w = self.dialog.winfo_screenwidth()
+        screen_h = self.dialog.winfo_screenheight()
+        usable_h = max(360, screen_h - 160)  # title bar, taskbar, a margin
+        usable_w = max(480, screen_w - 120)
+
+        panel_h = self.panel.winfo_reqheight()
+        hint_h = self.hint_label.winfo_reqheight()
+        # With a 1x1 canvas the window is as tall as the panel plus the footer and
+        # paddings; what sits *below* the sheet is therefore that remainder plus
+        # the hint under the canvas.
+        below_sheet = (self.dialog.winfo_reqheight() - panel_h) + hint_h
+        # Width is measured from the panel, not from the window: the one-line hint
+        # under the sheet asks for its full text width and would otherwise look
+        # like several hundred pixels of occupied space. (It wraps — see below.)
+        beside_sheet = self.panel.winfo_reqwidth() + PANEL_PADDING_PX
+
+        self.max_h = max(280, min(900, usable_h - below_sheet))
+        self.max_w = max(360, min(1100, usable_w - beside_sheet))
         self._apply_view()
 
     def _apply_view(self) -> None:
-        if self._is_schematic():
-            sheet_w, sheet_h = self._sheet_mm()
-            px_per_mm = min(self.max_w / sheet_w, self.max_h / sheet_h)
-            self.disp_w = max(1, int(round(sheet_w * px_per_mm)))
-            self.disp_h = max(1, int(round(sheet_h * px_per_mm)))
-        else:
-            self.disp_w = self.page_view_w
-            self.disp_h = self.page_view_h
+        sheet_w, sheet_h = self._sheet_mm()
+        px_per_mm = min(self.max_w / sheet_w, self.max_h / sheet_h)
+        self.disp_w = max(1, int(round(sheet_w * px_per_mm)))
+        self.disp_h = max(1, int(round(sheet_h * px_per_mm)))
         self.canvas.configure(width=self.disp_w, height=self.disp_h)
+        # Wrap the hint to the sheet: unwrapped it demands its full text width and
+        # stretches the window.
+        self.hint_label.configure(wraplength=max(200, self.disp_w))
         self._update_sheet_label()
 
     def _update_sheet_label(self) -> None:
         sheet_w, sheet_h = self._sheet_mm()
-        if self._is_schematic():
-            orient = self._tr("pick_landscape" if self.orient_var.get() == "landscape" else "pick_portrait")
-            name = f"{self.format_var.get()} · {orient}"
-        else:
-            detected = _detect_format(self.page_w_mm, self.page_h_mm)
-            name = self._tr("pick_auto_sheet", name=detected) if detected else self._tr("pick_auto_custom")
-        self.sheet_label.configure(text=f"{name} · {sheet_w:.0f}×{sheet_h:.0f} {self._mm()}")
-        state = "normal" if self._is_schematic() else "disabled"
-        self.portrait_btn.configure(state=state)
-        self.landscape_btn.configure(state=state)
+        orient = self._tr("pick_landscape" if self.orient_var.get() == "landscape" else "pick_portrait")
+        text = f"{self.format_var.get()} · {orient} · {sheet_w:.0f}×{sheet_h:.0f} {self._mm()}"
+        # Say what the opened document actually is, so an unusual sheet (a scan)
+        # is not silently presented as a standard one.
+        doc_name = self.doc_format or f"{self.doc_w_mm:.0f}×{self.doc_h_mm:.0f} {self._mm()}"
+        text += "\n" + self._tr("pick_doc_is", size=doc_name)
+        self.sheet_label.configure(text=text)
 
     def _on_format_change(self) -> None:
         # Regions are physical (mm from a corner), so they survive the switch —
-        # that is exactly what the format switch is for: seeing where the same
-        # zone lands on another sheet.
+        # that is exactly what the switch is for: seeing where the same zone lands
+        # on another sheet.
         self._apply_view()
         self._redraw()
 
@@ -498,10 +491,11 @@ class _RegionPicker:
     def _set_from_px(self, region: dict[str, Any], x: float, y: float, w: float, h: float) -> None:
         sheet_w, sheet_h = self._sheet_mm()
         ppx, ppy = self._px_per_mm()
-        updated = region_from_rect_mm(
-            x / ppx, y / ppy, w / ppx, h / ppy, _canonical_anchor(region.get("anchor")), sheet_w, sheet_h
+        region.update(
+            region_from_rect_mm(
+                x / ppx, y / ppy, w / ppx, h / ppy, _canonical_anchor(region.get("anchor")), sheet_w, sheet_h
+            )
         )
-        region.update(updated)
 
     def _clamp_x(self, x: float) -> float:
         return max(0.0, min(float(self.disp_w), x))
@@ -515,7 +509,7 @@ class _RegionPicker:
         Converted one by one so a malformed neighbour cannot drop the rest.
         """
         sheet_w, sheet_h = self._sheet_mm()
-        ppx, _ppy = self._px_per_mm()
+        ppx, ppy = self._px_per_mm()
         display_dpi = ppx * 25.4
         for raw in existing or []:
             try:
@@ -526,7 +520,6 @@ class _RegionPicker:
                 continue
             x_px, y_px, w_px, h_px = boxes[0]
             anchor = _canonical_anchor(raw.get("anchor") if isinstance(raw, dict) else None)
-            ppx, ppy = self._px_per_mm()
             self.regions.append(
                 region_from_rect_mm(x_px / ppx, y_px / ppy, w_px / ppx, h_px / ppy, anchor, sheet_w, sheet_h)
             )
@@ -536,10 +529,7 @@ class _RegionPicker:
     def _redraw(self) -> None:
         canvas = self.canvas
         canvas.delete("all")
-        if self._is_schematic():
-            self._draw_schematic_sheet()
-        else:
-            canvas.create_image(0, 0, image=self.photo, anchor="nw")
+        self._draw_sheet()
         self._draw_grid()
         for idx, region in enumerate(self.regions):
             self._draw_region(idx, region)
@@ -549,7 +539,7 @@ class _RegionPicker:
         self._refresh_region_list()
         self._update_readout()
 
-    def _draw_schematic_sheet(self) -> None:
+    def _draw_sheet(self) -> None:
         """Blank sheet of the chosen format: the drawing frame (20 mm binding
         margin, 5 mm elsewhere) and a dashed 185×55 mm title block, so the user
         sees where the stamp sits and can trace it."""
@@ -700,8 +690,8 @@ class _RegionPicker:
     def _on_anchor_change(self) -> None:
         anchor = _canonical_anchor(self.anchor_var.get())
         # New boxes inherit the last chosen anchor; a selected box is re-anchored
-        # in place (its screen rectangle does not move, only what it is measured
-        # from — so it now follows that corner on other formats).
+        # in place (its rectangle does not move, only what it is measured from —
+        # so it now follows that corner on other formats).
         self.default_anchor = anchor
         if self.selected is not None and self.selected < len(self.regions):
             region = self.regions[self.selected]
@@ -827,65 +817,11 @@ class _RegionPicker:
             return
         self._cancel()
 
-    def _on_page_change(self) -> None:
-        try:
-            page = int(self.page_var.get())
-        except (ValueError, tk.TclError):
-            return
-        page_index = min(max(page - 1, 0), self.doc.page_count - 1)
-        if page_index == self.page_index:
-            return
-        self.page_index = page_index
-        self._load_page()
-        self._redraw()
-
-    # ----- backdrop -----
-
-    def _choose_backdrop(self) -> None:
-        from tkinter import filedialog
-
-        path = filedialog.askopenfilename(
-            parent=self.dialog,
-            title=self._tr("pick_backdrop_dlg"),
-            filetypes=[("PDF", "*.pdf")],
-        )
-        if path:
-            self.set_backdrop(Path(path))
-
-    def set_backdrop(self, path: Path) -> bool:
-        """Switch the preview document to another PDF (visual reference only)."""
-        try:
-            doc = fitz.open(path)
-        except Exception:
-            return False
-        if doc.page_count < 1:
-            doc.close()
-            return False
-        self._owned_docs.append(doc)
-        self.doc = doc
-        self.backdrop_path = str(path)
-        self.page_index = 0
-        self.page_var.set("1")
-        self.page_spin.configure(to=doc.page_count)
-        self.page_total_label.configure(text=f"/ {doc.page_count}")
-        self.dialog.title(f"{self._tr('pick_title')} — {Path(path).name}")
-        self._load_page()
-        self._redraw()
-        return True
-
-    def close_owned_documents(self) -> None:
-        for doc in self._owned_docs:
-            try:
-                doc.close()
-            except Exception:
-                pass
-        self._owned_docs.clear()
-
     # ----- region actions -----
 
     def _on_delete_key(self, _event: tk.Event | None = None) -> None:
         widget = self.dialog.focus_get()
-        # Don't hijack Delete/Backspace while typing in the page spinbox etc.
+        # Don't hijack Delete/Backspace while typing in an entry.
         if isinstance(widget, (tk.Entry, ttk.Entry)):
             return
         self._delete_selected()
@@ -925,22 +861,19 @@ def pick_exclude_regions(
     parent: tk.Misc,
     pdf_path: Path,
     page_number: int = 1,
-    dpi: int = 120,  # kept for backwards compatibility; rendering now fits the window
+    dpi: int = 120,  # kept for backwards compatibility; the sheet is drawn, not rendered
     *,
     existing: list[dict[str, float | str]] | None = None,
     initial_anchor: str = "top_left",
-    backdrop: str | Path | None = None,
-    backdrop_out: dict[str, str] | None = None,
     lang: str = "ru",
 ) -> list[dict[str, float | str]] | None:
-    """Open a modal window to draw/edit exclude regions.
+    """Open a modal window to draw/edit exclude regions on a blank sheet.
 
-    Returns ``{x, y, w, h, unit, anchor}`` dicts — by default in ``mm`` measured
-    from each region's anchor corner, which is what makes a zone valid on every
-    sheet format. ``backdrop`` preloads another PDF as the visual reference;
-    ``backdrop_out`` (if given) receives {"path": …} with the backdrop in effect
-    when the dialog closed. An empty list means the user removed all regions and
-    confirmed; ``None`` means cancelled.
+    The PDF is only measured (to preselect its format), never drawn: regions are
+    placed by size from a corner. Returns ``{x, y, w, h, unit, anchor}`` dicts —
+    by default in ``mm`` from each region's anchor corner, which is what makes a
+    zone valid on every sheet format. An empty list means the user removed all
+    regions and confirmed; ``None`` means cancelled.
     """
     del dpi
     pdf = Path(pdf_path)
@@ -955,16 +888,8 @@ def pick_exclude_regions(
         if doc.page_count < 1:
             return None
         picker = _RegionPicker(parent, doc, page_number, existing, initial_anchor=initial_anchor, lang=lang)
-        if backdrop:
-            backdrop_path = Path(backdrop)
-            if backdrop_path.exists() and backdrop_path.resolve() != pdf.resolve():
-                picker.set_backdrop(backdrop_path)
         parent.wait_window(picker.dialog)
-        if backdrop_out is not None:
-            backdrop_out["path"] = picker.backdrop_path
     finally:
-        if picker is not None:
-            picker.close_owned_documents()
         doc.close()
     if picker is None or picker.result.get("cancelled"):
         return None

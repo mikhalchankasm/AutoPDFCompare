@@ -140,8 +140,6 @@ class PDFCompareApp(
         self.rerender_page_settings: dict[int, dict[str, Any]] = {}
         # Old PDF of the loaded run (from summary.json) — used by the exclude picker.
         self.rerender_source_pdf: Path | None = None
-        # Last PDF the user chose as the exclusion-picker backdrop (persisted).
-        self.picker_backdrop: str = ""
 
         self.worker_events: queue.Queue[tuple] = queue.Queue()
         self.running = False
@@ -741,13 +739,7 @@ class PDFCompareApp(
                 existing = list(normalize_exclude_regions(existing_raw))
             except ValueError:
                 existing = []
-        backdrop_out: dict[str, str] = {}
-        regions = pick_exclude_regions(
-            self.root, pdf_path, existing=existing,
-            backdrop=self.picker_backdrop or None, backdrop_out=backdrop_out,
-            lang=self.lang.get(),
-        )
-        self.picker_backdrop = backdrop_out.get("path", self.picker_backdrop)
+        regions = pick_exclude_regions(self.root, pdf_path, existing=existing, lang=self.lang.get())
         if regions is None:
             return
         self.exclude_regions.set(format_regions_for_field(regions))
