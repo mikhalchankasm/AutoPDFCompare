@@ -1,0 +1,20 @@
+{
+  "en": {
+    "_pdfcompare/report/index.html": "db619e48cca022ccdb5e82f93c2dab94e436627cdce9f29bef72db789b97d3d5",
+    "_pdfcompare/report/report.json": "ac80b30cb8ecf5a775fb42a2e64071e87f5fb7752cc5335853f691c72faad430",
+    "_pdfcompare/report/views/001.html": "e1725396f64630235b77959ea1821dde2649a764b96c53d49db940452b2961ad",
+    "_pdfcompare/report/views/002.html": "a089de3ed50b42d2403094276392b6e3594f93297f8ec70be344be1fcd59b515",
+    "_pdfcompare/report/views/cmp_001.html": "ce4c1f6667ed01f7305387d189a95539aab765bcf8b7866ab0c2e876377f4c78",
+    "_pdfcompare/report/views/cmp_002.html": "846a3d1a2b138663c2022b10b4bff9d0a3e8beb94d743c1a99c6904f17d0a429",
+    "start.html": "5bd7f4469696d9bec5c7c95bd37d0b9dca15b4adcffc14c6613190dff203873c"
+  },
+  "ru": {
+    "_pdfcompare/report/index.html": "cc208d963a05c62f2b5249d127e07a5f18d75c9b90316a417ac30f3f5daea7b1",
+    "_pdfcompare/report/report.json": "2a59016bc000afe008504e841411c572815706754fa6a4361e4fc26671d1658e",
+    "_pdfcompare/report/views/001.html": "a7448998689082b1913936c7ed75a909d803e1664e22d052716303155228b5dc",
+    "_pdfcompare/report/views/002.html": "ef09a216349eb06fb73c1fb42ce7399ff4e4373ea1cc17fef9eb636fef1b74b6",
+    "_pdfcompare/report/views/cmp_001.html": "8bba5aebc5aabd40a7c71ff85dd4b1cbe68089a745f9e78be5c3b8a20730f3bb",
+    "_pdfcompare/report/views/cmp_002.html": "082db3a53d83f485a6ebe7f777fcfffd4de7a5e71ffcafb0bfa45f5cfb5a106b",
+    "start.html": "f4445523639baf283385d0393b23345545c7dc91e5f98d0cf8c787c72fcb4b3d"
+  }
+}
