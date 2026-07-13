@@ -59,7 +59,7 @@ Required flow:
 1. Call prepare_pdf_comparison first.
 2. Show page counts, similar existing comparisons, and suggested_run_names.
 3. Ask me for the final report folder name.
-4. Ask whether to ignore any title block/stamp/author areas. If yes, collect percent boxes as x,y,w,h from the top-left page corner.
+4. Ask whether to ignore any title block/stamp/author areas. If yes, prefer millimetres from a corner: [{"x":0,"y":0,"w":185,"h":55,"unit":"mm","anchor":"bottom_right"}] keeps a title block at 185x55 mm on every sheet format. Percent boxes (x,y,w,h from the top-left corner) scale with the sheet, so use them only when the zone should stretch with it.
 5. Ask for diff_strictness: strict, normal, or loose.
 6. If I did not already say whether to merge nearby bbox regions, ask me. Treat merge as experimental and recommend keeping it disabled unless I explicitly want grouped boxes. Explain the available limits: bbox_merge_gap_mm defaults to 0 mm (disabled); a typical trial value is 5 mm; bbox_merge_max_area_ratio defaults to 16, with page-area and sparse-fill guards to avoid huge empty rectangles.
 7. Call start_pdf_comparison with the selected run_name, diff_strictness, exclude_regions, and bbox merge settings.

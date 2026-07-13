@@ -424,21 +424,29 @@ def process_pair_task(
             entry["foreground_sparse"] = bool(metrics["foreground_sparse"])
             return finish()
 
+        # Added/removed sheets are rendered too (full + preview), and on a large
+        # sheet that is just as slow as a matched pair — so the same phase
+        # boundaries get a cancel check.
         check_cancelled()
         if a_idx is not None:
             entry["effective_dpi"] = round(float(capped_render_dpi(doc_a[a_idx], high_dpi)), 2)
             a_full = render_page(doc_a, a_idx, high_dpi)
+            check_cancelled()
             remember_shape(a_full)
             a_prev = render_page(doc_a, a_idx, 120)
+            check_cancelled()
             imwrite_compat(pair_dir / "a.png", a_full)
             imwrite_compat(pair_dir / "a_preview.png", a_prev)
         if b_idx is not None:
+            check_cancelled()
             if entry["effective_dpi"] is None:
                 entry["effective_dpi"] = round(float(capped_render_dpi(doc_b[b_idx], high_dpi)), 2)
             b_full = render_page(doc_b, b_idx, high_dpi)
+            check_cancelled()
             if entry["width_px"] is None:
                 remember_shape(b_full)
             b_prev = render_page(doc_b, b_idx, 120)
+            check_cancelled()
             imwrite_compat(pair_dir / "b.png", b_full)
             imwrite_compat(pair_dir / "b_preview.png", b_prev)
         return finish()
@@ -588,6 +596,8 @@ class _RunUpdateTransaction:
         self.swapped: list[tuple[Path, Path]] = []  # (live_dir, backup_dir)
         self.installed: list[Path] = []
         self.preserved: list[tuple[Path, Path]] = []  # (original, backup_copy)
+        # Files rollback() could not put back; their backups stay in staging.
+        self.unrestored: list[Path] = []
 
     def preserve_file(self, path: Path) -> None:
         """Snapshot a metadata file so rollback() can restore its old content."""
@@ -603,16 +613,30 @@ class _RunUpdateTransaction:
         shutil.rmtree(self.staging_root, ignore_errors=True)
 
     def rollback(self) -> None:
+        """Restore the pre-update state, and never destroy the last copy of it.
+
+        If a restore fails (file locked by a viewer, disk error), the staging dir
+        is deliberately kept: it holds the only remaining copy of those files, and
+        deleting it would turn a recoverable failure into permanent data loss.
+        """
+        unrestored: list[Path] = []
         for dst in reversed(self.installed):
             shutil.rmtree(dst, ignore_errors=True)
         for dst, backup in reversed(self.swapped):
             if backup.exists() and not dst.exists():
-                backup.rename(dst)
+                try:
+                    backup.rename(dst)
+                except OSError:
+                    unrestored.append(dst)
         for original, backup in reversed(self.preserved):
             try:
                 shutil.copy2(backup, original)
             except OSError:
-                pass
+                unrestored.append(original)
+
+        if unrestored:
+            self.unrestored = unrestored
+            return  # keep staging: it is the last copy of these files
         shutil.rmtree(self.staging_root, ignore_errors=True)
 
 

@@ -1,22 +1,41 @@
 # Changelog
 
-## Unreleased
+## v0.1.17 - 2026-07-13
 
-### Fixed
-- **Exclusion zones drawn in the picker are now physical (mm), so one zone works on every sheet format.** The picker exported percent-of-page boxes, which do not survive a format change: a 185×55 mm title block traced on A4 landscape is 62% × 26% of the sheet, and applying that to A0 covers **741×220 mm** — a quarter of the drawing. Regions are now stored and exported as millimetres from their anchor corner (`unit: "mm"`), which the diff engine already understood, so the same stamp zone stays 185×55 mm on A4, A3, A1 and A0 in both orientations. A percent mode is still available for zones that should scale with the sheet.
-- **The picker is localized.** It received the Tk root as its parent and looked for a `_tr` method on it, which a `tk.Tk` does not have — so every string silently fell back to English even though the Russian strings existed. The language is now passed explicitly (the GUI passes the current UI language; MCP takes a `lang` argument).
-- **The region list could hang the window**: re-selecting a row while refreshing the list re-fired `<<TreeviewSelect>>`, which redrew and re-selected again. Found by a smoke test before it ever shipped.
+The exclusion picker reworked around physical (mm) zones, plus the fixes from an external review of `db8c1d9` — its three `major` findings were reproduced and closed.
 
-### Changed
-- **Picker redesign.** Settings moved to a vertical panel beside the sheet and became visible toggles instead of dropdowns: format (A4…A0), **orientation (portrait/landscape)**, grid step, anchor corner and units — the whole state is readable at a glance, and the current sheet is spelled out ("A4 · вертикальный · 210×297 мм"). Regions are listed with their number, size and anchor, with delete/clear next to them. Switching the format only changes the sheet the zones are drawn on: it is how you check where they land on A0 before running anything.
-- **The picker draws a blank sheet, never the drawing.** Since a zone is a size measured from a corner, the artwork underneath is noise — and the "Auto" mode (which rendered the real page) was indistinguishable from "A4" on an A4 document. The document's format is now detected and preselected instead, with its true size spelled out for non-standard sheets ("Документ: 305×430 мм"). The backdrop-PDF option went with it: there is nothing left to trace over.
-- **The picker window now fits the screen it opens on.** The sheet size was capped by a hardcoded number that fitted a large monitor and pushed the OK/Cancel buttons off the bottom of a smaller (or DPI-scaled) one. The dialog is now measured with an empty canvas, and the sheet gets exactly the space that is left.
+### Fixed — exclusion zones
 
-### Changed
-- **The MCP server now updates itself by default.** It runs from its own git checkout (`%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare`), which the GUI installer and the app's auto-update never touch — they only replace `PDFCompareLocal.exe`. Auto-update used to be opt-in (`-AutoUpdate` / `PDFCOMPARE_MCP_AUTO_UPDATE=1`), so an agent could silently keep running a months-old engine. The bootstrap now pulls `origin/master` on every server start (still skipping a checkout that is off `master` or has local changes) and re-installs dependencies when they changed. Opt out with `-NoAutoUpdate` or `PDFCOMPARE_MCP_AUTO_UPDATE=0`.
+- **Zones drawn in the picker are physical: millimetres from an anchor corner.** They used to be exported as percent of the page, which does not survive a format change — a 185×55 mm title block traced on A4 landscape is 62% × 26% of the sheet, and the same percent box on A0 covers **741×220 mm**, a quarter of the drawing. The diff engine already understood `unit: "mm"`; the picker now uses it, so one stamp zone stays 185×55 mm on A4, A3, A1 and A0 in both orientations. Percent remains available for zones that *should* scale with the sheet.
+- **Opening saved percent zones and pressing OK no longer rewrites them.** Because the model is mm and the export always was too, simply opening a legacy `70,80,30,20` zone and confirming it silently changed which part of a differently sized sheet got excluded. The unit now follows what came in: an all-percent set opens — and leaves — as percent.
+- **An unknown unit is an error, not silently percent.** A typo like `unit: "cm"` used to produce a valid region covering a completely different area.
+- **The picker is localized.** It was handed the Tk root as its parent and looked for a `_tr` method on it, which `tk.Tk` does not have — so every string fell back to English while the Russian ones sat unused in `i18n.py`.
+- **The region list could hang the window**: refreshing the list re-selected the row, which re-fired `<<TreeviewSelect>>`, which redrew and re-selected again.
+
+### Changed — the picker
+
+- **Settings are visible toggles in a panel beside the sheet**, not dropdowns: format (A4…A0), **orientation** (portrait/landscape), grid step, anchor corner and units. The current sheet is spelled out ("A4 · вертикальный · 210×297 мм") and the regions are listed with number, size and anchor.
+- **The sheet is always blank — the drawing is never shown.** A zone is a size from a corner, so the artwork underneath is noise; and "Auto" (which rendered the real page) was indistinguishable from "A4" on an A4 document. The document's format is detected and preselected instead, with its true size named for a non-standard sheet ("Документ: 305×430 мм"). The backdrop-PDF option went with it — there is nothing left to trace over.
+- **Switching format only changes the sheet the zones are drawn on**: that is how you check where they land on A0 before running anything.
+- **The window fits the screen, and uses it.** The sheet size was capped by hardcoded numbers, which pushed OK/Cancel off the bottom of a smaller display and wasted space on a larger one. It is now measured against the desktop **work area** (the screen minus the taskbar, from the OS), and the sheet takes what is left.
+
+### Fixed — integrity and safety (from the review)
+
+- **A failed rollback no longer destroys the last copy.** `_RunUpdateTransaction.rollback()` swallowed an `OSError` while restoring a metadata file and then deleted the staging dir — which held the only remaining copy of it. Unrestored files are recorded and their backups kept: a recoverable failure instead of permanent data loss.
+- **MCP cancellation asks before it kills.** `cancel_pdf_comparison` force-killed the worker, which could abort a re-render *after* the new pages were swapped in but *before* summary/report were written — the transaction lives in the worker's memory, so nothing rolled it back. The server now writes a cancel marker the worker polls, waits for it to unwind, and force-kills only after a grace period (reporting `forced: true` when it does).
+- **Added/removed sheets are interruptible too**: they had one cancel check before two full renders and their writes.
+- **The non-stdio guard enforces what it claimed.** It demanded "an environment-specific path allowlist" that did not exist in the code. `PDFCOMPARE_MCP_ALLOWED_DIRS` is now real and enforced (paths are resolved first, so symlinks cannot escape it) and required for a network transport.
+- **The MCP checkout installs a hashed lock** (`requirements/lock-runtime.txt`) instead of loose ranges: it pulls master on every start, so the same commit could otherwise pick up a different NumPy/OpenCV/PyMuPDF than CI verified.
+- **Agent-facing docs recommend mm + anchor** — they still told agents to collect percent boxes, i.e. exactly the model that breaks on a bigger sheet.
 
 ### Added
-- **MCP: `check_pdfcompare_update`** — reports the running version, the checkout's branch and commit, how many commits it is behind `origin/master`, and anything blocking the pull. `fetch=false` checks offline.
+
+- **MCP: `check_pdfcompare_update`** — the running version, the checkout's branch and commit, how far behind `origin/master` it is, and anything blocking the pull. `fetch=false` checks offline.
+- **MCP auto-update is on by default.** The server runs from its own git checkout, which the installer never touches; auto-update used to be opt-in, so an agent could keep running a months-old engine. Opt out with `-NoAutoUpdate` or `PDFCOMPARE_MCP_AUTO_UPDATE=0`.
+
+### Known / deferred
+
+- The report embeds a full navigation list into every page, so bundle size and generation time grow quadratically with the number of sheets. Fine for the tens-of-sheets sets this tool is used on; it needs a measurement on 100+ sheets before it is worth restructuring.
 
 ## v0.1.16 - 2026-07-13
 

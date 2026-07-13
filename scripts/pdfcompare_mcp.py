@@ -75,6 +75,24 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def allowed_roots() -> list[Path]:
+    """Directories the tools may touch, from PDFCOMPARE_MCP_ALLOWED_DIRS.
+
+    Unset (the default for a local stdio server) means "anything this user can
+    already read" — the agent runs as the user anyway. Set it to confine the
+    server, which is what a non-stdio transport needs.
+    """
+    raw = os.getenv("PDFCOMPARE_MCP_ALLOWED_DIRS", "").strip()
+    if not raw:
+        return []
+    roots = []
+    for part in raw.split(os.pathsep):
+        text = part.strip()
+        if text:
+            roots.append(Path(text).expanduser().resolve(strict=False))
+    return roots
+
+
 def resolve_path(path_text: str, *, must_exist: bool = False) -> Path:
     raw = str(path_text or "").strip()
     if not raw:
@@ -82,7 +100,12 @@ def resolve_path(path_text: str, *, must_exist: bool = False) -> Path:
     path = Path(raw).expanduser()
     if not path.is_absolute():
         path = REPO_ROOT / path
-    resolved = path.resolve(strict=False)
+    resolved = path.resolve(strict=False)  # resolves symlinks/junctions before the check
+    roots = allowed_roots()
+    if roots and not any(resolved == root or root in resolved.parents for root in roots):
+        raise ValueError(
+            f"Путь вне разрешённых каталогов (PDFCOMPARE_MCP_ALLOWED_DIRS): {resolved}"
+        )
     if must_exist and not resolved.exists():
         raise FileNotFoundError(f"Путь не найден: {resolved}")
     return resolved
@@ -320,6 +343,11 @@ def job_dir(job_id: str) -> Path:
     if not JOB_ID_RE.match(job_id):
         raise ValueError(f"Некорректный job_id: {job_id}")
     return JOBS_ROOT / job_id
+
+
+def cancel_marker_path(job_id: str) -> Path:
+    """Marker the worker polls: its presence means "stop and roll back"."""
+    return job_dir(job_id) / "cancel"
 
 
 def load_status(job_id: str) -> dict[str, Any]:
@@ -711,6 +739,8 @@ def start_pdf_comparison(
             str(current_job_dir / "status.json"),
             "--events",
             str(current_job_dir / "events.jsonl"),
+            "--cancel",
+            str(cancel_marker_path(job_id)),
         ]
         creationflags = 0
         if os.name == "nt":
@@ -867,6 +897,8 @@ def rerender_pdf_comparison_pages(
             str(current_job_dir / "status.json"),
             "--events",
             str(current_job_dir / "events.jsonl"),
+            "--cancel",
+            str(cancel_marker_path(job_id)),
         ]
         creationflags = 0
         if os.name == "nt":
@@ -1017,8 +1049,15 @@ def list_pdf_comparisons(out_dir: str = "runs", old_path: str = "", new_path: st
 
 
 @mcp.tool()
-def cancel_pdf_comparison(job_id: str) -> dict[str, Any]:
-    """Terminate a running background comparison job."""
+def cancel_pdf_comparison(job_id: str, grace_sec: float = 20.0) -> dict[str, Any]:
+    """Stop a running background job.
+
+    Asks first, kills second. A re-render updates an existing report in place, so
+    a worker killed between "new pages swapped in" and "summary/report written"
+    would leave the run inconsistent with no rollback — the transaction only
+    exists in the worker's memory. So we drop a cancel marker, give the worker
+    time to unwind its transaction, and only force-kill if it does not exit.
+    """
     try:
         status = load_status(job_id)
         if str(status.get("state") or "") not in {"queued", "running"}:
@@ -1033,29 +1072,65 @@ def cancel_pdf_comparison(job_id: str) -> dict[str, Any]:
                 "job": status,
             }
 
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
-        else:
-            os.kill(pid, signal.SIGTERM)
+        marker = cancel_marker_path(job_id)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(now_iso(), encoding="utf-8")
+
+        deadline = time.time() + max(0.0, float(grace_sec))
+        forced = False
+        while pid_exists(pid):
+            if time.time() >= deadline:
+                # It is not stopping — an unresponsive worker is worse than an
+                # inconsistent one; kill it and say so.
+                if os.name == "nt":
+                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
+                else:
+                    os.kill(pid, signal.SIGTERM)
+                forced = True
+                break
+            time.sleep(0.2)
 
         out_dir = status.get("out_dir")
         if out_dir:
             shutil.rmtree(Path(str(out_dir)) / f".pdfcompare_mcp_{job_id}", ignore_errors=True)
 
-        status.update({"state": "cancelled", "message": "Задача остановлена пользователем", "updated_at": now_iso()})
-        atomic_write_json(job_dir(job_id) / "status.json", status)
-        return {"ok": True, "job": status}
+        # The worker writes its own "cancelled" status when it unwinds cleanly;
+        # only overwrite it when we had to kill it.
+        status = load_status(job_id)
+        if forced or str(status.get("state") or "") in {"queued", "running"}:
+            status.update(
+                {
+                    "state": "cancelled",
+                    "message": (
+                        "Задача принудительно остановлена (worker не завершился за отведённое время); "
+                        "отчёт мог остаться в промежуточном состоянии"
+                        if forced
+                        else "Задача остановлена пользователем"
+                    ),
+                    "forced": forced,
+                    "updated_at": now_iso(),
+                }
+            )
+            atomic_write_json(job_dir(job_id) / "status.json", status)
+        return {"ok": True, "forced": forced, "job": status}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
 def main() -> None:
     transport = os.getenv("PDFCOMPARE_MCP_TRANSPORT", "stdio")
-    if transport != "stdio" and os.getenv("PDFCOMPARE_MCP_ALLOW_NETWORK") != "1":
-        raise SystemExit(
-            "Non-stdio MCP transport requires PDFCOMPARE_MCP_ALLOW_NETWORK=1 "
-            "and an environment-specific path allowlist."
-        )
+    if transport != "stdio":
+        # The tools read any PDF and write results anywhere the user can. Over a
+        # network transport that is a file-system service, so the allowlist is
+        # now enforced, not merely advertised.
+        if os.getenv("PDFCOMPARE_MCP_ALLOW_NETWORK") != "1":
+            raise SystemExit("Non-stdio MCP transport requires PDFCOMPARE_MCP_ALLOW_NETWORK=1.")
+        if not allowed_roots():
+            raise SystemExit(
+                "Non-stdio MCP transport also requires PDFCOMPARE_MCP_ALLOWED_DIRS: a list of "
+                "directories the tools may read and write (separated by os.pathsep). Without it "
+                "the server would expose the whole user profile."
+            )
     mcp.run(transport=transport)
 
 

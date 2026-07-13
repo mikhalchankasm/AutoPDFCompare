@@ -101,6 +101,37 @@ STAMP_H_MM = 55.0
 # canvas border) — what the sheet cannot use, besides the panel itself.
 PANEL_PADDING_PX = 34
 
+# The window frame itself (title bar + borders) plus a small breathing margin.
+WINDOW_CHROME_PX = 56
+
+
+def screen_work_area(widget: tk.Misc) -> tuple[int, int]:
+    """Usable desktop area — the screen minus the taskbar.
+
+    Tk only reports the raw screen size, so a dialog sized from it hides behind
+    the taskbar. Windows knows the real work area; ask it. Anywhere else, fall
+    back to the screen with a conservative margin.
+    """
+    try:
+        import ctypes
+
+        class _Rect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long), ("top", ctypes.c_long),
+                ("right", ctypes.c_long), ("bottom", ctypes.c_long),
+            ]
+
+        rect = _Rect()
+        spi_getworkarea = 0x0030
+        if ctypes.windll.user32.SystemParametersInfoW(spi_getworkarea, 0, ctypes.byref(rect), 0):
+            width = int(rect.right - rect.left)
+            height = int(rect.bottom - rect.top)
+            if width > 200 and height > 200:
+                return width, height
+    except Exception:
+        pass
+    return widget.winfo_screenwidth(), widget.winfo_screenheight() - 80
+
 
 def _canonical_anchor(raw: object) -> str:
     text = str(raw or "top_left").strip().casefold().replace("-", "_")
@@ -190,6 +221,23 @@ def detect_format(w_mm: float, h_mm: float) -> str | None:
     return None
 
 
+def incoming_unit(existing: list[dict[str, float | str]] | None) -> str:
+    """Which unit the dialog should start in for an existing set of zones.
+
+    Opening the picker and pressing OK without touching anything must give back
+    what came in — silently rewriting saved percent zones as mm would change
+    which part of a differently sized sheet gets excluded. So a set that is
+    entirely percent opens in percent; anything else (including a mixed set,
+    where mm is the only representation that survives) opens in mm.
+    """
+    if not existing:
+        return UNIT_MM
+    units = {str((r.get("unit") if isinstance(r, dict) else None) or UNIT_PERCENT).casefold() for r in existing}
+    if units <= {UNIT_PERCENT, "%"}:
+        return UNIT_PERCENT
+    return UNIT_MM
+
+
 def nearest_format(w_mm: float, h_mm: float) -> str:
     """Closest ISO format by area — the sheet to show for a non-standard page."""
     area = max(w_mm * h_mm, 1.0)
@@ -247,7 +295,10 @@ class _RegionPicker:
         self.orient_var = tk.StringVar(value="landscape" if self.doc_w_mm >= self.doc_h_mm else "portrait")
         self.grid_var = tk.StringVar(value="10")
         self.anchor_var = tk.StringVar(value=self.default_anchor)
-        self.unit_var = tk.StringVar(value=UNIT_MM)
+        # Opening zones and pressing OK unchanged must not rewrite them: the unit
+        # follows what came in. Percent zones stay percent unless the user says
+        # otherwise; mm is only the default for a fresh set.
+        self.unit_var = tk.StringVar(value=incoming_unit(existing))
 
         # Footer first: packed against the window bottom it can never be pushed
         # off-screen by a tall sheet.
@@ -426,10 +477,9 @@ class _RegionPicker:
         self.canvas.configure(width=1, height=1)
         self.dialog.update_idletasks()
 
-        screen_w = self.dialog.winfo_screenwidth()
-        screen_h = self.dialog.winfo_screenheight()
-        usable_h = max(360, screen_h - 160)  # title bar, taskbar, a margin
-        usable_w = max(480, screen_w - 120)
+        work_w, work_h = screen_work_area(self.dialog)
+        usable_h = max(360, work_h - WINDOW_CHROME_PX)
+        usable_w = max(480, work_w - WINDOW_CHROME_PX)
 
         panel_h = self.panel.winfo_reqheight()
         hint_h = self.hint_label.winfo_reqheight()
@@ -442,8 +492,12 @@ class _RegionPicker:
         # like several hundred pixels of occupied space. (It wraps — see below.)
         beside_sheet = self.panel.winfo_reqwidth() + PANEL_PADDING_PX
 
-        self.max_h = max(280, min(900, usable_h - below_sheet))
-        self.max_w = max(360, min(1100, usable_w - beside_sheet))
+        # No arbitrary cap: a landscape sheet limited by width would leave the
+        # window shorter than the screen allows, wasting the space. Let the sheet
+        # grow until it hits the height instead. (The upper bound only keeps it
+        # sane on an ultrawide monitor.)
+        self.max_h = max(280, usable_h - below_sheet)
+        self.max_w = max(360, min(1800, usable_w - beside_sheet))
         self._apply_view()
 
     def _apply_view(self) -> None:

@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 from compare_pdfs import (
     LIVE_REPORT_EVENT_PREFIX,
     START_REPORT_FILE,
+    RunCancelled,
     compare_pdfs,
     find_summary_json_path,
     regenerate_report_pages_mixed,
@@ -79,6 +80,7 @@ def main() -> int:
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--status", type=Path, required=True)
     parser.add_argument("--events", type=Path, required=True)
+    parser.add_argument("--cancel", type=Path, required=False)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -119,6 +121,16 @@ def main() -> int:
     }
     atomic_write_json(args.status, status)
     append_event(args.events, {"at": now_iso(), "state": "running", "message": status["message"]})
+
+    def is_cancelled() -> bool:
+        """Cooperative cancel: the MCP server drops a marker file here.
+
+        Killing the process outright would abort a re-render mid-transaction —
+        after the new pages are swapped in but before summary/report are written —
+        leaving the run inconsistent with no rollback. Polling a file lets the
+        transaction unwind properly.
+        """
+        return bool(args.cancel and args.cancel.exists())
 
     def update_progress(progress: float, message: str) -> None:
         display_message = message
@@ -172,6 +184,7 @@ def main() -> int:
                 report_lang=str(request.get("lang", "ru")),
                 workers=int(request.get("workers", 0)),
                 progress_cb=update_progress,
+                cancel_cb=is_cancelled,
             )
         else:
             run_dir = compare_pdfs(
@@ -189,6 +202,7 @@ def main() -> int:
                 bbox_merge_gap_mm=float(request.get("bbox_merge_gap_mm", 0.0)),
                 bbox_merge_max_area_ratio=float(request.get("bbox_merge_max_area_ratio", 16.0)),
                 progress_cb=update_progress,
+                cancel_cb=is_cancelled,
             )
             expected_run_dir.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -218,6 +232,20 @@ def main() -> int:
         )
         atomic_write_json(args.status, status)
         append_event(args.events, {"at": status["updated_at"], "state": "completed", "message": "Готово"})
+        return 0
+    except RunCancelled:
+        # The run rolled itself back; nothing half-applied is left behind.
+        shutil.rmtree(work_out_dir, ignore_errors=True)
+        status.update(
+            {
+                "state": "cancelled",
+                "message": "Задача остановлена пользователем",
+                "completed_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+        )
+        atomic_write_json(args.status, status)
+        append_event(args.events, {"at": status["updated_at"], "state": "cancelled", "message": status["message"]})
         return 0
     except Exception as exc:
         shutil.rmtree(work_out_dir, ignore_errors=True)

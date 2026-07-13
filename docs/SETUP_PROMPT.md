@@ -47,7 +47,7 @@ Updating:
 After connecting, use PDFCompare MCP tools:
 - check_pdfcompare_update if the user asks about updates or something behaves like an old version;
 - prepare_pdf_comparison first;
-- ask whether title blocks/stamps/author tables should be ignored; use percent boxes x,y,w,h from the top-left page corner;
+- ask whether title blocks/stamps/author tables should be ignored; prefer mm from a corner, e.g. [{"x":0,"y":0,"w":185,"h":55,"unit":"mm","anchor":"bottom_right"}] — that zone is valid on every sheet format, while a percent box scales with the sheet;
 - ask whether strictness should be strict, normal, or loose;
 - then start_pdf_comparison with the selected run_name, diff_strictness, and exclude_regions;
 - poll get_pdf_comparison_status until completion;

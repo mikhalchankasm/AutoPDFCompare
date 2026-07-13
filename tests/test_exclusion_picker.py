@@ -16,6 +16,7 @@ from pdfcompare_ui.exclusion_picker import (
     UNIT_MM,
     UNIT_PERCENT,
     format_regions_for_field,
+    incoming_unit,
     region_from_rect_mm,
     region_rect_mm,
     region_to_export,
@@ -77,6 +78,54 @@ class ExportTests(unittest.TestCase):
         exported = region_to_export(self._stamp(), 297.0, 210.0, UNIT_PERCENT)
         self.assertEqual(self._applied_size_mm(exported, "A4"), (185, 55))
         self.assertEqual(self._applied_size_mm(exported, "A0"), (741, 220))
+
+
+class IncomingUnitTests(unittest.TestCase):
+    """Opening zones and pressing OK unchanged must not rewrite them.
+
+    Saved percent zones silently re-exported as mm would exclude a different part
+    of a differently sized sheet — a data migration disguised as "open and
+    confirm".
+    """
+
+    def test_a_percent_set_opens_in_percent(self) -> None:
+        existing = [{"x": 70.0, "y": 80.0, "w": 30.0, "h": 20.0, "unit": "percent"}]
+        self.assertEqual(incoming_unit(existing), UNIT_PERCENT)
+
+    def test_a_set_with_no_unit_is_percent_the_legacy_default(self) -> None:
+        self.assertEqual(incoming_unit([{"x": 70.0, "y": 80.0, "w": 30.0, "h": 20.0}]), UNIT_PERCENT)
+
+    def test_an_mm_set_opens_in_mm(self) -> None:
+        existing = [{"x": 0.0, "y": 0.0, "w": 185.0, "h": 55.0, "unit": "mm", "anchor": "bottom_right"}]
+        self.assertEqual(incoming_unit(existing), UNIT_MM)
+
+    def test_a_mixed_set_opens_in_mm(self) -> None:
+        existing = [
+            {"x": 70.0, "y": 80.0, "w": 30.0, "h": 20.0, "unit": "percent"},
+            {"x": 0.0, "y": 0.0, "w": 185.0, "h": 55.0, "unit": "mm", "anchor": "bottom_right"},
+        ]
+        self.assertEqual(incoming_unit(existing), UNIT_MM)
+
+    def test_a_fresh_set_defaults_to_mm(self) -> None:
+        self.assertEqual(incoming_unit(None), UNIT_MM)
+        self.assertEqual(incoming_unit([]), UNIT_MM)
+
+    def test_percent_zone_round_trips_unchanged(self) -> None:
+        # What the picker does to a legacy zone on open+OK: percent -> mm model ->
+        # export in the incoming unit. The numbers must come back the same.
+        sheet_w, sheet_h = 210.0, 297.0
+        original = {"x": 70.0, "y": 80.0, "w": 30.0, "h": 20.0, "unit": "percent", "anchor": "top_left"}
+        left = original["x"] / 100.0 * sheet_w
+        top = original["y"] / 100.0 * sheet_h
+        w = original["w"] / 100.0 * sheet_w
+        h = original["h"] / 100.0 * sheet_h
+        model = region_from_rect_mm(left, top, w, h, "top_left", sheet_w, sheet_h)
+
+        exported = region_to_export(model, sheet_w, sheet_h, incoming_unit([original]))
+
+        self.assertEqual(exported["unit"], UNIT_PERCENT)
+        for key in ("x", "y", "w", "h"):
+            self.assertAlmostEqual(float(exported[key]), float(original[key]), places=3, msg=key)
 
 
 class FieldSerializationTests(unittest.TestCase):

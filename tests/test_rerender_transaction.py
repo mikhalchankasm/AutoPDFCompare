@@ -117,6 +117,47 @@ class RerenderTransactionTests(unittest.TestCase):
             for pattern in (".rerender_*", ".report_*", ".start_backup_*"):
                 self.assertEqual(list(internal_dir(run_dir).glob(pattern)), [])
 
+    def test_failed_restore_keeps_the_last_copy(self) -> None:
+        # If rollback cannot put a file back (locked by a viewer, disk error), the
+        # staging dir holds the only remaining copy — deleting it would turn a
+        # recoverable failure into permanent data loss.
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            staging_root = tmp_path / "staging"
+            staging_root.mkdir()
+            live = tmp_path / "summary.json"
+            live.write_text("OLD", encoding="utf-8")
+
+            txn = runner._RunUpdateTransaction(staging_root)
+            txn.preserve_file(live)
+            live.write_text("NEW", encoding="utf-8")
+
+            with mock.patch.object(runner.shutil, "copy2", side_effect=OSError("locked")):
+                txn.rollback()
+
+            self.assertEqual(txn.unrestored, [live])
+            self.assertTrue(staging_root.exists(), "staging was deleted with the only backup inside")
+            backups = list(staging_root.rglob("*summary.json"))
+            self.assertEqual(len(backups), 1, backups)
+            self.assertEqual(backups[0].read_text(encoding="utf-8"), "OLD")
+
+    def test_successful_rollback_still_cleans_staging(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            staging_root = tmp_path / "staging"
+            staging_root.mkdir()
+            live = tmp_path / "summary.json"
+            live.write_text("OLD", encoding="utf-8")
+
+            txn = runner._RunUpdateTransaction(staging_root)
+            txn.preserve_file(live)
+            live.write_text("NEW", encoding="utf-8")
+            txn.rollback()
+
+            self.assertEqual(txn.unrestored, [])
+            self.assertEqual(live.read_text(encoding="utf-8"), "OLD")
+            self.assertFalse(staging_root.exists())
+
     def test_failed_compare_quarantines_run_dir(self) -> None:
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

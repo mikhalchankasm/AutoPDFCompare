@@ -44,7 +44,7 @@ function Invoke-Logged {
 
 function Get-RequirementsStamp {
     $parts = @()
-    foreach ($file in @("requirements/base.txt", "requirements/mcp.txt")) {
+    foreach ($file in @("requirements/lock-runtime.txt", "requirements/base.txt", "requirements/mcp.txt")) {
         $path = Join-Path $repo $file
         if (Test-Path $path) {
             $hash = Get-FileHash -LiteralPath $path -Algorithm SHA256

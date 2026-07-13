@@ -142,9 +142,15 @@ def _normalize_region_values(values: list[object], idx: int, *, unit: str, label
         limit = 1.0
     elif unit in {"px", "pixel", "pixels", "mm", "millimeter", "millimeters"}:
         limit = None
-    else:
+    elif unit in {"percent", "%", ""}:
         unit = "percent"
         limit = 100.0
+    else:
+        # A typo like unit: "cm" used to become a valid percent region — silently
+        # excluding a completely different part of the page.
+        raise ValueError(
+            f"Область #{idx}: неизвестная единица {unit!r}. Допустимо: percent, %, mm, px, ratio"
+        )
 
     if x < 0 or y < 0 or w <= 0 or h <= 0:
         raise ValueError(f"Область #{idx}: x/y должны быть >= 0, w/h > 0")

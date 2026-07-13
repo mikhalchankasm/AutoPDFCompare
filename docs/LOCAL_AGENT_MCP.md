@@ -37,9 +37,9 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - `page_settings` can provide different settings per row, e.g. `[{"seq":4,"dpi":500,"stroke_tol":0,"diff_strictness":"strict"},{"seq":7,"dpi":300,"diff_strictness":"loose","exclude_regions":"70,80,30,20"}]`.
 
 - `pick_pdf_exclude_region(pdf_path, page_number = 1, anchor = "top_left", existing = None)`
-  - opens the same visual picker as the GUI: mm grid overlay, paper-format detection (A4..A0), live mm size labels, several regions at once, move/resize via handles, per-region corner anchor;
+  - opens the same visual picker as the GUI: a blank sheet of the detected format (A4..A0, portrait/landscape), mm grid, live mm size labels, several regions at once, move/resize via handles, per-region corner anchor;
   - `anchor` preselects the anchor for newly drawn regions; `existing` (same forms as `exclude_regions`) opens current zones for editing;
-  - returns `exclude_regions` (list, percent units with per-region anchors) ready for `start_pdf_comparison` / `rerender_pdf_comparison_pages`; an empty list means the user removed all zones; `exclude_region` (first item) is kept for older callers.
+  - returns `exclude_regions` (list) ready for `start_pdf_comparison` / `rerender_pdf_comparison_pages` — **in millimetres from each region's anchor corner** (`unit: "mm"`), which is what makes one zone valid on every sheet format; an empty list means the user removed all zones; `exclude_region` (first item) is kept for older callers.
 
 - `get_pdf_comparison_status(job_id = "")`
   - with `job_id`: returns one job state, progress, live report path, and final summary when available;
@@ -48,8 +48,8 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 - `list_pdf_comparisons(out_dir = "runs", old_path = "", new_path = "", limit = 20)`
   - lists completed comparison folders, optionally filtered by the two PDF paths.
 
-- `cancel_pdf_comparison(job_id)`
-  - terminates a running background job.
+- `cancel_pdf_comparison(job_id, grace_sec = 20)`
+  - asks the worker to stop and unwind (a re-render updates a report in place, so a killed worker could leave it half-updated); force-kills only if the worker does not exit within `grace_sec`, and then reports `forced: true`.
 
 ## Agent Workflow
 
@@ -59,7 +59,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - whether similar comparisons already exist;
    - suggested folder names.
 3. Ask the user what the result folder should be called.
-4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. Zones can be given as text — percent `x,y,w,h` from top-left, or JSON objects with `unit` (`percent`/`mm`/`px`) and `anchor` (`bottom_right` is handy for stamps: the zone holds on any sheet format) — or call `pick_pdf_exclude_region` when the user wants to draw/edit the areas visually.
+4. Ask whether title blocks, stamps, author tables, or other zones should be ignored. **Prefer mm + anchor**: `[{"x":0,"y":0,"w":185,"h":55,"unit":"mm","anchor":"bottom_right"}]` is a title block that stays 185×55 mm on A4 and on A0 alike. Percent boxes (`"70,80,30,20"`, top-left) scale with the sheet — the same box covers a quarter of an A0 — so use them only for zones that *should* stretch. Or call `pick_pdf_exclude_region` to let the user draw the areas.
 5. Ask for strictness when it matters:
    - `strict`: more sensitive to small differences;
    - `normal`: default;
@@ -87,7 +87,7 @@ Start the MCP server manually for smoke testing:
 ```
 
 The server uses stdio, so it waits for an MCP client and does not print a web URL.
-Keep the server on stdio/local transport. Non-stdio transport is blocked unless `PDFCOMPARE_MCP_ALLOW_NETWORK=1` is set; do not enable it unless you also add an output-path allowlist for your environment.
+Keep the server on stdio/local transport. Non-stdio transport is blocked unless **both** `PDFCOMPARE_MCP_ALLOW_NETWORK=1` and `PDFCOMPARE_MCP_ALLOWED_DIRS` are set — the latter is a `os.pathsep`-separated list of directories the tools may read and write, and it is enforced (paths are resolved first, so symlinks cannot escape). Without it the server would expose the whole user profile. The allowlist also works on stdio if you want to confine a local agent.
 
 For installed MCP clients, prefer the bootstrap wrapper:
 

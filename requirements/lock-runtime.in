@@ -1,0 +1,14 @@
+# Source for requirements/lock-runtime.txt — the pinned, hashed runtime set:
+# what the app and the MCP server need, without the build/lint/test tooling.
+#
+# The MCP checkout updates itself from master on every start, so it must install
+# a locked set: otherwise the same commit silently picks up a different NumPy /
+# OpenCV / PyMuPDF tomorrow, while CI stays green on the locked one.
+#
+# Regenerate after changing base.txt / mcp.txt:
+#   py -3.12 -m venv .lockenv
+#   .lockenv\Scripts\pip install pip-tools
+#   .lockenv\Scripts\pip-compile --generate-hashes --strip-extras --allow-unsafe `
+#       --output-file requirements/lock-runtime.txt requirements/lock-runtime.in
+-r base.txt
+-r mcp.txt
