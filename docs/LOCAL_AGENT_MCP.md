@@ -6,6 +6,11 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 
 ## Tools
 
+- `check_pdfcompare_update(fetch = true)`
+  - reports the running version, the MCP checkout's branch/commit, and how many commits it is behind `origin/master`;
+  - names anything that blocks the automatic pull (not on `master`, uncommitted changes);
+  - `fetch = false` compares against already-fetched refs without network access.
+
 - `prepare_pdf_comparison(old_path, new_path, out_dir = "runs", lang = "ru")`
   - validates both PDF paths;
   - counts pages in both files;
@@ -90,7 +95,17 @@ For installed MCP clients, prefer the bootstrap wrapper:
 ./scripts/run_mcp_bootstrap.ps1
 ```
 
-The bootstrap wrapper logs to `.pdfcompare_mcp/bootstrap.log`, installs missing MCP dependencies, and then starts the stdio MCP server. It does not auto-update by default. To opt in for a trusted private setup, run it with `-AutoUpdate` or set `PDFCOMPARE_MCP_AUTO_UPDATE=1`; auto-update only pulls `origin/master` when the checkout is clean and currently on `master`.
+The bootstrap wrapper logs to `.pdfcompare_mcp/bootstrap.log`, installs missing MCP dependencies, and then starts the stdio MCP server.
+
+**Auto-update is on by default.** On every server start the wrapper pulls `origin/master` and re-runs `setup.ps1 -WithMcp` if the requirements or HEAD changed — so restarting the MCP client is all it takes to update. The MCP checkout is independent of the installed GUI: the installer and the app's auto-update replace `PDFCompareLocal.exe` only and never touch it.
+
+The pull is skipped (and logged) when the checkout is not on `master` or has uncommitted changes. Turn auto-update off with `-NoAutoUpdate` or `PDFCOMPARE_MCP_AUTO_UPDATE=0`, then update by hand:
+
+```powershell
+git -C "$env:LOCALAPPDATA\PDFCompareMCP\AutoPDFCompare" pull --ff-only origin master
+```
+
+The `check_pdfcompare_update` tool reports the running version, the checkout's commit, how many commits it is behind `origin/master`, and anything that would block the pull (wrong branch, dirty tree). Pass `fetch=false` to check without touching the network.
 
 The one-click clone phase logs to `%TEMP%\pdfcompare_mcp_bootstrap.log`; after the repository exists, bootstrap logs go to `.pdfcompare_mcp/bootstrap.log`.
 

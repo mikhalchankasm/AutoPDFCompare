@@ -114,10 +114,18 @@ python compare_pdfs.py --old old.pdf --new new.pdf --bbox-merge-gap-mm 5 --keep-
 Прочитай https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/docs/SETUP_PROMPT.md и выполни инструкцию по подключению PDFCompare MCP. Используй stdio transport, имя сервера pdfcompare.
 ```
 
-Обновление позже:
+### Обновление MCP
 
-```text
-Обнови PDFCompare MCP по инструкции из https://raw.githubusercontent.com/mikhalchankasm/AutoPDFCompare/master/docs/SETUP_PROMPT.md
+MCP-сервер — **отдельная от приложения установка**: агент клонирует репозиторий в `%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare` и запускает сервер из исходников. Инсталлятор и автообновление приложения заменяют только `PDFCompareLocal.exe` и MCP не трогают.
+
+По умолчанию сервер **обновляется сам**: при каждом старте (то есть при перезапуске MCP-клиента) бутстрап подтягивает `origin/master` и доустанавливает зависимости, если они изменились. Обновление пропускается, если checkout не на `master` или в нём есть локальные правки — об этом пишется в `.pdfcompare_mcp/bootstrap.log`.
+
+- Спросить у агента, актуальна ли версия: инструмент `check_pdfcompare_update` (покажет версию, коммит, на сколько отстал от master и что мешает обновиться).
+- Отключить автообновление: `-NoAutoUpdate` у `scripts/run_mcp_bootstrap.ps1` или `PDFCOMPARE_MCP_AUTO_UPDATE=0` в окружении сервера.
+- Обновить вручную:
+
+```powershell
+git -C "$env:LOCALAPPDATA\PDFCompareMCP\AutoPDFCompare" pull --ff-only origin master
 ```
 
 Важно: MCP-кнопки запускают локальную PowerShell-команду и код из этого репозитория. Используйте их, только если доверяете репозиторию и агенту.

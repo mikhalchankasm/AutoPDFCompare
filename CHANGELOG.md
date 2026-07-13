@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **The MCP server now updates itself by default.** It runs from its own git checkout (`%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare`), which the GUI installer and the app's auto-update never touch — they only replace `PDFCompareLocal.exe`. Auto-update used to be opt-in (`-AutoUpdate` / `PDFCOMPARE_MCP_AUTO_UPDATE=1`), so an agent could silently keep running a months-old engine. The bootstrap now pulls `origin/master` on every server start (still skipping a checkout that is off `master` or has local changes) and re-installs dependencies when they changed. Opt out with `-NoAutoUpdate` or `PDFCOMPARE_MCP_AUTO_UPDATE=0`.
+
+### Added
+- **MCP: `check_pdfcompare_update`** — reports the running version, the checkout's branch and commit, how many commits it is behind `origin/master`, and anything blocking the pull. `fetch=false` checks offline.
+
 ## v0.1.16 - 2026-07-13
 
 ### Added

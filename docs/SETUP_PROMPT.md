@@ -34,19 +34,18 @@ Install:
      }
    }
 
-The bootstrap command installs missing dependencies with scripts/setup.ps1 -WithMcp and starts scripts/run_mcp.ps1. It does not auto-update code by default.
+The bootstrap command installs missing dependencies with scripts/setup.ps1 -WithMcp and starts scripts/run_mcp.ps1.
 
-To update later:
-1. Stop the MCP server or close the MCP client.
-2. Run:
+Updating:
+- The MCP server is a separate git checkout. It is NOT updated by the GUI installer or by the app's auto-update — those only replace PDFCompareLocal.exe.
+- By default the bootstrap pulls origin/master on every server start, so restarting the MCP client is enough to update. The pull is skipped (with a note in .pdfcompare_mcp/bootstrap.log) if the checkout is not on master or has local changes.
+- To turn auto-update off, pass -NoAutoUpdate to scripts/run_mcp_bootstrap.ps1 or set PDFCOMPARE_MCP_AUTO_UPDATE=0 in the MCP server environment. Then update manually:
    git -C "%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare" pull --ff-only origin master
-3. Run:
    powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\PDFCompareMCP\AutoPDFCompare\scripts\setup.ps1" -WithMcp
-4. Start the MCP client again.
-
-For a trusted private setup that should update on each server start, add -AutoUpdate to scripts/run_mcp_bootstrap.ps1 or set PDFCOMPARE_MCP_AUTO_UPDATE=1 in the MCP server environment.
+- Call the check_pdfcompare_update tool to see whether the checkout is behind master (it reports the version, the commit, how many commits behind, and anything blocking the pull).
 
 After connecting, use PDFCompare MCP tools:
+- check_pdfcompare_update if the user asks about updates or something behaves like an old version;
 - prepare_pdf_comparison first;
 - ask whether title blocks/stamps/author tables should be ignored; use percent boxes x,y,w,h from the top-left page corner;
 - ask whether strictness should be strict, normal, or loose;

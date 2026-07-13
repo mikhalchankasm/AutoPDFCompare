@@ -23,6 +23,7 @@ import fitz
 from mcp.server.fastmcp import FastMCP
 
 from compare_pdfs import (
+    APP_VERSION,
     DIFF_STRICTNESS_CHOICES,
     MAX_RUN_FOLDER_NAME_LEN,
     START_REPORT_FILE,
@@ -484,6 +485,90 @@ def cleanup_stale_job_artifacts() -> None:
     inactive_job_dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     for child in inactive_job_dirs[max_retained_jobs:]:
         shutil.rmtree(child, ignore_errors=True)
+
+
+def git_text(*args: str, timeout: float = 20.0) -> str | None:
+    """Run git in the repo checkout; None if git is missing or the command fails."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+@mcp.tool()
+def check_pdfcompare_update(fetch: bool = True) -> dict[str, Any]:
+    """Check whether this PDFCompare checkout is behind the repository's master branch.
+
+    The MCP server runs the code in its own checkout (usually
+    %LOCALAPPDATA%\\PDFCompareMCP\\AutoPDFCompare), which is separate from the
+    installed GUI: the GUI's auto-update does not touch it. The bootstrap script
+    pulls master on every server start unless auto-update was turned off, so this
+    tool mainly matters for a long-running server or a checkout with auto-update
+    disabled.
+
+    Set fetch=False to compare against the already-fetched refs without touching
+    the network.
+    """
+    result: dict[str, Any] = {"ok": True, "version": APP_VERSION, "repo_root": str(REPO_ROOT)}
+    if git_text("rev-parse", "--is-inside-work-tree") != "true":
+        result.update(
+            {
+                "ok": False,
+                "error": "Каталог MCP-сервера не является git-репозиторием — обновление через git недоступно.",
+            }
+        )
+        return result
+
+    if fetch:
+        git_text("fetch", "--prune", "origin", timeout=60.0)
+
+    branch = git_text("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
+    commit = git_text("rev-parse", "--short", "HEAD") or "unknown"
+    dirty = bool(git_text("status", "--porcelain", "--untracked-files=no"))
+    counts = git_text("rev-list", "--left-right", "--count", "HEAD...origin/master")
+    behind = ahead = None
+    if counts:
+        parts = counts.split()
+        if len(parts) == 2:
+            ahead, behind = int(parts[0]), int(parts[1])
+
+    update_available = bool(behind)
+    result.update(
+        {
+            "branch": branch,
+            "commit": commit,
+            "dirty": dirty,
+            "commits_behind_master": behind,
+            "commits_ahead_of_master": ahead,
+            "update_available": update_available,
+        }
+    )
+    if update_available:
+        blockers = []
+        if branch != "master":
+            blockers.append(f"текущая ветка '{branch}', а не master")
+        if dirty:
+            blockers.append("в рабочем дереве есть локальные изменения")
+        result["message"] = (
+            f"Доступно обновление: локальная копия отстаёт от origin/master на {behind} коммит(ов). "
+            "Перезапуск MCP-клиента подтянет его автоматически, если автообновление включено."
+        )
+        result["update_command"] = f'git -C "{REPO_ROOT}" pull --ff-only origin master'
+        if blockers:
+            result["blockers"] = blockers
+            result["message"] += " Автообновление будет пропущено: " + "; ".join(blockers) + "."
+    else:
+        result["message"] = "Локальная копия PDFCompare актуальна."
+    return result
 
 
 @mcp.tool()

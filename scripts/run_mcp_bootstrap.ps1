@@ -1,5 +1,10 @@
 param(
-    [switch]$AutoUpdate
+    # Auto-update is ON by default: the MCP server runs the repository's code, so
+    # a stale checkout means the agent silently works with an old engine. Opt out
+    # with -NoAutoUpdate or PDFCOMPARE_MCP_AUTO_UPDATE=0.
+    # -AutoUpdate is kept for compatibility with older configs and is a no-op now.
+    [switch]$AutoUpdate,
+    [switch]$NoAutoUpdate
 )
 
 Set-StrictMode -Version Latest
@@ -72,8 +77,10 @@ if ((Test-Path $log) -and ((Get-Item -LiteralPath $log).Length -gt 1MB)) {
 Push-Location $repo
 try {
     $git = Get-Command git -ErrorAction SilentlyContinue
-    $envAutoUpdate = $env:PDFCOMPARE_MCP_AUTO_UPDATE -in @("1", "true", "TRUE", "yes", "YES", "on", "ON")
-    if ($git -and ($AutoUpdate -or $envAutoUpdate)) {
+    $envRaw = if ($null -ne $env:PDFCOMPARE_MCP_AUTO_UPDATE) { $env:PDFCOMPARE_MCP_AUTO_UPDATE.Trim().ToLowerInvariant() } else { "" }
+    $envDisables = $envRaw -in @("0", "false", "no", "off")
+    $autoUpdateEnabled = -not ($NoAutoUpdate -or $envDisables)
+    if ($git -and $autoUpdateEnabled) {
         $branch = (& git rev-parse --abbrev-ref HEAD 2>> $log).Trim()
         $dirty = & git status --porcelain --untracked-files=no 2>> $log
         if ($branch -ne "master") {
@@ -96,7 +103,7 @@ try {
         }
     }
     elseif ($git) {
-        Write-BootstrapLog "Auto-update is disabled. Run with -AutoUpdate or set PDFCOMPARE_MCP_AUTO_UPDATE=1 to update on start."
+        Write-BootstrapLog "Auto-update is disabled (-NoAutoUpdate or PDFCOMPARE_MCP_AUTO_UPDATE=0). Update manually with: git -C '$repo' pull --ff-only origin master"
     }
     else {
         Write-BootstrapLog "Git is not available; skipping auto-update."
