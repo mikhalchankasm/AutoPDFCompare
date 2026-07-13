@@ -6,12 +6,97 @@ import os
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from typing import Any
 from .contracts import AppProtocol
+from .styles import (
+    BG_CARD,
+    BG_SOFT,
+    BG_WINDOW,
+    PILL_CANCEL_BG,
+    PILL_CANCEL_TEXT,
+    PILL_OK_BG,
+    PILL_OK_TEXT,
+    TEXT_SECONDARY,
+    TEXT_TERTIARY,
+)
 
 
 class HistoryTabMixin:
+    history_tree: ttk.Treeview
+    hist_open_btn: ttk.Button | None
+    hist_refresh_btn: ttk.Button | None
+    hist_restore_btn: tk.Button | None
+    hist_snapshot_btn: ttk.Button | None
+    history_hint_label: ttk.Label | None
+    history_records: list[dict[str, Any]]
+    history_search_entry: ttk.Entry | None
+
+    def _build_history_tab(self: AppProtocol) -> None:
+        """Search/filter toolbar, the runs table and the footer actions."""
+        hist_tools = tk.Frame(self.history_tab, bg=BG_WINDOW, padx=14, pady=14)
+        hist_tools.pack(fill=tk.X)
+        search_frame = tk.Frame(hist_tools, bg=BG_SOFT, padx=10, pady=5)
+        search_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(search_frame, text="⌕", bg=BG_SOFT, fg=TEXT_TERTIARY).pack(side=tk.LEFT)
+        self.history_search_entry = ttk.Entry(search_frame, textvariable=self.history_search, style="Path.TEntry")
+        self.history_search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        self._set_history_placeholder()
+        self.history_search_entry.bind("<FocusIn>", self._history_search_focus_in)
+        self.history_search_entry.bind("<FocusOut>", self._history_search_focus_out)
+        for value, key in (("all", "hist_filter_all"), ("done", "hist_filter_done"), ("cancelled", "hist_filter_cancelled")):
+            btn = tk.Label(hist_tools, text=self._tr(key), padx=12, pady=6, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
+            btn.pack(side=tk.LEFT, padx=(8, 0))
+            btn.bind("<Button-1>", lambda _e, v=value: self._set_history_filter(v))  # type: ignore[misc]
+            self.history_filter_buttons[value] = btn
+        self.hist_refresh_btn = ttk.Button(hist_tools, text=f"↻ {self._tr('hist_refresh')}", style="Small.TButton", command=self._refresh_history_table)
+        self.hist_refresh_btn.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Create container for table and scrollbar
+        tree_container = ttk.Frame(self.history_tab)
+        tree_container.pack(fill=tk.BOTH, expand=True)
+
+        cols = ("ts", "duration", "pages", "result", "old", "new", "out", "run")
+        self.history_tree = ttk.Treeview(tree_container, columns=cols, show="headings", selectmode="browse", style="History.Treeview")
+        self.history_tree.configure(displaycolumns=("ts", "duration", "pages", "result", "old", "new", "out"))
+        self.history_tree.heading("ts", text=self._tr("hist_col_time"))
+        self.history_tree.heading("duration", text=self._tr("hist_col_duration"))
+        self.history_tree.heading("pages", text=self._tr("hist_col_pages"))
+        self.history_tree.heading("result", text=self._tr("hist_col_result"))
+        self.history_tree.heading("old", text=self._tr("hist_col_old"))
+        self.history_tree.heading("new", text=self._tr("hist_col_new"))
+        self.history_tree.heading("out", text=self._tr("hist_col_out"))
+        self.history_tree.heading("run", text=self._tr("hist_col_run"))
+        # All columns stretch proportionally
+        self.history_tree.column("ts", width=140, minwidth=120, anchor="w", stretch=True)
+        self.history_tree.column("duration", width=60, minwidth=50, anchor="center", stretch=True)
+        self.history_tree.column("pages", width=70, minwidth=60, anchor="center", stretch=True)
+        self.history_tree.column("result", width=80, minwidth=70, anchor="center", stretch=True)
+        self.history_tree.column("old", width=150, minwidth=120, anchor="w", stretch=True)
+        self.history_tree.column("new", width=150, minwidth=120, anchor="w", stretch=True)
+        self.history_tree.column("out", width=120, minwidth=100, anchor="w", stretch=True)
+        self.history_tree.column("run", width=200, minwidth=150, anchor="w", stretch=True)
+        self.history_tree.tag_configure("pill_ok", background=PILL_OK_BG, foreground=PILL_OK_TEXT)
+        self.history_tree.tag_configure("pill_cancel", background=PILL_CANCEL_BG, foreground=PILL_CANCEL_TEXT)
+
+        hist_scroll = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.history_tree.yview)
+        hist_scroll.pack(fill=tk.Y, side=tk.RIGHT)
+        self.history_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
+        self.history_tree.configure(yscrollcommand=hist_scroll.set)
+        self.history_tree.bind("<Double-1>", self._on_history_double_click)
+
+        hist_footer = tk.Frame(self.history_tab, bg=BG_SOFT, padx=24, pady=12)
+        hist_footer.pack(fill=tk.X)
+        self.history_hint_label = ttk.Label(hist_footer, text=self._tr("hist_hint"), style="Hint.TLabel", background=BG_SOFT)
+        self.history_hint_label.pack(side=tk.LEFT)
+        self.hist_restore_btn = self._primary_button(hist_footer, self._tr("hist_restore"), self._restore_selected_history, compact=True)
+        self.hist_restore_btn.pack(side=tk.RIGHT)
+        self.hist_snapshot_btn = ttk.Button(hist_footer, text=self._tr("hist_snapshot"), style="Small.TButton", command=self._save_snapshot_to_history)
+        self.hist_snapshot_btn.pack(side=tk.RIGHT, padx=8)
+        self.hist_open_btn = ttk.Button(hist_footer, text=self._tr("hist_open_folder"), style="Small.TButton", command=self._open_selected_history_run)
+        self.hist_open_btn.pack(side=tk.RIGHT)
+
+
     def _refresh_history_table(self: AppProtocol) -> None:
         if self.history_tree is None:
             return

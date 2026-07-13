@@ -29,6 +29,7 @@ from compare_pdfs import (
     normalize_exclude_regions,
     sanitize_run_folder_name,
 )
+from pdfcompare_ui.compare_tab import CompareTabMixin
 from pdfcompare_ui.dnd import DragDropMixin
 from pdfcompare_ui.exclusion_picker import format_regions_for_field, pick_exclude_regions
 from pdfcompare_ui.history_tab import HistoryTabMixin
@@ -61,13 +62,10 @@ from pdfcompare_ui.styles import (
     NEW_DOT,
     OLD_BORDER,
     OLD_DOT,
-    PILL_CANCEL_BG,
-    PILL_CANCEL_TEXT,
-    PILL_OK_BG,
-    PILL_OK_TEXT,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     TEXT_TERTIARY,
+    configure_ttk_styles,
 )
 
 # Try to import tkinterdnd2 for drag & drop support
@@ -84,6 +82,7 @@ except ImportError:
 
 
 class PDFCompareApp(
+    CompareTabMixin,
     RerenderTabMixin,
     StatePersistenceMixin,
     HistoryTabMixin,
@@ -425,52 +424,7 @@ class PDFCompareApp(
         self._refresh_history_table()
 
     def _build_ui(self) -> None:
-        style = ttk.Style(self.root)
-        style.configure("TFrame", background=BG_WINDOW)
-        style.configure("Header.TLabel", font=("Segoe UI", 18, "normal"), foreground=TEXT_PRIMARY, background=BG_WINDOW)
-        style.configure("SubHeader.TLabel", font=("Segoe UI", 10), foreground=TEXT_SECONDARY, background=BG_WINDOW)
-        style.configure("Hint.TLabel", font=("Segoe UI", 9), foreground=TEXT_TERTIARY, background=BG_WINDOW)
-        style.configure("FileLabel.TLabel", font=("Segoe UI", 10, "bold"), foreground=TEXT_PRIMARY, background=BG_CARD)
-        style.configure("Red.TLabel", font=("Segoe UI", 10, "bold"), foreground=OLD_DOT, background=BG_CARD)
-        style.configure("Green.TLabel", font=("Segoe UI", 10, "bold"), foreground=NEW_DOT, background=BG_CARD)
-        style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), foreground=BG_CARD, background=ACCENT, padding=(12, 8))
-        style.configure("Small.TButton", font=("Segoe UI", 9), padding=(10, 5))
-        style.configure("Pill.TLabel", font=("Segoe UI", 9, "bold"))
-        style.configure("Path.TEntry", fieldbackground=BG_SOFT, borderwidth=0)
-        style.configure("Horizontal.TProgressbar", troughcolor=BG_INFO, background=ACCENT, borderwidth=0)
-        style.configure("TNotebook", background=BG_WINDOW, borderwidth=0)
-        style.configure(
-            "TNotebook.Tab",
-            padding=(14, 8),
-            font=("Segoe UI", 10),
-            background=BG_WINDOW,
-            foreground=TEXT_SECONDARY,
-            borderwidth=0,
-        )
-        style.map(
-            "TNotebook.Tab",
-            background=[("selected", BG_WINDOW)],
-            foreground=[("selected", TEXT_PRIMARY)],
-            font=[("selected", ("Segoe UI", 10, "bold"))],
-        )
-        style.configure(
-            "History.Treeview",
-            background=BG_CARD,
-            fieldbackground=BG_CARD,
-            foreground=TEXT_PRIMARY,
-            rowheight=44,
-            borderwidth=0,
-            font=("Segoe UI", 10),
-        )
-        style.configure(
-            "History.Treeview.Heading",
-            background=BG_WINDOW,
-            foreground=TEXT_SECONDARY,
-            font=("Segoe UI", 9),
-            relief="flat",
-            borderwidth=0,
-        )
-        style.map("History.Treeview", background=[("selected", BG_INFO)], foreground=[("selected", TEXT_PRIMARY)])
+        configure_ttk_styles(self.root)
 
         outer = ttk.Frame(self.root, padding=14)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -539,299 +493,12 @@ class PDFCompareApp(
         self.tabs.add(self.history_tab, text=self._history_tab_text())
         self.tabs.add(self.rerender_tab, text=self._tr("tab_rerender"))
 
-        files_row = tk.Frame(self.compare_tab, bg=BG_WINDOW)
-        files_row.pack(fill=tk.X, pady=(0, 12))
-        files_row.columnconfigure(0, weight=1, uniform="files")
-        files_row.columnconfigure(2, weight=1, uniform="files")
-        self.old_entry = self._build_file_card(files_row, self.old_pdf, old=True)
-        self.old_entry.grid(row=0, column=0, sticky="nsew")
-        swap_box = tk.Frame(files_row, bg=BG_WINDOW, width=36)
-        swap_box.grid(row=0, column=1, sticky="ns", padx=10)
-        self.swap_btn = ttk.Button(swap_box, text="⇅", width=3, style="Small.TButton", command=self._swap_files)
-        self.swap_btn.pack(expand=True)
-        self.new_entry = self._build_file_card(files_row, self.new_pdf, old=False)
-        self.new_entry.grid(row=0, column=2, sticky="nsew")
-
-        self.drop_canvas = tk.Frame(self.compare_tab, bg=BG_WINDOW, highlightthickness=1, highlightbackground=BORDER_THIN)
-        self.drop_canvas.pack(fill=tk.X, pady=(0, 14))
-        ttk.Label(self.drop_canvas, text=self._tr("drop_hint"), style="Hint.TLabel").pack(anchor="w", padx=12, pady=8)
-
-        out_wrap = tk.Frame(self.compare_tab, bg=BG_WINDOW)
-        out_wrap.pack(fill=tk.X, pady=(0, 14))
-        self.out_label = ttk.Label(out_wrap, text=self._tr("path_out"), style="SubHeader.TLabel")
-        self.out_label.pack(anchor="w", pady=(0, 6))
-        out_fields = tk.Frame(out_wrap, bg=BG_WINDOW)
-        out_fields.pack(fill=tk.X)
-        self.out_entry = ttk.Entry(out_fields, textvariable=self.out_dir, style="Path.TEntry")
-        self.out_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
-        self.out_pick_btn = ttk.Button(out_fields, text=self._tr("btn_select"), style="Small.TButton", command=self._pick_out_dir)
-        self.out_pick_btn.pack(side=tk.LEFT, padx=(8, 0))
-        run_name_wrap = tk.Frame(out_wrap, bg=BG_WINDOW)
-        run_name_wrap.pack(fill=tk.X, pady=(8, 0))
-        self.run_name_label = ttk.Label(run_name_wrap, text=self._tr("path_run_name"), style="Hint.TLabel")
-        self.run_name_label.pack(side=tk.LEFT, padx=(0, 8))
-        self.run_name_entry = ttk.Entry(run_name_wrap, textvariable=self.run_name, style="Path.TEntry")
-        self.run_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
-        self.run_name_hint_label = ttk.Label(out_wrap, text=self._tr("path_run_name_hint"), style="Hint.TLabel")
-        self.run_name_hint_label.pack(anchor="w", pady=(2, 0))
-
-        self.options_body = tk.Frame(self.compare_tab, bg=BG_SOFT, padx=14, pady=14)
-        self.options_body.pack(fill=tk.X, pady=(0, 14))
-        opts_head = tk.Frame(self.options_body, bg=BG_SOFT)
-        opts_head.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(opts_head, text=self._tr("opts_group"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
-        ttk.Label(opts_head, text=self._tr("opts_default"), style="Hint.TLabel", background=BG_SOFT).pack(side=tk.RIGHT)
-        opts_grid = tk.Frame(self.options_body, bg=BG_SOFT)
-        opts_grid.pack(fill=tk.X)
-        for col in range(2):
-            opts_grid.columnconfigure(col, weight=1, uniform="opts")
-        self._build_scale_option(opts_grid, 0, "opts_dpi", self.dpi, self.dpi_value, 100, 400, 10)
-        self._build_scale_option(opts_grid, 1, "opts_stroke", self.stroke_tol, self.stroke_value, 0, 10, 0.5)
-
-        advanced_grid = tk.Frame(self.options_body, bg=BG_SOFT)
-        advanced_grid.pack(fill=tk.X, pady=(12, 0))
-        advanced_grid.columnconfigure(0, weight=1, uniform="advanced")
-        advanced_grid.columnconfigure(1, weight=2, uniform="advanced")
-        strict_frame = tk.Frame(advanced_grid, bg=BG_SOFT)
-        strict_frame.grid(row=0, column=0, sticky="ew", padx=(0, 12))
-        self.options_strictness_label = ttk.Label(
-            strict_frame,
-            text=self._tr("opts_strictness"),
-            style="SubHeader.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_strictness_label.pack(anchor="w", pady=(0, 6))
-        strict_chips = tk.Frame(strict_frame, bg=BG_SOFT)
-        strict_chips.pack(anchor="w")
-        for value in DIFF_STRICTNESS_CHOICES:
-            chip = tk.Label(
-                strict_chips,
-                text=self._tr(f"strictness_{value}"),
-                padx=12,
-                pady=4,
-                bg=BG_CARD,
-                fg=TEXT_SECONDARY,
-                relief="solid",
-                bd=1,
-                cursor="hand2",
-            )
-            chip.pack(side=tk.LEFT, padx=(0, 6))
-            chip.bind("<Button-1>", lambda _e, v=value: self.diff_strictness.set(v))  # type: ignore[misc]
-            self.strictness_chips[value] = chip
-        self.options_strictness_hint_label = ttk.Label(
-            strict_frame,
-            text=self._tr("opts_strictness_hint"),
-            style="Hint.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_strictness_hint_label.pack(anchor="w", pady=(8, 0))
-
-        exclude_frame = tk.Frame(advanced_grid, bg=BG_SOFT)
-        exclude_frame.grid(row=0, column=1, sticky="ew")
-        self.options_exclude_label = ttk.Label(
-            exclude_frame,
-            text=self._tr("opts_exclude"),
-            style="SubHeader.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_exclude_label.pack(anchor="w", pady=(0, 6))
-        exclude_entry_row = tk.Frame(exclude_frame, bg=BG_SOFT)
-        exclude_entry_row.pack(fill=tk.X)
-        ttk.Entry(exclude_entry_row, textvariable=self.exclude_regions, style="Path.TEntry").pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
-        self.exclude_pick_btn = ttk.Button(
-            exclude_entry_row,
-            text=self._tr("btn_pick_exclude"),
-            style="Small.TButton",
-            command=self._pick_exclude_regions,
-        )
-        self.exclude_pick_btn.pack(side=tk.LEFT, padx=(6, 0))
-        self.options_exclude_hint_label = ttk.Label(
-            exclude_frame,
-            text=self._tr("opts_exclude_hint"),
-            style="Hint.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_exclude_hint_label.pack(anchor="w", pady=(6, 0))
-
-        # Row 1: bbox merge (experimental) + keep debug — full width, two sub-frames.
-        advanced_row2 = tk.Frame(advanced_grid, bg=BG_SOFT)
-        advanced_row2.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(12, 0))
-        advanced_row2.columnconfigure(0, weight=1, uniform="advanced2")
-        advanced_row2.columnconfigure(1, weight=1, uniform="advanced2")
-
-        bbox_frame = tk.Frame(advanced_row2, bg=BG_SOFT)
-        bbox_frame.grid(row=0, column=0, sticky="ew", padx=(0, 12))
-        bbox_head = tk.Frame(bbox_frame, bg=BG_SOFT)
-        bbox_head.pack(fill=tk.X)
-        self.options_bbox_merge_label = ttk.Label(
-            bbox_head,
-            text=self._tr("opts_bbox_merge"),
-            style="SubHeader.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_bbox_merge_label.pack(side=tk.LEFT, pady=(0, 6))
-        self.bbox_merge_chip = ttk.Checkbutton(
-            bbox_head,
-            text=self._tr("opts_enable"),
-            variable=self.bbox_merge,
-            onvalue="on",
-            offvalue="off",
-            command=self._update_bbox_merge_fields,
-        )
-        self.bbox_merge_chip.pack(side=tk.LEFT, padx=(8, 0))
-        bbox_fields = tk.Frame(bbox_frame, bg=BG_SOFT)
-        bbox_fields.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(bbox_fields, text=self._tr("opts_bbox_merge_gap"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
-        self.bbox_merge_gap_entry = ttk.Entry(bbox_fields, textvariable=self.bbox_merge_gap, width=6, state=tk.DISABLED)
-        self.bbox_merge_gap_entry.pack(side=tk.LEFT, padx=(6, 16))
-        ttk.Label(bbox_fields, text=self._tr("opts_bbox_merge_ratio"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
-        self.bbox_merge_max_ratio_entry = ttk.Entry(bbox_fields, textvariable=self.bbox_merge_max_ratio, width=6, state=tk.DISABLED)
-        self.bbox_merge_max_ratio_entry.pack(side=tk.LEFT, padx=(6, 0))
-        self.options_bbox_merge_hint_label = ttk.Label(
-            bbox_frame,
-            text=self._tr("opts_bbox_merge_hint"),
-            style="Hint.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_bbox_merge_hint_label.pack(anchor="w", pady=(6, 0))
-
-        keep_debug_frame = tk.Frame(advanced_row2, bg=BG_SOFT)
-        keep_debug_frame.grid(row=0, column=1, sticky="ew")
-        kd_head = tk.Frame(keep_debug_frame, bg=BG_SOFT)
-        kd_head.pack(fill=tk.X)
-        self.options_keep_debug_label = ttk.Label(
-            kd_head,
-            text=self._tr("opts_keep_debug"),
-            style="SubHeader.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_keep_debug_label.pack(side=tk.LEFT, pady=(0, 6))
-        self.keep_debug_chip = ttk.Checkbutton(
-            kd_head,
-            text=self._tr("opts_enable"),
-            variable=self.keep_debug,
-            onvalue="on",
-            offvalue="off",
-        )
-        self.keep_debug_chip.pack(side=tk.LEFT, padx=(8, 0))
-        self.options_keep_debug_hint_label = ttk.Label(
-            keep_debug_frame,
-            text=self._tr("opts_keep_debug_hint"),
-            style="Hint.TLabel",
-            background=BG_SOFT,
-        )
-        self.options_keep_debug_hint_label.pack(anchor="w", pady=(8, 0))
-
-        actions = tk.Frame(self.compare_tab, bg=BG_WINDOW)
-        actions.pack(fill=tk.X, pady=(0, 14))
-        self.run_btn = self._primary_button(actions, self._tr("btn_compare_short"), self.start_compare)
-        self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.from_history_btn = ttk.Button(
-            actions, text=self._tr("btn_from_history"), style="Small.TButton", command=self._restore_last_inputs
-        )
-        self.from_history_btn.pack(side=tk.LEFT, padx=8)
-        self.clear_btn = ttk.Button(actions, text=self._tr("btn_clear"), style="Small.TButton", command=self._clear_inputs)
-        self.clear_btn.pack(side=tk.LEFT)
-        self.open_report_btn = ttk.Button(
-            actions,
-            text=self._tr("btn_open_report"),
-            style="Small.TButton",
-            command=self._open_report,
-        )
-        self.open_report_btn.pack(side=tk.LEFT, padx=(8, 0))
-        self.open_run_btn = ttk.Button(
-            actions,
-            text=self._tr("btn_open_folder"),
-            style="Small.TButton",
-            command=self._open_run_folder,
-        )
-        self.open_run_btn.pack(side=tk.LEFT, padx=(8, 0))
-
-        status_panel = tk.Frame(self.compare_tab, bg=BG_INFO, padx=12, pady=10)
-        status_panel.pack(fill=tk.X)
-        ok_dot = tk.Canvas(status_panel, width=8, height=8, bg=BG_INFO, highlightthickness=0)
-        ok_dot.pack(side=tk.LEFT, padx=(0, 10))
-        ok_dot.create_oval(1, 1, 7, 7, fill=ACCENT, outline=ACCENT)
-        self.status_text_label = tk.Label(status_panel, textvariable=self.status, bg=BG_INFO, fg=ACCENT_DARK, anchor="w", font=("Segoe UI", 9))
-        self.status_text_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        # Bold banner shown when a live report becomes available; hidden on completion.
-        self.report_ready_label = tk.Label(
-            status_panel,
-            text=self._tr("status_report_ready"),
-            bg=BG_INFO,
-            fg=ACCENT,
-            font=("Segoe UI", 9, "bold"),
-            cursor="hand2",
-        )
-        self.report_ready_label.bind("<Button-1>", lambda _e: self._open_report())
-        self.progress = ttk.Progressbar(status_panel, mode="determinate", maximum=100, style="Horizontal.TProgressbar")
-        self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
-        self.progress.pack_forget()
-        ttk.Label(status_panel, textvariable=self.elapsed, width=7, anchor="e", background=BG_INFO).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Label(status_panel, textvariable=self.progress_pct, width=6, anchor="e", background=BG_INFO).pack(side=tk.LEFT, padx=(4, 0))
-
-        hist_tools = tk.Frame(self.history_tab, bg=BG_WINDOW, padx=14, pady=14)
-        hist_tools.pack(fill=tk.X)
-        search_frame = tk.Frame(hist_tools, bg=BG_SOFT, padx=10, pady=5)
-        search_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(search_frame, text="⌕", bg=BG_SOFT, fg=TEXT_TERTIARY).pack(side=tk.LEFT)
-        self.history_search_entry = ttk.Entry(search_frame, textvariable=self.history_search, style="Path.TEntry")
-        self.history_search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
-        self._set_history_placeholder()
-        self.history_search_entry.bind("<FocusIn>", self._history_search_focus_in)
-        self.history_search_entry.bind("<FocusOut>", self._history_search_focus_out)
-        for value, key in (("all", "hist_filter_all"), ("done", "hist_filter_done"), ("cancelled", "hist_filter_cancelled")):
-            btn = tk.Label(hist_tools, text=self._tr(key), padx=12, pady=6, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
-            btn.pack(side=tk.LEFT, padx=(8, 0))
-            btn.bind("<Button-1>", lambda _e, v=value: self._set_history_filter(v))  # type: ignore[misc]
-            self.history_filter_buttons[value] = btn
-        self.hist_refresh_btn = ttk.Button(hist_tools, text=f"↻ {self._tr('hist_refresh')}", style="Small.TButton", command=self._refresh_history_table)
-        self.hist_refresh_btn.pack(side=tk.LEFT, padx=(10, 0))
-
-        # Create container for table and scrollbar
-        tree_container = ttk.Frame(self.history_tab)
-        tree_container.pack(fill=tk.BOTH, expand=True)
-
-        cols = ("ts", "duration", "pages", "result", "old", "new", "out", "run")
-        self.history_tree = ttk.Treeview(tree_container, columns=cols, show="headings", selectmode="browse", style="History.Treeview")
-        self.history_tree.configure(displaycolumns=("ts", "duration", "pages", "result", "old", "new", "out"))
-        self.history_tree.heading("ts", text=self._tr("hist_col_time"))
-        self.history_tree.heading("duration", text=self._tr("hist_col_duration"))
-        self.history_tree.heading("pages", text=self._tr("hist_col_pages"))
-        self.history_tree.heading("result", text=self._tr("hist_col_result"))
-        self.history_tree.heading("old", text=self._tr("hist_col_old"))
-        self.history_tree.heading("new", text=self._tr("hist_col_new"))
-        self.history_tree.heading("out", text=self._tr("hist_col_out"))
-        self.history_tree.heading("run", text=self._tr("hist_col_run"))
-        # All columns stretch proportionally
-        self.history_tree.column("ts", width=140, minwidth=120, anchor="w", stretch=True)
-        self.history_tree.column("duration", width=60, minwidth=50, anchor="center", stretch=True)
-        self.history_tree.column("pages", width=70, minwidth=60, anchor="center", stretch=True)
-        self.history_tree.column("result", width=80, minwidth=70, anchor="center", stretch=True)
-        self.history_tree.column("old", width=150, minwidth=120, anchor="w", stretch=True)
-        self.history_tree.column("new", width=150, minwidth=120, anchor="w", stretch=True)
-        self.history_tree.column("out", width=120, minwidth=100, anchor="w", stretch=True)
-        self.history_tree.column("run", width=200, minwidth=150, anchor="w", stretch=True)
-        self.history_tree.tag_configure("pill_ok", background=PILL_OK_BG, foreground=PILL_OK_TEXT)
-        self.history_tree.tag_configure("pill_cancel", background=PILL_CANCEL_BG, foreground=PILL_CANCEL_TEXT)
-
-        hist_scroll = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.history_tree.yview)
-        hist_scroll.pack(fill=tk.Y, side=tk.RIGHT)
-        self.history_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
-        self.history_tree.configure(yscrollcommand=hist_scroll.set)
-        self.history_tree.bind("<Double-1>", self._on_history_double_click)
-
-        hist_footer = tk.Frame(self.history_tab, bg=BG_SOFT, padx=24, pady=12)
-        hist_footer.pack(fill=tk.X)
-        self.history_hint_label = ttk.Label(hist_footer, text=self._tr("hist_hint"), style="Hint.TLabel", background=BG_SOFT)
-        self.history_hint_label.pack(side=tk.LEFT)
-        self.hist_restore_btn = self._primary_button(hist_footer, self._tr("hist_restore"), self._restore_selected_history, compact=True)
-        self.hist_restore_btn.pack(side=tk.RIGHT)
-        self.hist_snapshot_btn = ttk.Button(hist_footer, text=self._tr("hist_snapshot"), style="Small.TButton", command=self._save_snapshot_to_history)
-        self.hist_snapshot_btn.pack(side=tk.RIGHT, padx=8)
-        self.hist_open_btn = ttk.Button(hist_footer, text=self._tr("hist_open_folder"), style="Small.TButton", command=self._open_selected_history_run)
-        self.hist_open_btn.pack(side=tk.RIGHT)
-
+        self._build_files_section()
+        self._build_output_section()
+        self._build_options_section()
+        self._build_actions_section()
+        self._build_status_panel()
+        self._build_history_tab()
         self._build_rerender_tab()
         self._update_lang_buttons()
         self._apply_locale()

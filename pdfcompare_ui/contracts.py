@@ -103,6 +103,35 @@ class AppProtocol(Protocol):
     keep_debug_chip: ttk.Checkbutton | None
     exclude_pick_btn: ttk.Button | None
     update_badge: tk.Label | None
+
+    # --- Widgets the compare/history tab builders create ----------------- #
+    clear_btn: ttk.Button | None
+    from_history_btn: ttk.Button | None
+    swap_btn: ttk.Button | None
+    run_name_entry: ttk.Entry
+    run_name_label: ttk.Label | None
+    run_name_hint_label: ttk.Label | None
+    out_label: ttk.Label | None
+    out_pick_btn: ttk.Button | None
+    status_text_label: tk.Label | None
+    options_body: tk.Frame | None
+    options_strictness_label: ttk.Label | None
+    options_strictness_hint_label: ttk.Label | None
+    options_exclude_label: ttk.Label | None
+    options_exclude_hint_label: ttk.Label | None
+    options_bbox_merge_label: ttk.Label | None
+    options_bbox_merge_hint_label: ttk.Label | None
+    options_keep_debug_label: ttk.Label | None
+    options_keep_debug_hint_label: ttk.Label | None
+    strictness_chips: dict[str, tk.Label]
+    dpi_value: tk.StringVar
+    stroke_value: tk.StringVar
+    hist_open_btn: ttk.Button | None
+    hist_refresh_btn: ttk.Button | None
+    hist_restore_btn: tk.Button | None
+    hist_snapshot_btn: ttk.Button | None
+    history_hint_label: ttk.Label | None
+    history_search_entry: ttk.Entry | None
     check_updates_btn: tk.Label | None
 
     # --- History-tab widgets ------------------------------------------- #
@@ -147,10 +176,39 @@ class AppProtocol(Protocol):
     def _restore_selected_history(self) -> None: ...
     def _history_tab_text(self) -> str: ...
 
+    def _on_history_double_click(self, event: tk.Event) -> None: ...
+    def _open_selected_history_run(self) -> None: ...
+    def _save_snapshot_to_history(self) -> None: ...
+    def _set_history_filter(self, value: str) -> None: ...
+    def _set_history_placeholder(self) -> None: ...
+    def _history_search_focus_in(self, _event: tk.Event) -> None: ...
+    def _history_search_focus_out(self, _event: tk.Event) -> None: ...
+
+    # Compare tab actions
+    def start_compare(self) -> None: ...
+    def _clear_inputs(self) -> None: ...
+    def _swap_files(self) -> None: ...
+    def _pick_out_dir(self) -> None: ...
+    def _pick_exclude_regions(self) -> None: ...
+    def _open_run_folder(self) -> None: ...
+    def _build_file_card(self, parent: tk.Frame, var: tk.StringVar, old: bool) -> tk.Frame: ...
+    def _build_scale_option(
+        self,
+        parent: tk.Frame,
+        col: int,
+        label_key: str,
+        var: tk.StringVar,
+        display_var: tk.StringVar,
+        from_value: float,
+        to_value: float,
+        resolution: float,
+    ) -> None: ...
+
     # State persistence
     def _save_state(self) -> None: ...
     def _capture_inputs(self) -> dict[str, Any]: ...
     def _apply_inputs(self, data: dict[str, Any]) -> None: ...
+    def _restore_last_inputs(self, startup: bool = ...) -> None: ...
 
     # Update check
     def _should_check_for_updates(self) -> bool: ...
