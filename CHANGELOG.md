@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.22 - 2026-07-14
+
+### Added
+- **The app has its own icon.** It had none: Tk's feather in the title bar and the taskbar, the generic PyInstaller icon in Explorer. The glyph is Material Design Icons `select-compare` (Apache-2.0) — two panels either side of a divider, which is what the app does. It sits on a filled accent tile rather than on transparency, because the Windows taskbar is dark and a thin dark-blue glyph on a transparent background vanishes into it.
+
+  Wired in three places, because they are three different mechanisms: the exe carries it as a resource (Explorer, shortcuts, the uninstall entry); the installer wizard gets `SetupIconFile`; and — the non-obvious one — Tk cannot read the exe's resource icon, so the `.ico` also ships as a data file and the window loads it at runtime. Without that last step the title bar keeps Tk's feather even though Explorer shows the right icon.
+
+  The `.ico` is committed (a build must not depend on a rendering step) but generated from `packaging/icon.svg` by `scripts/make_icon.py`, using PyMuPDF, which is already a dependency. Every size is rendered from the vector: Windows takes 16 px for the title bar and 256 px for "extra large icons", and a single upscaled bitmap looks soft in the first and blocky in the last.
+
+### Changed
+- Dropped `style.theme_use("vista")` from `main()`: `configure_ttk_styles` sets `clam` immediately afterwards, so the line only looked like it did something.
+- README screenshots rebuilt (they now carry the icon and the current version).
+
 ## v0.1.21 - 2026-07-14
 
 Three defects the re-check of v0.1.20 found, plus a visual pass over the window.
