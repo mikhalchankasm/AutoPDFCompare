@@ -38,6 +38,8 @@ WORKER_COMMAND = (
 FOREIGN_COMMAND = r"C:\Windows\system32\notepad.exe"
 
 WORKER_PID = 4242
+# What Popen hands back in a venv: the python.exe launcher, not the worker.
+LAUNCHER_PID = 4241
 WORKER_CREATE_TIME = 133_000_000_000_000_000
 FOREIGN_CREATE_TIME = 133_999_999_999_999_999
 
@@ -258,6 +260,25 @@ class CancelTests(unittest.TestCase):
         self.assertFalse(result["forced"])
         self.assertTrue(result["pid_reused"])
         self.assertEqual(result["cancel_reason"], "exited")
+
+    def test_a_launcher_pid_left_in_the_status_does_not_break_the_cancel(self) -> None:
+        # The race: the worker writes its real PID into status.json within
+        # milliseconds, and the server's own post-Popen write used to stamp the venv
+        # launcher's PID back over it. A cancel a moment later then compared the
+        # launcher against worker.json and refused with job_pid_foreign. What the
+        # worker said about *itself* wins.
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        status["pid"] = LAUNCHER_PID  # the value the server used to publish
+        status["launcher_pid"] = LAUNCHER_PID
+        (self.job / "status.json").write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+        worker = FakeWorker(self.job, exit_after=0.6)
+
+        result = self.cancel(worker, grace_sec=5.0)
+
+        self.assertTrue(result["ok"], result.get("error"))
+        self.assertFalse(result["forced"])
+        self.assertEqual(self.killed, [])
+        self.assertEqual(result["job"]["state"], "cancelled")
 
     def test_a_job_whose_pid_is_already_a_stranger_is_refused_up_front(self) -> None:
         worker = FakeWorker(self.job, exit_after=0.0, pid_taken_after=0.0, heartbeat=False)

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.21 - 2026-07-14
+
+Three defects the re-check of v0.1.20 found, plus a visual pass over the window.
+
+### Fixed
+- **Switching the sheet format rewrote percent zones.** Drawing 70/10/20/15 percent on A4, switching the preview to A0 and pressing OK gave back 17.4792/2.4979/4.9941/3.7468. The editor keeps every zone in millimetres, which is right for drawing and wrong for *storing* a percent zone: a percent zone is defined relative to the sheet, so re-deriving its millimetres against a different sheet silently converts it. Switching the format is meant to *show* where a zone lands on another sheet, not to migrate it. Percent zones now keep their percentages across a format change and mm zones keep their millimetres — which is exactly the disagreement the two units exist for.
+- **The MCP server could still publish the wrong worker PID.** The worker records its own PID, but the server then wrote `Popen.pid` — the venv launcher's — into the same status file. If the worker got there first, the launcher's PID overwrote the real one, and an immediate cancel refused with `job_pid_foreign`. The server no longer guesses: it waits for the worker to publish itself (which the worker now does *before* its OpenCV/PyMuPDF imports, so the wait is milliseconds) and leaves status.json alone once the worker owns it. Cancel reads the PID the worker reported about itself.
+- **The full test suite was red.** `test_gui_layout` created and immediately destroyed a probe `Tk()`, and the next `Tk()` then failed to load Tcl/Tk. In the full suite that either failed the determinism check or — worse — *skipped* the test with "no Tk display" while the suite stayed green, so the golden widget-tree snapshot silently guarded nothing. The session now uses a single Tk root (`tests/tk_support.py`) and builds each window as a `Toplevel`. `scripts/test.ps1` is green five runs in a row.
+
+### Changed
+- **The window had no visual hierarchy.** Window, panel and card were three shades of the same warm grey, so nothing read as a zone; section headings used the same weight and colour as the hints beneath them; and a selected chip differed from an unselected one by a single pixel of border. The palette now separates the surfaces, every section opens with a bold heading and an accent bar, the options sit on a real card, selected states are *filled*, and the slider value is the loud part of its row. Secondary text was `#999791` on a light panel — not quiet, illegible — and is now readable. The ttk theme is `clam`, because the native Windows theme draws tabs and buttons from bitmaps and ignores the colours.
+- **The window opens at the size it needs.** The geometry was a constant the form had outgrown: the Compare button and the status line started below the bottom edge. It is now measured from the content, capped to the desktop work area, and centred (Tk cascades new windows down and to the right, which pushed a tall one off-screen).
+- The options card heading was never re-translated on a language switch — it stayed Russian in the English UI.
+- README screenshots rebuilt from the new interface.
+
 ## v0.1.20 - 2026-07-14
 
 Closes the findings of the independent re-check (`docs/reviews/2026-07-14_recheck.md`).

@@ -17,7 +17,39 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from compare_pdfs import (
+from scripts.process_identity import self_identity
+
+
+def now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def publish_identity() -> None:
+    """Say which process we are — before anything slow happens.
+
+    The PID the server got back from Popen belongs to the venv's ``python.exe``
+    launcher, not to us, so it waits on this file to learn the real one. That wait
+    has to be short, and importing OpenCV and PyMuPDF below takes *seconds* — which
+    is why this is a raw argv scan up here instead of a tidy argparse down in main().
+    """
+    if "--identity" not in sys.argv:
+        return
+    index = sys.argv.index("--identity") + 1
+    if index >= len(sys.argv):
+        return
+    atomic_write_json(Path(sys.argv[index]), {**self_identity(), "recorded_at": now_iso()})
+
+
+publish_identity()
+
+from compare_pdfs import (  # noqa: E402  (deliberate: the identity must land first)
     LIVE_REPORT_EVENT_PREFIX,
     START_REPORT_FILE,
     RunCancelled,
@@ -27,13 +59,8 @@ from compare_pdfs import (
     regenerate_report_pages_mixed,
     sanitize_run_folder_name,
 )
-from scripts.process_identity import self_identity
 
 HEARTBEAT_INTERVAL_SEC = 2.0
-
-
-def now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
 
 
 def start_heartbeat(path: Path) -> threading.Event:
@@ -57,13 +84,6 @@ def start_heartbeat(path: Path) -> threading.Event:
 
     threading.Thread(target=beat, name="pdfcompare-heartbeat", daemon=True).start()
     return stop
-
-
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def append_event(path: Path, payload: dict[str, Any]) -> None:
@@ -111,13 +131,7 @@ def main() -> int:
     parser.add_argument("--cancel", type=Path, required=False)
     parser.add_argument("--heartbeat", type=Path, required=False)
     parser.add_argument("--identity", type=Path, required=False)
-    args = parser.parse_args()
-
-    if args.identity:
-        # We record ourselves, because the server cannot: in a virtualenv the PID it
-        # got back from Popen belongs to the python.exe launcher, not to this process.
-        # A cancel that pinned that PID would be pinning the wrong thing.
-        atomic_write_json(args.identity, {**self_identity(), "recorded_at": now_iso()})
+    args = parser.parse_args()  # --identity was already acted on: see publish_identity()
 
     request = load_json(args.request)
     job_id = str(request["job_id"])

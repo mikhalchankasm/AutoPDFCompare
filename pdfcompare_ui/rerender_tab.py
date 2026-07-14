@@ -22,7 +22,7 @@ from pdfcompare_core.exclusions import normalize_exclude_regions
 from pdfcompare_core.runner import RunCancelled
 
 from .exclusion_picker import format_regions_for_field, pick_exclude_regions
-from .styles import ACCENT, BG_CARD, BG_SOFT, BG_WINDOW, TEXT_SECONDARY
+from .styles import ACCENT, BG_CARD, BG_SOFT, BG_WINDOW, BORDER_STRONG, TEXT_ON_ACCENT, TEXT_SECONDARY
 
 from .contracts import AppProtocol
 
@@ -105,7 +105,11 @@ class RerenderTabMixin:
         mode_row.pack(fill=tk.X, pady=(10, 0))
         ttk.Label(mode_row, text=self._tr("rerender_mode"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
         for value, key in (("uniform", "rerender_mode_uniform"), ("perpage", "rerender_mode_perpage")):
-            chip = tk.Label(mode_row, text=self._tr(key), padx=12, pady=4, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
+            chip = tk.Label(
+                mode_row, text=self._tr(key), padx=13, pady=5, bg=BG_CARD, fg=TEXT_SECONDARY,
+                relief="flat", bd=0, highlightthickness=1, highlightbackground=BORDER_STRONG,
+                font=("Segoe UI", 9, "bold"), cursor="hand2",
+            )
             chip.pack(side=tk.LEFT, padx=(8, 0))
             chip.bind("<Button-1>", lambda _e, v=value: self.rerender_mode.set(v))  # type: ignore[misc]
             self.rerender_mode_chips[value] = chip
@@ -123,7 +127,11 @@ class RerenderTabMixin:
         strict_chips = tk.Frame(overrides_row, bg=BG_SOFT)
         strict_chips.pack(side=tk.LEFT, padx=(6, 16))
         for value in DIFF_STRICTNESS_CHOICES:
-            chip = tk.Label(strict_chips, text=self._tr(f"strictness_{value}"), padx=10, pady=4, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
+            chip = tk.Label(
+                strict_chips, text=self._tr(f"strictness_{value}"), padx=12, pady=5, bg=BG_CARD, fg=TEXT_SECONDARY,
+                relief="flat", bd=0, highlightthickness=1, highlightbackground=BORDER_STRONG,
+                font=("Segoe UI", 9, "bold"), cursor="hand2",
+            )
             chip.pack(side=tk.LEFT, padx=(0, 4))
             chip.bind("<Button-1>", lambda _e, v=value: self.rerender_strictness.set(v if self.rerender_strictness.get() != v else ""))  # type: ignore[misc]
             self.rerender_strictness_chips[value] = chip
@@ -405,7 +413,11 @@ class RerenderTabMixin:
         current = self.rerender_mode.get().strip() or "uniform"
         for value, widget in self.rerender_mode_chips.items():
             active = value == current
-            widget.configure(fg=ACCENT if active else TEXT_SECONDARY, bd=2 if active else 1)
+            widget.configure(
+                bg=ACCENT if active else BG_CARD,
+                fg=TEXT_ON_ACCENT if active else TEXT_SECONDARY,
+                highlightbackground=ACCENT if active else BORDER_STRONG,
+            )
         if self.rerender_edit_selected_btn is not None:
             self.rerender_edit_selected_btn.configure(state=tk.NORMAL if current == "perpage" else tk.DISABLED)
 
@@ -413,7 +425,11 @@ class RerenderTabMixin:
         current = self.rerender_strictness.get().strip().lower()
         for value, widget in self.rerender_strictness_chips.items():
             active = value == current
-            widget.configure(fg=ACCENT if active else TEXT_SECONDARY, bd=2 if active else 1)
+            widget.configure(
+                bg=ACCENT if active else BG_CARD,
+                fg=TEXT_ON_ACCENT if active else TEXT_SECONDARY,
+                highlightbackground=ACCENT if active else BORDER_STRONG,
+            )
 
     def _request_rerender_cancel(self: AppProtocol) -> None:
         if not self.rerender_running:

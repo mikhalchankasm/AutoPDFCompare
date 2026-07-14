@@ -392,6 +392,17 @@ def load_status(job_id: str) -> dict[str, Any]:
     return status
 
 
+def load_status_or_empty(job_id: str) -> dict[str, Any]:
+    """status.json as it is right now, or {} — used to see whether the worker owns it yet."""
+    path = job_dir(job_id) / "status.json"
+    if not path.exists():
+        return {}
+    try:
+        return load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def list_statuses() -> list[dict[str, Any]]:
     if not JOBS_ROOT.exists():
         return []
@@ -448,6 +459,35 @@ def load_worker_identity(job_id: str) -> dict[str, Any]:
         return load_json(path)
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def await_worker_identity(job_id: str, process: subprocess.Popen[bytes], timeout_sec: float = 20.0) -> dict[str, Any]:
+    """Wait for the worker to say which process it actually is.
+
+    ``Popen.pid`` is not the worker's: in a virtualenv ``python.exe`` is a launcher
+    that re-execs the real interpreter. Publishing that PID as the worker's is also a
+    *race* — the worker writes its own, real PID into status.json within milliseconds,
+    and the server's write would then stamp the launcher's back over it. A cancel a
+    moment later would compare the wrong process and refuse with ``job_pid_foreign``.
+
+    So the server does not guess. It waits for the worker to publish itself (which it
+    does before its slow imports), and gives up early if the process dies first.
+    """
+    deadline = time.time() + max(0.0, timeout_sec)
+    while time.time() < deadline:
+        identity = load_worker_identity(job_id)
+        if int(identity.get("pid") or 0) > 0:
+            return identity
+        if process.poll() is not None:
+            return {}  # it died before it could say who it was
+        time.sleep(0.05)
+    return {}
+
+
+def worker_pid_for_job(job_id: str, status: dict[str, Any]) -> int:
+    """The worker's real PID: what it said about itself, then whatever status holds."""
+    recorded = int(load_worker_identity(job_id).get("pid") or 0)
+    return recorded or int(status.get("pid") or 0)
 
 
 def worker_process_alive(pid: int, job_id: str) -> bool:
@@ -833,21 +873,29 @@ def start_pdf_comparison(
                 stderr=subprocess.STDOUT,
                 **popen_kwargs,
             )
+        # Never publish Popen.pid as the worker's — see await_worker_identity().
+        identity = await_worker_identity(job_id, process)
+        worker_pid = int(identity.get("pid") or 0)
         status_payload.update(
             {
                 "state": "running",
-                "pid": process.pid,
+                "pid": worker_pid or process.pid,
+                "launcher_pid": process.pid,
                 "message": "Worker process launched",
                 "started_at": now_iso(),
                 "updated_at": now_iso(),
             }
         )
-        atomic_write_json(current_job_dir / "status.json", status_payload)
+        # The worker owns status.json from the moment it starts writing to it; only
+        # fill in the launch details if it has not taken over yet.
+        current_status = load_status_or_empty(job_id)
+        if str(current_status.get("state") or "queued") == "queued":
+            atomic_write_json(current_job_dir / "status.json", status_payload)
 
         return {
             "ok": True,
             "job_id": job_id,
-            "pid": process.pid,
+            "pid": worker_pid or process.pid,
             "run_dir": str(run_dir),
             "report_path": str(run_dir / START_REPORT_FILE),
             "diff_strictness": strictness,
@@ -995,21 +1043,29 @@ def rerender_pdf_comparison_pages(
                 stderr=subprocess.STDOUT,
                 **popen_kwargs,
             )
+        # Never publish Popen.pid as the worker's — see await_worker_identity().
+        identity = await_worker_identity(job_id, process)
+        worker_pid = int(identity.get("pid") or 0)
         status_payload.update(
             {
                 "state": "running",
-                "pid": process.pid,
+                "pid": worker_pid or process.pid,
+                "launcher_pid": process.pid,
                 "message": "Worker process launched",
                 "started_at": now_iso(),
                 "updated_at": now_iso(),
             }
         )
-        atomic_write_json(current_job_dir / "status.json", status_payload)
+        # The worker owns status.json from the moment it starts writing to it; only
+        # fill in the launch details if it has not taken over yet.
+        current_status = load_status_or_empty(job_id)
+        if str(current_status.get("state") or "queued") == "queued":
+            atomic_write_json(current_job_dir / "status.json", status_payload)
 
         return {
             "ok": True,
             "job_id": job_id,
-            "pid": process.pid,
+            "pid": worker_pid or process.pid,
             "run_dir": str(report_dir),
             "report_path": str(report_dir / START_REPORT_FILE),
             "page_settings": settings,
@@ -1156,7 +1212,7 @@ def cancel_pdf_comparison(
         status = load_status(job_id)
         if str(status.get("state") or "") not in ACTIVE_JOB_STATES:
             return error_result(RunFailed("job_not_running", job_id=job_id), lang) | {"job": status}
-        pid = int(status.get("pid") or 0)
+        pid = worker_pid_for_job(job_id, status)
         if not pid:
             return error_result(RunFailed("job_no_pid", job_id=job_id), lang)
         if not process_matches_worker_job(pid, job_id):

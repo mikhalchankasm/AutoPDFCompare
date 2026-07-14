@@ -16,7 +16,8 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 import fitz
-import pytest
+
+from tk_support import shared_root
 
 from pdfcompare_core.exclusions import exclusion_regions_to_pixel_boxes
 from pdfcompare_ui.exclusion_picker import (
@@ -205,17 +206,9 @@ class PickerWorkflowTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        # One root for the whole class: Tk does not survive dozens of interpreters
-        # being spun up and torn down inside one process.
-        try:
-            cls.root = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - depends on the runner
-            pytest.skip(f"no Tk display: {exc}")
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.root.destroy()
+        # The session's single root — see tests/tk_support.py. Spinning up and tearing
+        # down a Tk() per test class is what broke Tcl for whatever ran next.
+        cls.root = shared_root()
 
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()
@@ -328,6 +321,79 @@ class PickerWorkflowTests(unittest.TestCase):
         declined = self.open_and_accept(mixed, "A4", "portrait", click_unit=UNIT_MM, confirm_migration=False)
         self.assertEqual([r["unit"] for r in declined], ["percent", "mm"])
         self.assertAlmostEqual(float(declined[0]["x"]), 70.0, places=2)
+
+    def switch_sheet(self, picker: _RegionPicker, fmt: str, orientation: str) -> None:
+        picker.format_var.set(fmt)
+        picker.orient_var.set(orientation)
+        picker._on_format_change()
+
+    def test_switching_the_sheet_format_does_not_rewrite_percent_zones(self) -> None:
+        # The reported case: draw 70/10/20/15 percent on A4, switch the preview to A0,
+        # press OK — and it came back as 17.4792/2.4979/4.9941/3.7468. The switch is
+        # meant to *show* where a zone lands on another sheet, not to convert it.
+        zone = {"x": 70.0, "y": 10.0, "w": 20.0, "h": 15.0, "unit": "percent", "anchor": "top_left"}
+
+        with mock.patch.object(tk, "Toplevel", _HiddenToplevel):
+            picker = self.build([zone], "A4", "portrait")
+            self.switch_sheet(picker, "A0", "portrait")
+            picker._accept()
+            produced = picker.result["regions"]
+
+        self.assertEqual(produced[0]["unit"], "percent")
+        for key in ("x", "y", "w", "h"):
+            self.assertAlmostEqual(float(produced[0][key]), float(zone[key]), places=3, msg=key)
+
+    def test_a_mixed_set_survives_a_format_switch_in_both_senses(self) -> None:
+        # The two units have to disagree here, and that is the point: on the bigger
+        # sheet the percent zone must grow with it and the mm zone must not.
+        mixed = [
+            {"x": 70.0, "y": 10.0, "w": 20.0, "h": 15.0, "unit": "percent", "anchor": "top_left"},
+            {"x": 0.0, "y": 0.0, "w": 185.0, "h": 55.0, "unit": "mm", "anchor": "bottom_right"},
+        ]
+
+        with mock.patch.object(tk, "Toplevel", _HiddenToplevel):
+            picker = self.build(mixed, "A4", "portrait")
+            self.switch_sheet(picker, "A0", "portrait")
+            picker._accept()
+            produced = picker.result["regions"]
+
+        for got, want in zip(produced, mixed, strict=True):
+            self.assertEqual(got["unit"], want["unit"])
+            self.assertEqual(got["anchor"], want["anchor"])
+            for key in ("x", "y", "w", "h"):
+                self.assertAlmostEqual(float(got[key]), float(want[key]), places=2, msg=f"{want['unit']} {key}")
+
+        # And the meaning is intact: 20% of an A0 sheet is 168 mm wide, the stamp is
+        # still 185 mm wide.
+        a0_w, a0_h = _px(841.0, 1189.0)
+        boxes = exclusion_regions_to_pixel_boxes(produced, a0_w, a0_h, dpi=DPI)
+        self.assertAlmostEqual(boxes[0][2] / MM_TO_PX, 0.20 * 841.0, delta=1.0)
+        self.assertAlmostEqual(boxes[1][2] / MM_TO_PX, 185.0, delta=1.0)
+
+    def test_a_percent_zone_survives_any_format_and_orientation_switch(self) -> None:
+        for anchor in ANCHORS:
+            zone = {"x": 12.0, "y": 8.0, "w": 30.0, "h": 20.0, "unit": "percent", "anchor": anchor}
+            for fmt in ("A3", "A0"):
+                for orientation in ("portrait", "landscape"):
+                    with self.subTest(anchor=anchor, fmt=fmt, orientation=orientation):
+                        with mock.patch.object(tk, "Toplevel", _HiddenToplevel):
+                            picker = self.build([zone], "A4", "portrait")
+                            self.switch_sheet(picker, fmt, orientation)
+                            picker._accept()
+                            produced = picker.result["regions"]
+                        for key in ("x", "y", "w", "h"):
+                            self.assertAlmostEqual(float(produced[0][key]), float(zone[key]), places=3, msg=key)
+
+    def test_switching_back_and_forth_does_not_drift(self) -> None:
+        zone = {"x": 70.0, "y": 10.0, "w": 20.0, "h": 15.0, "unit": "percent", "anchor": "bottom_right"}
+        with mock.patch.object(tk, "Toplevel", _HiddenToplevel):
+            picker = self.build([zone], "A4", "portrait")
+            for fmt, orientation in (("A0", "landscape"), ("A3", "portrait"), ("A4", "portrait")):
+                self.switch_sheet(picker, fmt, orientation)
+            picker._accept()
+            produced = picker.result["regions"]
+        for key in ("x", "y", "w", "h"):
+            self.assertAlmostEqual(float(produced[0][key]), float(zone[key]), places=3, msg=key)
 
     def test_a_newly_drawn_region_takes_the_selected_unit(self) -> None:
         with mock.patch.object(tk, "Toplevel", _HiddenToplevel):

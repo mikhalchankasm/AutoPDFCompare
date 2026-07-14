@@ -114,6 +114,8 @@ class AppProtocol(Protocol):
     out_pick_btn: ttk.Button | None
     status_text_label: tk.Label | None
     options_body: tk.Frame | None
+    options_group_label: ttk.Label | None
+    options_default_label: ttk.Label | None
     options_strictness_label: ttk.Label | None
     options_strictness_hint_label: ttk.Label | None
     options_exclude_label: ttk.Label | None
@@ -158,6 +160,7 @@ class AppProtocol(Protocol):
     # --- Methods that mixins call across boundaries -------------------- #
     # i18n & status
     def _tr(self, key: str, **kwargs: object) -> str: ...
+    def _section_title(self, key: str) -> str: ...
     def _set_status(self, key: str, **kwargs: object) -> None: ...
     def _show_report_ready(self) -> None: ...
     def _hide_report_ready(self) -> None: ...

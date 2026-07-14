@@ -7,11 +7,40 @@ widget state and can be tested in isolation.
 from __future__ import annotations
 
 import re
+import tkinter as tk
 from pathlib import Path
 
 import fitz
 
 REVISION_RE = re.compile(r"r[Cc](\d{2,3})")
+
+
+def screen_work_area(widget: tk.Misc) -> tuple[int, int]:
+    """Usable desktop area — the screen minus the taskbar.
+
+    Tk only reports the raw screen size, so a dialog sized from it hides behind
+    the taskbar. Windows knows the real work area; ask it. Anywhere else, fall
+    back to the screen with a conservative margin.
+    """
+    try:
+        import ctypes
+
+        class _Rect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long), ("top", ctypes.c_long),
+                ("right", ctypes.c_long), ("bottom", ctypes.c_long),
+            ]
+
+        rect = _Rect()
+        spi_getworkarea = 0x0030
+        if ctypes.windll.user32.SystemParametersInfoW(spi_getworkarea, 0, ctypes.byref(rect), 0):
+            width = int(rect.right - rect.left)
+            height = int(rect.bottom - rect.top)
+            if width > 200 and height > 200:
+                return width, height
+    except Exception:
+        pass
+    return widget.winfo_screenwidth(), widget.winfo_screenheight() - 80
 
 
 def format_duration_mmss(seconds: float) -> str:

@@ -25,7 +25,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-import pytest
+from tk_support import hidden_toplevel, shared_root
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "gui_layout.json"
 
@@ -67,21 +67,19 @@ class GuiLayoutGoldenTests(unittest.TestCase):
         with TemporaryDirectory() as home:
             # First-run state: no saved inputs, no history, default language.
             with mock.patch.object(Path, "home", return_value=Path(home)):
-                root = tk.Tk()
-                root.withdraw()
+                # A Toplevel of the session's one root, not another tk.Tk(): repeated
+                # Tk() create/destroy breaks Tcl, and this test was the casualty —
+                # skipping with "no Tk display" while the suite stayed green.
+                window = hidden_toplevel()
                 try:
-                    PDFCompareApp(root)
-                    root.update_idletasks()
-                    return _describe(root, "")
+                    PDFCompareApp(window)
+                    window.update_idletasks()
+                    return _describe(window, "")
                 finally:
-                    root.destroy()
+                    window.destroy()
 
     def setUp(self) -> None:
-        try:
-            probe = tk.Tk()
-        except tk.TclError as exc:  # pragma: no cover - depends on the runner
-            pytest.skip(f"no Tk display: {exc}")
-        probe.destroy()
+        shared_root()
 
     def test_widget_tree_is_deterministic(self) -> None:
         self.assertEqual(self._snapshot(), self._snapshot(), "the widget tree is not built deterministically")

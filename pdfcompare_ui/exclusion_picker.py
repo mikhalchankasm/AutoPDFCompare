@@ -40,6 +40,8 @@ import fitz
 from pdfcompare_core.exclusions import exclusion_regions_to_mm_rects
 
 from .i18n import I18N
+from .styles import BG_WINDOW
+from .utils import screen_work_area
 
 PT_PER_MM = 72.0 / 25.4
 
@@ -107,34 +109,6 @@ PANEL_PADDING_PX = 34
 
 # The window frame itself (title bar + borders) plus a small breathing margin.
 WINDOW_CHROME_PX = 56
-
-
-def screen_work_area(widget: tk.Misc) -> tuple[int, int]:
-    """Usable desktop area — the screen minus the taskbar.
-
-    Tk only reports the raw screen size, so a dialog sized from it hides behind
-    the taskbar. Windows knows the real work area; ask it. Anywhere else, fall
-    back to the screen with a conservative margin.
-    """
-    try:
-        import ctypes
-
-        class _Rect(ctypes.Structure):
-            _fields_ = [
-                ("left", ctypes.c_long), ("top", ctypes.c_long),
-                ("right", ctypes.c_long), ("bottom", ctypes.c_long),
-            ]
-
-        rect = _Rect()
-        spi_getworkarea = 0x0030
-        if ctypes.windll.user32.SystemParametersInfoW(spi_getworkarea, 0, ctypes.byref(rect), 0):
-            width = int(rect.right - rect.left)
-            height = int(rect.bottom - rect.top)
-            if width > 200 and height > 200:
-                return width, height
-    except Exception:
-        pass
-    return widget.winfo_screenwidth(), widget.winfo_screenheight() - 80
 
 
 def _canonical_anchor(raw: object) -> str:
@@ -286,6 +260,35 @@ def import_regions_to_model(
     return model
 
 
+def rescale_relative_regions(
+    regions: list[dict[str, Any]], old_w: float, old_h: float, new_w: float, new_h: float
+) -> None:
+    """Move the percent zones onto a new sheet without changing what they say.
+
+    The editor works in millimetres, which is right for drawing and wrong for
+    *storing* a percent zone: a percent zone is defined **relative to the sheet** —
+    that is the entire reason to choose percent — so on a different sheet it covers
+    proportionally the same area and its numbers do not move. Keeping only its
+    millimetres meant a plain A4 → A0 switch re-derived them against the new sheet
+    and rewrote 70% as 17.4792%, a unit migration nobody asked for.
+
+    So a percent zone's millimetres are re-derived for the new sheet: scaling its
+    offsets and its size by the sheet ratio leaves its percentages bit-for-bit
+    identical. An mm zone is physical and is deliberately left alone — surviving the
+    switch unchanged is what it is *for*.
+    """
+    if old_w <= 0 or old_h <= 0:
+        return
+    fx, fy = new_w / old_w, new_h / old_h
+    for region in regions:
+        if str(region.get("unit") or UNIT_MM) != UNIT_PERCENT:
+            continue
+        region["x_mm"] = float(region["x_mm"]) * fx
+        region["y_mm"] = float(region["y_mm"]) * fy
+        region["w_mm"] = float(region["w_mm"]) * fx
+        region["h_mm"] = float(region["h_mm"]) * fy
+
+
 def export_regions_from_model(
     regions: list[dict[str, Any]], sheet_w: float, sheet_h: float, default_unit: str = UNIT_MM
 ) -> list[dict[str, float | str]]:
@@ -340,6 +343,12 @@ class _RegionPicker:
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title(self._tr("pick_title"))
+        # The plain tk.Frames in here default to the system grey, while the ttk
+        # labels on top of them are painted the app's window colour — which showed
+        # up as a grey box behind every hint. One option-database entry lines the
+        # two up; the Canvas (its own class) keeps its white sheet.
+        self.dialog.configure(bg=BG_WINDOW)
+        self.dialog.option_add("*Frame.background", BG_WINDOW)
         # A transient of an unmapped owner never maps on Windows — skip it when
         # the parent is a hidden service root (e.g. the MCP picker).
         try:
@@ -358,6 +367,10 @@ class _RegionPicker:
         # follows what came in. Percent zones stay percent unless the user says
         # otherwise; mm is only the default for a fresh set.
         self.unit_var = tk.StringVar(value=incoming_unit(existing))
+        # The sheet the mm model is currently expressed on. A percent zone has to be
+        # re-derived whenever this changes, so we must know what it changed *from* —
+        # the radiobutton command fires after its variable is already set.
+        self._sheet = self._sheet_mm()
 
         # Footer first: packed against the window bottom it can never be pushed
         # off-screen by a tall sheet.
@@ -583,9 +596,14 @@ class _RegionPicker:
         self.sheet_label.configure(text=text)
 
     def _on_format_change(self) -> None:
-        # Regions are physical (mm from a corner), so they survive the switch —
-        # that is exactly what the switch is for: seeing where the same zone lands
-        # on another sheet.
+        # mm zones are physical, so they survive the switch untouched — that is
+        # exactly what the switch is for: seeing where the same zone lands on another
+        # sheet. percent zones are relative and must keep their percentages instead,
+        # or switching A4 -> A0 would quietly rewrite 70% as 17.48%.
+        old_w, old_h = self._sheet
+        new_w, new_h = self._sheet_mm()
+        rescale_relative_regions(self.regions, old_w, old_h, new_w, new_h)
+        self._sheet = (new_w, new_h)
         self._apply_view()
         self._redraw()
 

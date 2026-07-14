@@ -125,13 +125,13 @@
     "class": "Canvas",
     "manager": "pack",
     "state": "normal",
-    "width": "8"
+    "width": "10"
   },
   {
     "path": "/!frame/!notebook/!frame/!frame/!frame/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Старый PDF",
+    "text": "СТАРЫЙ PDF",
     "style": "Red.TLabel",
     "state": "normal"
   },
@@ -211,13 +211,13 @@
     "class": "Canvas",
     "manager": "pack",
     "state": "normal",
-    "width": "8"
+    "width": "10"
   },
   {
     "path": "/!frame/!notebook/!frame/!frame/!frame3/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Новый PDF",
+    "text": "НОВЫЙ PDF",
     "style": "Green.TLabel",
     "state": "normal"
   },
@@ -286,35 +286,23 @@
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame3/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Папка вывода",
-    "style": "SubHeader.TLabel",
-    "state": "normal"
-  },
-  {
     "path": "/!frame/!notebook/!frame/!frame3/!frame",
     "class": "Frame",
     "manager": "pack",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame3/!frame/!entry",
-    "class": "TEntry",
+    "path": "/!frame/!notebook/!frame/!frame3/!frame/!frame",
+    "class": "Frame",
     "manager": "pack",
-    "text": "PY_VAR",
-    "style": "Path.TEntry",
-    "state": "normal",
-    "width": "20",
-    "cursor": "ibeam"
+    "width": "4"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame3/!frame/!button",
-    "class": "TButton",
+    "path": "/!frame/!notebook/!frame/!frame3/!frame/!label",
+    "class": "TLabel",
     "manager": "pack",
-    "text": "Выбрать...",
-    "style": "Small.TButton",
+    "text": "ПАПКА ВЫВОДА",
+    "style": "Section.TLabel",
     "state": "normal"
   },
   {
@@ -322,14 +310,6 @@
     "class": "Frame",
     "manager": "pack",
     "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame3/!frame2/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Имя отчёта:",
-    "style": "Hint.TLabel",
-    "state": "normal"
   },
   {
     "path": "/!frame/!notebook/!frame/!frame3/!frame2/!entry",
@@ -342,7 +322,39 @@
     "cursor": "ibeam"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame3/!label2",
+    "path": "/!frame/!notebook/!frame/!frame3/!frame2/!button",
+    "class": "TButton",
+    "manager": "pack",
+    "text": "Выбрать...",
+    "style": "Small.TButton",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame3",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame3/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Имя отчёта:",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!frame3/!entry",
+    "class": "TEntry",
+    "manager": "pack",
+    "text": "PY_VAR",
+    "style": "Path.TEntry",
+    "state": "normal",
+    "width": "20",
+    "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame3/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Необязательно: имя папки результата. Пусто — авто-имя по дате и времени.",
@@ -362,15 +374,27 @@
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame/!label",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "4"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Параметры сравнения",
-    "style": "FileLabel.TLabel",
+    "text": "ПАРАМЕТРЫ СРАВНЕНИЯ",
+    "style": "Section.TLabel",
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame/!label2",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "по умолчанию",
@@ -382,106 +406,6 @@
     "class": "Frame",
     "manager": "pack",
     "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame",
-    "class": "Frame",
-    "manager": "grid",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame",
-    "class": "Frame",
-    "manager": "pack",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Разрешение (DPI):",
-    "style": "SubHeader.TLabel",
-    "state": "normal"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame/!label2",
-    "class": "Label",
-    "manager": "pack",
-    "text": "250",
-    "state": "normal",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame2",
-    "class": "Frame",
-    "manager": "pack",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!frame2/!scale",
-    "class": "Scale",
-    "manager": "pack",
-    "state": "normal",
-    "orient": "horizontal",
-    "width": "15"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Выше = точнее, но медленнее",
-    "style": "Hint.TLabel",
-    "state": "normal"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2",
-    "class": "Frame",
-    "manager": "grid",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame",
-    "class": "Frame",
-    "manager": "pack",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Допуск штриха (px):",
-    "style": "SubHeader.TLabel",
-    "state": "normal"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame/!label2",
-    "class": "Label",
-    "manager": "pack",
-    "text": "2.0",
-    "state": "normal",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame2",
-    "class": "Frame",
-    "manager": "pack",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!frame2/!scale",
-    "class": "Scale",
-    "manager": "pack",
-    "state": "normal",
-    "orient": "horizontal",
-    "width": "15"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame2/!frame2/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Больше — игнорирует более толстые линии и мелкий шум. Меньше — фиксирует тонкие отличия.",
-    "style": "Hint.TLabel",
-    "state": "normal"
   },
   {
     "path": "/!frame/!notebook/!frame/!frame4/!frame3",
@@ -496,14 +420,6 @@
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Строгость:",
-    "style": "SubHeader.TLabel",
-    "state": "normal"
-  },
-  {
     "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame",
     "class": "Frame",
     "manager": "pack",
@@ -511,36 +427,39 @@
   },
   {
     "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame/!label",
-    "class": "Label",
+    "class": "TLabel",
     "manager": "pack",
-    "text": "Strict",
-    "state": "normal",
-    "width": "0",
-    "cursor": "hand2"
+    "text": "Разрешение (DPI):",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
   },
   {
     "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame/!label2",
-    "class": "Label",
-    "manager": "pack",
-    "text": "Normal",
-    "state": "normal",
-    "width": "0",
-    "cursor": "hand2"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame/!label3",
-    "class": "Label",
-    "manager": "pack",
-    "text": "Loose",
-    "state": "normal",
-    "width": "0",
-    "cursor": "hand2"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!label2",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Strict ищет больше мелких отличий, Loose сильнее игнорирует шум",
+    "text": "250",
+    "style": "Value.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!frame2/!scale",
+    "class": "Scale",
+    "manager": "pack",
+    "state": "normal",
+    "orient": "horizontal",
+    "width": "13"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Выше = точнее, но медленнее",
     "style": "Hint.TLabel",
     "state": "normal"
   },
@@ -551,7 +470,118 @@
     "width": "0"
   },
   {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Допуск штриха (px):",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "2.0",
+    "style": "Value.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame2/!scale",
+    "class": "Scale",
+    "manager": "pack",
+    "state": "normal",
+    "orient": "horizontal",
+    "width": "13"
+  },
+  {
     "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Больше — игнорирует более толстые линии и мелкий шум. Меньше — фиксирует тонкие отличия.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Строгость:",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame/!frame/!label",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Strict",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame/!frame/!label2",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Normal",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame/!frame/!label3",
+    "class": "Label",
+    "manager": "pack",
+    "text": "Loose",
+    "state": "normal",
+    "width": "0",
+    "cursor": "hand2"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame/!label2",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Strict ищет больше мелких отличий, Loose сильнее игнорирует шум",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame2",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame2/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Исключить области:",
@@ -559,13 +589,13 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame2/!frame",
     "class": "Frame",
     "manager": "pack",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame/!entry",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame2/!frame/!entry",
     "class": "TEntry",
     "manager": "pack",
     "text": "PY_VAR",
@@ -575,7 +605,7 @@
     "cursor": "ibeam"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!frame/!button",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame2/!frame/!button",
     "class": "TButton",
     "manager": "pack",
     "text": "✏ Выбрать…",
@@ -583,7 +613,7 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame2/!label2",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame2/!label2",
     "class": "TLabel",
     "manager": "pack",
     "text": "Проценты x,y,w,h; либо JSON с мм и привязкой к углу. Кнопка «Выбрать…» рисует зоны в мм — они одинаковы на A4…A0.",
@@ -591,25 +621,25 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3",
     "class": "Frame",
     "manager": "grid",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame",
     "class": "Frame",
     "manager": "grid",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame",
     "class": "Frame",
     "manager": "pack",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame/!label",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Объединение рамок (эксперимент):",
@@ -617,20 +647,20 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame/!checkbutton",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame/!checkbutton",
     "class": "TCheckbutton",
     "manager": "pack",
     "text": "Включить",
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame2",
     "class": "Frame",
     "manager": "pack",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!label",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame2/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Gap (мм):",
@@ -638,7 +668,7 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!entry",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame2/!entry",
     "class": "TEntry",
     "manager": "pack",
     "text": "PY_VAR",
@@ -647,7 +677,7 @@
     "cursor": "ibeam"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!label2",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame2/!label2",
     "class": "TLabel",
     "manager": "pack",
     "text": "Max ratio:",
@@ -655,7 +685,7 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!frame2/!entry2",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!frame2/!entry2",
     "class": "TEntry",
     "manager": "pack",
     "text": "PY_VAR",
@@ -664,7 +694,7 @@
     "cursor": "ibeam"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame/!label",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Объединяет близкие изменения в рамки. Gap (мм) — расстояние слияния; Ratio — макс. площадь рамки к листу.",
@@ -672,19 +702,19 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame2",
     "class": "Frame",
     "manager": "grid",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!frame",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame2/!frame",
     "class": "Frame",
     "manager": "pack",
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!frame/!label",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame2/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Отладочные изображения:",
@@ -692,14 +722,14 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!frame/!checkbutton",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame2/!frame/!checkbutton",
     "class": "TCheckbutton",
     "manager": "pack",
     "text": "Включить",
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame4/!frame3/!frame3/!frame2/!label",
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame3/!frame2/!label",
     "class": "TLabel",
     "manager": "pack",
     "text": "Сохранять полноразмерные изображения выравнивания (увеличивает размер отчёта).",
@@ -759,14 +789,26 @@
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame6/!canvas",
+    "path": "/!frame/!notebook/!frame/!frame6/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "4"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2/!canvas",
     "class": "Canvas",
     "manager": "pack",
     "state": "normal",
     "width": "8"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame6/!label",
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2/!label",
     "class": "Label",
     "manager": "pack",
     "text": "Перетаскивание недоступно (invalid command name \"tkdnd::drop_target\"). Используйте кнопки «Выбрать...».",
@@ -774,7 +816,7 @@
     "width": "0"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame6/!label2",
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2/!label2",
     "class": "Label",
     "manager": "",
     "text": "✓ Отчёт можно открыть",
@@ -783,7 +825,7 @@
     "cursor": "hand2"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame6/!progressbar",
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2/!progressbar",
     "class": "TProgressbar",
     "manager": "",
     "style": "Horizontal.TProgressbar",
@@ -792,7 +834,7 @@
     "maximum": "100"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame6/!label3",
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2/!label3",
     "class": "TLabel",
     "manager": "pack",
     "text": "00:00",
@@ -800,7 +842,7 @@
     "width": "7"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame6/!label4",
+    "path": "/!frame/!notebook/!frame/!frame6/!frame2/!label4",
     "class": "TLabel",
     "manager": "pack",
     "text": "0%",

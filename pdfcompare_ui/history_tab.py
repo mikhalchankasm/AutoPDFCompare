@@ -13,6 +13,7 @@ from .styles import (
     BG_CARD,
     BG_SOFT,
     BG_WINDOW,
+    BORDER_STRONG,
     PILL_CANCEL_BG,
     PILL_CANCEL_TEXT,
     PILL_OK_BG,
@@ -45,7 +46,11 @@ class HistoryTabMixin:
         self.history_search_entry.bind("<FocusIn>", self._history_search_focus_in)
         self.history_search_entry.bind("<FocusOut>", self._history_search_focus_out)
         for value, key in (("all", "hist_filter_all"), ("done", "hist_filter_done"), ("cancelled", "hist_filter_cancelled")):
-            btn = tk.Label(hist_tools, text=self._tr(key), padx=12, pady=6, bg=BG_CARD, fg=TEXT_SECONDARY, relief="solid", bd=1, cursor="hand2")
+            btn = tk.Label(
+                hist_tools, text=self._tr(key), padx=13, pady=6, bg=BG_CARD, fg=TEXT_SECONDARY,
+                relief="flat", bd=0, highlightthickness=1, highlightbackground=BORDER_STRONG,
+                font=("Segoe UI", 9, "bold"), cursor="hand2",
+            )
             btn.pack(side=tk.LEFT, padx=(8, 0))
             btn.bind("<Button-1>", lambda _e, v=value: self._set_history_filter(v))  # type: ignore[misc]
             self.history_filter_buttons[value] = btn

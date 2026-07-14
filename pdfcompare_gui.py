@@ -49,6 +49,7 @@ from pdfcompare_ui.utils import (
     count_pdf_pages_pair,
     extract_revision_label,
     format_duration_mmss,
+    screen_work_area,
 )
 from pdfcompare_ui.tooltip import add_tooltip
 from pdfcompare_ui.styles import (
@@ -59,11 +60,13 @@ from pdfcompare_ui.styles import (
     BG_SOFT,
     BG_WINDOW,
     BORDER_STRONG,
+    SLIDER_TRACK,
     BORDER_THIN,
     NEW_BORDER,
     NEW_DOT,
     OLD_BORDER,
     OLD_DOT,
+    TEXT_ON_ACCENT,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     TEXT_TERTIARY,
@@ -94,7 +97,7 @@ class PDFCompareApp(
         self.root = root
         self.lang = tk.StringVar(value="ru")
         self.root.title(f"{APP_NAME} {APP_VERSION}")
-        self.root.geometry("1100x820")
+        self.root.geometry("1100x820")  # a starting point; _fit_window_to_content has the last word
         self.root.minsize(920, 700)
         self.root.configure(bg=BG_WINDOW)
 
@@ -188,6 +191,8 @@ class PDFCompareApp(
         self.options_dpi_hint_label: ttk.Label | None = None
         self.options_stroke_label: ttk.Label | None = None
         self.options_stroke_hint_label: ttk.Label | None = None
+        self.options_group_label: ttk.Label | None = None
+        self.options_default_label: ttk.Label | None = None
         self.options_strictness_label: ttk.Label | None = None
         self.options_strictness_hint_label: ttk.Label | None = None
         self.options_exclude_label: ttk.Label | None = None
@@ -243,6 +248,10 @@ class PDFCompareApp(
         self._build_ui()
         self._bind_input_tracking()
         self._restore_last_inputs(startup=True)
+        # After the inputs are back: a restored file path wraps to three lines and
+        # makes the cards taller, so fitting the window before this measured a form
+        # that does not exist.
+        self._fit_window_to_content()
         self._update_run_availability()
         self._refresh_history_table()
         self._install_drop_hook()
@@ -303,11 +312,11 @@ class PDFCompareApp(
             if self.tabs.index("end") > 2:
                 self.tabs.tab(2, text=self._tr("tab_rerender"))
         if self.old_label is not None:
-            self.old_label.configure(text=self._tr("path_old").replace("● ", ""))
+            self.old_label.configure(text=self._tr("path_old").replace("● ", "").upper())
         if self.new_label is not None:
-            self.new_label.configure(text=self._tr("path_new").replace("● ", ""))
+            self.new_label.configure(text=self._tr("path_new").replace("● ", "").upper())
         if self.out_label is not None:
-            self.out_label.configure(text=self._tr("path_out"))
+            self.out_label.configure(text=self._section_title("path_out"))
         if self.run_name_label is not None:
             self.run_name_label.configure(text=self._tr("path_run_name"))
         if self.run_name_hint_label is not None:
@@ -328,6 +337,10 @@ class PDFCompareApp(
             self.options_stroke_label.configure(text=self._option_label_text("opts_stroke"))
         if self.options_stroke_hint_label is not None:
             self.options_stroke_hint_label.configure(text=self._tr("opts_stroke_hint"))
+        if self.options_group_label is not None:
+            self.options_group_label.configure(text=self._section_title("opts_group"))
+        if self.options_default_label is not None:
+            self.options_default_label.configure(text=self._tr("opts_default"))
         if self.options_strictness_label is not None:
             self.options_strictness_label.configure(text=self._tr("opts_strictness"))
         if self.options_strictness_hint_label is not None:
@@ -523,6 +536,30 @@ class PDFCompareApp(
         self._update_lang_buttons()
         self._apply_locale()
 
+    def _fit_window_to_content(self) -> None:
+        """Open at the height the form actually needs.
+
+        The geometry used to be a constant, and the form outgrew it: the Compare
+        button and the status line started below the bottom edge on a default
+        start, which makes the app look broken before it has done anything. Ask Tk
+        what the content requires and give it that, capped by the desktop work area
+        so the window can never end up taller than the screen it opens on.
+        """
+        # Tk reports the required size of what is laid out *now*, so anything that
+        # changes the layout has to have happened already.
+        self.root.update_idletasks()
+        self.root.update_idletasks()
+        work_w, work_h = screen_work_area(self.root)
+        chrome = 64  # title bar, borders, a little breathing room
+        width = min(max(1100, self.root.winfo_reqwidth()), 1320, max(920, work_w - 40))
+        height = min(max(820, self.root.winfo_reqheight()), max(700, work_h - chrome))
+        # Place it too, don't just size it. Tk cascades new windows down and to the
+        # right, so a tall window opens with its bottom — the Compare button and the
+        # status line — hanging below the screen.
+        x = max(0, (work_w - width) // 2)
+        y = max(0, (work_h - height) // 3)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+
     def _path_row(
         self, parent: ttk.Frame, var: tk.StringVar, pick_cmd: Callable[[], None], label_style: str = ""
     ) -> tuple[ttk.Label, ttk.Entry, ttk.Button]:
@@ -538,6 +575,11 @@ class PDFCompareApp(
 
     def _option_label_text(self, label_key: str) -> str:
         return f"{self._tr(label_key).rstrip(':')}:"
+
+    def _section_title(self, key: str) -> str:
+        """A zone heading. Upper case is what makes it read as a heading and not
+        as one more line of grey text among the hints."""
+        return self._tr(key).rstrip(":").upper()
 
     def _primary_button(
         self,
@@ -617,22 +659,27 @@ class PDFCompareApp(
         path_var = self.old_file_path if old else self.new_file_path
         version_var = self.old_file_version if old else self.new_file_version
 
-        card = tk.Frame(parent, bg=BG_CARD, padx=14, pady=14, highlightthickness=1, highlightbackground=border)
+        card = tk.Frame(parent, bg=BG_CARD, padx=14, pady=14, highlightthickness=2, highlightbackground=border)
         head = tk.Frame(card, bg=BG_CARD)
         head.pack(fill=tk.X)
-        dot_canvas = tk.Canvas(head, width=8, height=8, bg=BG_CARD, highlightthickness=0)
-        dot_canvas.pack(side=tk.LEFT, padx=(0, 6))
-        dot_canvas.create_oval(1, 1, 7, 7, fill=dot, outline=dot)
+        dot_canvas = tk.Canvas(head, width=10, height=10, bg=BG_CARD, highlightthickness=0)
+        dot_canvas.pack(side=tk.LEFT, padx=(0, 7))
+        dot_canvas.create_oval(0, 0, 9, 9, fill=dot, outline=dot)
         label_key = "path_old" if old else "path_new"
-        label = ttk.Label(head, text=self._tr(label_key).replace("● ", ""), style=label_style)
+        label = ttk.Label(head, text=self._tr(label_key).replace("● ", "").upper(), style=label_style)
         label.pack(side=tk.LEFT)
         ttk.Label(head, textvariable=version_var, style="Hint.TLabel", background=BG_CARD).pack(side=tk.RIGHT)
-        ttk.Label(card, textvariable=name_var, font=("Segoe UI", 11), foreground=TEXT_PRIMARY, background=BG_CARD, wraplength=380).pack(
-            anchor="w", pady=(8, 0)
-        )
-        ttk.Label(card, textvariable=path_var, style="Hint.TLabel", background=BG_CARD, wraplength=380).pack(anchor="w", pady=(6, 0))
+        ttk.Label(
+            card,
+            textvariable=name_var,
+            font=("Segoe UI", 11, "bold"),
+            foreground=TEXT_PRIMARY,
+            background=BG_CARD,
+            wraplength=380,
+        ).pack(anchor="w", pady=(8, 0))
+        ttk.Label(card, textvariable=path_var, style="Hint.TLabel", background=BG_CARD, wraplength=380).pack(anchor="w", pady=(5, 0))
         actions = tk.Frame(card, bg=BG_CARD)
-        actions.pack(anchor="w", pady=(12, 0))
+        actions.pack(anchor="w", pady=(10, 0))
         pick_btn = ttk.Button(actions, text=self._tr("btn_select"), style="Small.TButton", command=pick_cmd)
         pick_btn.pack(side=tk.LEFT)
         ttk.Button(actions, text=self._tr("btn_clear"), style="Small.TButton", command=clear_cmd).pack(side=tk.LEFT, padx=(6, 0))
@@ -655,25 +702,21 @@ class PDFCompareApp(
         to_value: float,
         resolution: float,
     ) -> None:
-        frame = tk.Frame(parent, bg=BG_SOFT)
+        frame = tk.Frame(parent, bg=BG_CARD)
         frame.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 12, 0))
-        head = tk.Frame(frame, bg=BG_SOFT)
+        head = tk.Frame(frame, bg=BG_CARD)
         head.pack(anchor="w", pady=(0, 4))
-        label = ttk.Label(head, text=self._option_label_text(label_key), style="SubHeader.TLabel", background=BG_SOFT)
+        label = ttk.Label(head, text=self._option_label_text(label_key), style="SubHeader.TLabel", background=BG_CARD)
         label.pack(side=tk.LEFT)
-        tk.Label(
-            head,
-            textvariable=display_var,
-            bg=BG_SOFT,
-            fg=TEXT_PRIMARY,
-            anchor="w",
-            font=("Segoe UI", 10, "bold"),
-        ).pack(side=tk.LEFT, padx=(4, 0))
+        # The current value is the one thing on this row anybody reads: accent, big.
+        ttk.Label(head, textvariable=display_var, style="Value.TLabel", background=BG_CARD).pack(
+            side=tk.LEFT, padx=(6, 0)
+        )
         if label_key == "opts_dpi":
             self.options_dpi_label = label
         elif label_key == "opts_stroke":
             self.options_stroke_label = label
-        row = tk.Frame(frame, bg=BG_SOFT)
+        row = tk.Frame(frame, bg=BG_CARD)
         row.pack(fill=tk.X)
         scale = tk.Scale(
             row,
@@ -683,14 +726,23 @@ class PDFCompareApp(
             orient=tk.HORIZONTAL,
             variable=var,  # type: ignore[arg-type]
             showvalue=False,
-            bg=BG_SOFT,
-            troughcolor=BG_CARD,
+            # tk.Scale paints the handle in `bg` and the groove in `troughcolor`, so
+            # a white handle on a pale groove is invisible — which is what the first
+            # pass produced. A raised white handle on a mid-blue rail reads at a
+            # glance, and the rail carries the accent without shouting.
+            bg=BG_CARD,
+            troughcolor=SLIDER_TRACK,
+            activebackground=BG_SOFT,
             highlightthickness=0,
+            borderwidth=0,
+            sliderrelief=tk.RAISED,
+            sliderlength=20,
+            width=13,
             length=180,
         )
         scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
         hint_key = "opts_dpi_hint" if label_key == "opts_dpi" else "opts_stroke_hint"
-        hint = ttk.Label(frame, text=self._tr(hint_key), style="Hint.TLabel", background=BG_SOFT)
+        hint = ttk.Label(frame, text=self._tr(hint_key), style="Hint.TLabel", background=BG_CARD)
         hint.pack(anchor="w", pady=(4, 0))
         if label_key == "opts_dpi":
             self.options_dpi_hint_label = hint
@@ -718,10 +770,18 @@ class PDFCompareApp(
         self._set_history_placeholder()
 
     def _update_strictness_chips(self) -> None:
+        """The selected chip is filled, not outlined a little harder.
+
+        A 1px-vs-2px border is not a state anyone can see across the window.
+        """
         current = self.diff_strictness.get().strip().lower() or "normal"
         for value, widget in self.strictness_chips.items():
             active = value == current
-            widget.configure(fg=ACCENT if active else TEXT_SECONDARY, relief="solid", bd=2 if active else 1)
+            widget.configure(
+                bg=ACCENT if active else BG_CARD,
+                fg=TEXT_ON_ACCENT if active else TEXT_SECONDARY,
+                highlightbackground=ACCENT if active else BORDER_STRONG,
+            )
 
     def _update_bbox_merge_fields(self) -> None:
         """Enable/disable the gap/ratio fields based on the bbox-merge checkbox."""
@@ -734,7 +794,11 @@ class PDFCompareApp(
         current = self.history_filter.get()
         for value, widget in self.history_filter_buttons.items():
             active = value == current
-            widget.configure(fg=ACCENT if active else TEXT_SECONDARY, bd=2 if active else 1)
+            widget.configure(
+                bg=ACCENT if active else BG_CARD,
+                fg=TEXT_ON_ACCENT if active else TEXT_SECONDARY,
+                highlightbackground=ACCENT if active else BORDER_STRONG,
+            )
 
     # Options are now always visible - toggle removed
 
