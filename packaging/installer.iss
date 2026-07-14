@@ -40,6 +40,9 @@ WizardStyle=modern
 ; the app exiting first; this covers a manually started copy).
 CloseApplications=yes
 RestartApplications=no
+; The setup wizard's own icon. Shortcuts and the uninstall entry get theirs from the
+; exe, which carries the same icon as a resource.
+SetupIconFile=PDFCompareLocal.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName}
 ArchitecturesAllowed=x64compatible

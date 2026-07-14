@@ -7,12 +7,27 @@ widget state and can be tested in isolation.
 from __future__ import annotations
 
 import re
+import sys
 import tkinter as tk
 from pathlib import Path
 
 import fitz
 
 REVISION_RE = re.compile(r"r[Cc](\d{2,3})")
+
+
+def resource_path(*parts: str) -> Path:
+    """A file that ships with the app, wherever the app is running from.
+
+    From the repo that is just the source tree. In a PyInstaller build the data
+    files are unpacked next to the bootloader instead, and only `sys._MEIPASS`
+    knows where — the source layout does not exist there at all.
+    """
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    else:
+        base = Path(__file__).resolve().parents[1]
+    return base.joinpath(*parts)
 
 
 def screen_work_area(widget: tk.Misc) -> tuple[int, int]:

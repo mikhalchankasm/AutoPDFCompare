@@ -27,11 +27,16 @@ try:
 except ImportError:
     pass
 
+# The exe's resource icon is what Explorer and the taskbar shortcut show. Tk cannot
+# read it, so the .ico also ships as a data file and the window loads it at runtime.
+ICON = ROOT / 'packaging' / 'PDFCompareLocal.ico'
+icon_data = [(str(ICON), 'packaging')] if ICON.exists() else []
+
 a = Analysis(
     [str(ROOT / 'pdfcompare_gui.py')],
     pathex=[str(ROOT)],
     binaries=[],
-    datas=tkdnd_data,
+    datas=tkdnd_data + icon_data,
     hiddenimports=['tkinterdnd2'],
     hookspath=[],
     hooksconfig={},
@@ -59,6 +64,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(ICON) if ICON.exists() else None,
 )
 
 coll = COLLECT(

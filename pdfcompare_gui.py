@@ -49,6 +49,7 @@ from pdfcompare_ui.utils import (
     count_pdf_pages_pair,
     extract_revision_label,
     format_duration_mmss,
+    resource_path,
     screen_work_area,
 )
 from pdfcompare_ui.tooltip import add_tooltip
@@ -97,6 +98,7 @@ class PDFCompareApp(
         self.root = root
         self.lang = tk.StringVar(value="ru")
         self.root.title(f"{APP_NAME} {APP_VERSION}")
+        self._apply_window_icon()
         self.root.geometry("1100x820")  # a starting point; _fit_window_to_content has the last word
         self.root.minsize(920, 700)
         self.root.configure(bg=BG_WINDOW)
@@ -535,6 +537,23 @@ class PDFCompareApp(
         self._build_rerender_tab()
         self._update_lang_buttons()
         self._apply_locale()
+
+    def _apply_window_icon(self) -> None:
+        """The app's own icon instead of Tk's feather.
+
+        `default=` applies it to every window the app opens, the zone picker
+        included, not only to this one. It needs a real .ico file on disk, which is
+        why the icon is bundled as data and not merely compiled into the exe: the
+        exe's resource icon is what Explorer shows, but Tk does not read it.
+        """
+        icon = resource_path("packaging", "PDFCompareLocal.ico")
+        if not icon.exists():
+            return
+        try:
+            self.root.iconbitmap(default=str(icon))
+        except tk.TclError:
+            # A missing or unreadable icon is cosmetic; it must not stop the app.
+            pass
 
     def _fit_window_to_content(self) -> None:
         """Open at the height the form actually needs.
@@ -1569,12 +1588,8 @@ def main() -> None:
     if root is None:
         root = tk.Tk()
 
-    # Use default Windows scaling/behavior but keep predictable font.
-    try:
-        style = ttk.Style(root)
-        style.theme_use("vista")
-    except Exception:
-        pass
+    # The ttk theme is chosen in pdfcompare_ui.styles.configure_ttk_styles (clam):
+    # setting it here as well only looked like it mattered.
     PDFCompareApp(root)
     root.mainloop()
 
