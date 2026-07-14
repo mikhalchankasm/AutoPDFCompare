@@ -2,10 +2,11 @@
 
 The engine used to raise Russian-only text, which the English interface then
 showed verbatim — a bilingual app with monolingual failures. Errors a *user* can
-trigger (bad DPI, a malformed zone, a missing report) now carry a key and their
-parameters, so the GUI/CLI/MCP can render them in the language they are running
-in. ``str(exc)`` stays Russian, so anything that just logs the exception behaves
-as before.
+trigger (bad DPI, a malformed zone, a missing report, a path outside the MCP
+allowlist) now carry a key and their parameters, so the GUI/CLI/MCP can render
+them in the language they are running in. ``str(exc)`` stays Russian, so anything
+that just logs the exception — worker tracebacks, ``worker.log`` — behaves as
+before, and existing diagnostics keep matching.
 
 Internal invariants ("unsafe sheet path", "staging dir not built") are *not*
 here on purpose: they mean the program is broken, not that the user did
@@ -59,6 +60,21 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "zone_out_of_range": "Область #{idx}: координаты должны помещаться в диапазон {range}",
         # --- diff ---
         "raster_size_mismatch": "Разные размеры растра: A={a_w}x{a_h}, B={b_w}x{b_h}",
+        # --- CLI ---
+        "cli_old_new_together": "Укажите оба параметра --old и --new (либо ни одного, чтобы использовать --input-dir)",
+        # --- MCP boundary ---
+        "path_empty": "Путь не может быть пустым",
+        "path_not_found": "Путь не найден: {path}",
+        "path_outside_allowlist": "Путь вне разрешённых каталогов (PDFCOMPARE_MCP_ALLOWED_DIRS): {path}",
+        "job_id_invalid": "Некорректный job_id: {job_id}",
+        "job_not_found": "Задача не найдена: {job_id}",
+        "job_limit_reached": "Достигнут лимит активных MCP-сравнений: {limit}",
+        "job_not_running": "Задача уже не выполняется: {job_id}",
+        "job_no_pid": "У задачи нет PID: {job_id}",
+        "job_pid_foreign": "PID больше не похож на worker PDFCompare для задачи: {job_id}",
+        "rerender_need_seqs": "Передайте seqs или page_settings",
+        "page_settings_not_list": "page_settings должен быть списком объектов",
+        "page_number_min": "page_number должен быть >= 1",
     },
     "en": {
         "run_name_empty": "The comparison folder name cannot be empty",
@@ -96,6 +112,19 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "zone_negative": "Region #{idx}: x/y must be >= 0 and w/h > 0",
         "zone_out_of_range": "Region #{idx}: coordinates must fit within {range}",
         "raster_size_mismatch": "Raster sizes differ: A={a_w}x{a_h}, B={b_w}x{b_h}",
+        "cli_old_new_together": "Pass both --old and --new (or neither, to use --input-dir)",
+        "path_empty": "The path cannot be empty",
+        "path_not_found": "Path not found: {path}",
+        "path_outside_allowlist": "Path outside the allowed directories (PDFCOMPARE_MCP_ALLOWED_DIRS): {path}",
+        "job_id_invalid": "Invalid job_id: {job_id}",
+        "job_not_found": "Job not found: {job_id}",
+        "job_limit_reached": "Active MCP comparison limit reached: {limit}",
+        "job_not_running": "The job is no longer running: {job_id}",
+        "job_no_pid": "The job has no PID: {job_id}",
+        "job_pid_foreign": "The PID no longer looks like a PDFCompare worker for this job: {job_id}",
+        "rerender_need_seqs": "Pass seqs or page_settings",
+        "page_settings_not_list": "page_settings must be a list of objects",
+        "page_number_min": "page_number must be >= 1",
     },
 }
 

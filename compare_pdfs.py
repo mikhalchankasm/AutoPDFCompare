@@ -61,7 +61,15 @@ from pdfcompare_core.constants import (
     ZONES_MODERATE,
 )
 from pdfcompare_core.diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff, compute_diff_detailed, harmonize_canvas
+from pdfcompare_core.errors import (
+    ERROR_MESSAGES,
+    InvalidInput,
+    PDFCompareError,
+    RunFailed,
+    localize_error,
+)
 from pdfcompare_core.exclusions import (
+    exclusion_regions_to_mm_rects,
     exclusion_regions_to_pixel_boxes,
     normalize_exclude_regions,
 )

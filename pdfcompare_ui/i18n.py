@@ -215,9 +215,17 @@ I18N: dict[str, dict[str, str]] = {
         "pick_unit_percent": "проценты",
         "pick_unit_mm_hint": "Размер в мм от угла привязки: область одинакова на A4…A0 и в обеих ориентациях.",
         "pick_unit_percent_hint": "Размер в % листа: область растянется вместе с листом (штамп на A0 станет огромным).",
+        "pick_unit_mixed_hint": "Области в разных единицах — каждая сохраняется в своей. Переключатель задаёт единицу для новых областей.",
+        "pick_unit_migrate_title": "Перевести единицы существующих областей?",
+        "pick_unit_migrate_body": (
+            "Существующих областей в другой единице: {count}.\n\n"
+            "Перевести их в «{unit}»? На листе другого размера они станут покрывать другую площадь.\n\n"
+            "Нет — они сохранят свою единицу, а «{unit}» получат только новые области."
+        ),
         "pick_regions": "Области",
         "pick_col_size": "Размер",
         "pick_col_anchor": "Привязка",
+        "pick_col_unit": "Единица",
         "pick_clear": "Очистить",
         "status_rerender_pick_no_pdf": "Сначала загрузите прогон: исходный PDF не найден.",
         "btn_pick_exclude": "✏ Выбрать…",
@@ -444,9 +452,17 @@ I18N: dict[str, dict[str, str]] = {
         "pick_unit_percent": "percent",
         "pick_unit_mm_hint": "Size in mm from the anchor corner: the region is identical on A4…A0 and in both orientations.",
         "pick_unit_percent_hint": "Size in % of the sheet: the region scales with it (a title block would be huge on A0).",
+        "pick_unit_mixed_hint": "The regions use both units — each is saved in its own. The selector sets the unit for newly drawn regions.",
+        "pick_unit_migrate_title": "Convert the units of existing regions?",
+        "pick_unit_migrate_body": (
+            "Existing regions: {count}, in the other unit.\n\n"
+            "Convert them to \"{unit}\"? On a sheet of a different size they will then cover a different area.\n\n"
+            "No — they keep their unit, and only newly drawn regions use \"{unit}\"."
+        ),
         "pick_regions": "Regions",
         "pick_col_size": "Size",
         "pick_col_anchor": "Anchor",
+        "pick_col_unit": "Unit",
         "pick_clear": "Clear all",
         "status_rerender_pick_no_pdf": "Load a run first: the source PDF was not found.",
         "btn_pick_exclude": "✏ Pick…",

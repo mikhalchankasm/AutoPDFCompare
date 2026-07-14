@@ -22,7 +22,20 @@ try {
 
     # mypy is a hard gate (the tree is currently clean).
     # Set $env:LINT_ALLOW_MYPY_FAIL=1 to temporarily downgrade it to informational.
-    & $python -m mypy compare_pdfs.py pdfcompare_gui.py pdfcompare_core pdfcompare_ui
+    #
+    # scripts/ is listed file by file, not as a directory: the .ps1 files are not
+    # Python, and the two entry points below are the ones that actually run in
+    # production. They were outside the gate until v0.1.20 and were carrying a real
+    # type error (FastMCP.run's transport is a Literal, not a str), so CI was green
+    # on code that mypy rejects. Anything new under scripts/ belongs on this list.
+    & $python -m mypy `
+        compare_pdfs.py `
+        pdfcompare_gui.py `
+        pdfcompare_core `
+        pdfcompare_ui `
+        scripts/pdfcompare_mcp.py `
+        scripts/pdfcompare_worker.py `
+        scripts/process_identity.py
     if ($env:LINT_ALLOW_MYPY_FAIL -ne "1" -and $LASTEXITCODE -ne 0) { throw "mypy failed" }
 }
 finally {

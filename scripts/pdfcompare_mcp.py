@@ -8,11 +8,10 @@ import shutil
 import subprocess
 import sys
 import time
-import ctypes
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -27,11 +26,35 @@ from compare_pdfs import (
     DIFF_STRICTNESS_CHOICES,
     MAX_RUN_FOLDER_NAME_LEN,
     START_REPORT_FILE,
+    InvalidInput,
+    PDFCompareError,
+    RunFailed,
     find_summary_json_path,
+    localize_error,
     normalize_exclude_regions,
     sanitize_run_folder_name,
     validate_render_dpi,
 )
+from scripts.process_identity import pid_exists, process_create_time, same_process
+
+TRANSPORTS: tuple[Literal["stdio", "sse", "streamable-http"], ...] = ("stdio", "sse", "streamable-http")
+
+
+def error_result(exc: BaseException, lang: str = "ru") -> dict[str, Any]:
+    """The failure an agent reads, in the language it asked for.
+
+    ``str(exc)`` is deliberately Russian — worker logs and tracebacks are matched
+    against it — so the translated text goes into ``error`` and the diagnostic
+    original is kept beside it under ``error_detail``.
+    """
+    message = localize_error(exc, lang)
+    payload: dict[str, Any] = {"ok": False, "error": message}
+    if isinstance(exc, PDFCompareError):
+        payload["error_key"] = exc.key
+    detail = str(exc)
+    if detail != message:
+        payload["error_detail"] = detail
+    return payload
 
 
 def env_int(name: str, default: int) -> int:
@@ -58,6 +81,7 @@ JOB_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 TOKEN_RE = re.compile(r"[A-Za-zА-Яа-я0-9]+")
 ACTIVE_JOB_STATES = {"queued", "running"}
 LAST_CLEANUP_AT = 0.0
+CANCEL_POLL_SEC = 0.2
 
 
 def now_iso() -> str:
@@ -96,18 +120,16 @@ def allowed_roots() -> list[Path]:
 def resolve_path(path_text: str, *, must_exist: bool = False) -> Path:
     raw = str(path_text or "").strip()
     if not raw:
-        raise ValueError("Путь не может быть пустым")
+        raise InvalidInput("path_empty")
     path = Path(raw).expanduser()
     if not path.is_absolute():
         path = REPO_ROOT / path
     resolved = path.resolve(strict=False)  # resolves symlinks/junctions before the check
     roots = allowed_roots()
     if roots and not any(resolved == root or root in resolved.parents for root in roots):
-        raise ValueError(
-            f"Путь вне разрешённых каталогов (PDFCOMPARE_MCP_ALLOWED_DIRS): {resolved}"
-        )
+        raise InvalidInput("path_outside_allowlist", path=resolved)
     if must_exist and not resolved.exists():
-        raise FileNotFoundError(f"Путь не найден: {resolved}")
+        raise RunFailed("path_not_found", path=resolved)
     return resolved
 
 
@@ -341,7 +363,7 @@ def suggest_folder_names(old_path: Path, new_path: Path, out_dir: Path) -> list[
 
 def job_dir(job_id: str) -> Path:
     if not JOB_ID_RE.match(job_id):
-        raise ValueError(f"Некорректный job_id: {job_id}")
+        raise InvalidInput("job_id_invalid", job_id=job_id)
     return JOBS_ROOT / job_id
 
 
@@ -350,10 +372,15 @@ def cancel_marker_path(job_id: str) -> Path:
     return job_dir(job_id) / "cancel"
 
 
+def heartbeat_path(job_id: str) -> Path:
+    """File the worker touches while it is alive — how cancel tells slow from stuck."""
+    return job_dir(job_id) / "heartbeat"
+
+
 def load_status(job_id: str) -> dict[str, Any]:
     path = job_dir(job_id) / "status.json"
     if not path.exists():
-        raise FileNotFoundError(f"Задача не найдена: {job_id}")
+        raise RunFailed("job_not_found", job_id=job_id)
     status = load_json(path)
     run_dir = status.get("run_dir")
     if run_dir and not status.get("summary") and str(status.get("state")) == "completed":
@@ -394,7 +421,10 @@ def get_process_command_line(pid: int) -> str:
             f"(Get-CimInstance Win32_Process -Filter \"ProcessId = {pid}\").CommandLine",
         ]
         try:
-            result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=5)
+            # Generous: a cancel arrives precisely when every core is busy rendering,
+            # and that is the worst moment to start a PowerShell. A timeout here used
+            # to read as "not our worker" and quietly refuse the cancel.
+            result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=30)
         except (OSError, subprocess.TimeoutExpired):
             return ""
         return result.stdout.strip()
@@ -405,35 +435,76 @@ def get_process_command_line(pid: int) -> str:
     return ""
 
 
-def pid_exists(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        process_query_limited_information = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(process_query_limited_information, False, int(pid))
-        if handle:
-            ctypes.windll.kernel32.CloseHandle(handle)
-            return True
-        # Access denied still means the PID exists; be conservative for cleanup.
-        return ctypes.windll.kernel32.GetLastError() == 5
+def worker_identity_path(job_id: str) -> Path:
+    """What the worker records about itself: its real PID and its creation time."""
+    return job_dir(job_id) / "worker.json"
 
+
+def load_worker_identity(job_id: str) -> dict[str, Any]:
+    path = worker_identity_path(job_id)
+    if not path.exists():
+        return {}
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+        return load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def worker_process_alive(pid: int, job_id: str) -> bool:
+    """Cheap check: is *our* worker still running under this PID?
+
+    Safe to call in a polling loop — a couple of syscalls, unlike the command-line
+    lookup, which spawns a PowerShell.
+    """
+    return same_process(pid, load_worker_identity(job_id).get("create_time"))
 
 
 def process_matches_worker_job(pid: int, job_id: str) -> bool:
+    """The full check, run before anything is ever signalled.
+
+    The creation time the worker recorded about itself is the authoritative answer:
+    the PID exists *and* the process behind it started at the instant our worker
+    did, which nothing else can claim. It costs two syscalls.
+
+    The command line is only the fallback for a job started before the worker
+    recorded itself — and it is a poor one, because reading it spawns a PowerShell,
+    and a cancel arrives exactly when every core is busy rendering. A lookup that
+    times out comes back empty, and the safe reading of "could not tell" is *do not
+    kill*.
+    """
     if not pid_exists(pid):
         return False
+
+    recorded = load_worker_identity(job_id).get("create_time")
+    if recorded is not None:
+        current = process_create_time(pid)
+        return current is not None and int(current) == int(recorded)
+
     command_line = get_process_command_line(pid)
     if not command_line:
         return False
     normalized = command_line.replace("\\", "/")
     return "pdfcompare_worker.py" in normalized and job_id in normalized
+
+
+def worker_liveness(job_id: str) -> float:
+    """Newest mtime of anything the worker writes — its proof of life."""
+    newest = 0.0
+    for name in ("heartbeat", "status.json"):
+        try:
+            newest = max(newest, (job_dir(job_id) / name).stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def cancel_acknowledged(job_id: str) -> bool:
+    """Has the worker seen the marker and started unwinding?"""
+    try:
+        status = load_json(job_dir(job_id) / "status.json")
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(status.get("cancel_acknowledged_at"))
 
 
 def active_job_statuses() -> list[dict[str, Any]]:
@@ -637,7 +708,7 @@ def prepare_pdf_comparison(old_path: str, new_path: str, out_dir: str = "runs", 
             "lang": lang,
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
 
 
 @mcp.tool()
@@ -671,10 +742,8 @@ def start_pdf_comparison(
         max_active_jobs = max(1, env_int("PDFCOMPARE_MCP_MAX_JOBS", 1))
         active_jobs = active_job_statuses()
         if len(active_jobs) >= max_active_jobs:
-            return {
-                "ok": False,
-                "error": f"Достигнут лимит активных MCP-сравнений: {max_active_jobs}",
-                "active_jobs": active_jobs,
+            return error_result(RunFailed("job_limit_reached", limit=max_active_jobs), lang) | {
+                "active_jobs": active_jobs
             }
 
         old_pdf = resolve_path(old_path, must_exist=True)
@@ -684,11 +753,13 @@ def start_pdf_comparison(
         dpi = validate_render_dpi(dpi)
         strictness = str(diff_strictness or "normal").strip().lower()
         if strictness not in DIFF_STRICTNESS_CHOICES:
-            return {"ok": False, "error": f"Некорректная строгость сравнения: {diff_strictness}"}
+            raise InvalidInput(
+                "strictness_invalid", value=diff_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES)
+            )
         normalized_exclusions = normalize_exclude_regions(exclude_regions)
         run_dir = output_dir / safe_run_name
         if run_dir.exists():
-            return {"ok": False, "error": f"Папка результата уже существует: {run_dir}"}
+            raise RunFailed("run_dir_exists", path=run_dir)
 
         job_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
         current_job_dir = job_dir(job_id)
@@ -741,6 +812,10 @@ def start_pdf_comparison(
             str(current_job_dir / "events.jsonl"),
             "--cancel",
             str(cancel_marker_path(job_id)),
+            "--heartbeat",
+            str(heartbeat_path(job_id)),
+            "--identity",
+            str(worker_identity_path(job_id)),
         ]
         creationflags = 0
         if os.name == "nt":
@@ -785,7 +860,7 @@ def start_pdf_comparison(
             "next_step": "Вызови get_pdf_comparison_status с этим job_id, чтобы увидеть прогресс.",
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
 
 
 @mcp.tool()
@@ -816,17 +891,15 @@ def rerender_pdf_comparison_pages(
         max_active_jobs = max(1, env_int("PDFCOMPARE_MCP_MAX_JOBS", 1))
         active_jobs = active_job_statuses()
         if len(active_jobs) >= max_active_jobs:
-            return {
-                "ok": False,
-                "error": f"Достигнут лимит активных MCP-сравнений: {max_active_jobs}",
-                "active_jobs": active_jobs,
+            return error_result(RunFailed("job_limit_reached", limit=max_active_jobs), lang) | {
+                "active_jobs": active_jobs
             }
 
         report_dir = resolve_path(run_dir, must_exist=True)
         dpi = validate_render_dpi(dpi)
         summary_path = find_summary_json_path(report_dir)
         if not summary_path.exists():
-            return {"ok": False, "error": f"Не найден summary.json в отчёте: {report_dir}"}
+            raise RunFailed("summary_missing", path=summary_path)
         summary = load_json(summary_path)
 
         settings = page_settings
@@ -834,16 +907,18 @@ def rerender_pdf_comparison_pages(
             settings = []
         if not settings:
             if not seqs:
-                return {"ok": False, "error": "Передайте seqs или page_settings"}
+                raise InvalidInput("rerender_need_seqs")
             settings = [{"seqs": [int(seq) for seq in seqs]}]
         if not isinstance(settings, list):
-            return {"ok": False, "error": "page_settings должен быть списком объектов"}
+            raise InvalidInput("page_settings_not_list")
 
         strictness = None
         if diff_strictness is not None:
             strictness = str(diff_strictness or "").strip().lower()
             if strictness not in DIFF_STRICTNESS_CHOICES:
-                return {"ok": False, "error": f"Некорректная строгость сравнения: {diff_strictness}"}
+                raise InvalidInput(
+                    "strictness_invalid", value=diff_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES)
+                )
         if isinstance(exclude_regions, str) and not exclude_regions.strip():
             exclude_regions = None  # empty text means "inherit", not "clear"
         normalized_exclusions = normalize_exclude_regions(exclude_regions) if exclude_regions is not None else None
@@ -899,6 +974,10 @@ def rerender_pdf_comparison_pages(
             str(current_job_dir / "events.jsonl"),
             "--cancel",
             str(cancel_marker_path(job_id)),
+            "--heartbeat",
+            str(heartbeat_path(job_id)),
+            "--identity",
+            str(worker_identity_path(job_id)),
         ]
         creationflags = 0
         if os.name == "nt":
@@ -940,7 +1019,7 @@ def rerender_pdf_comparison_pages(
             "next_step": "Вызови get_pdf_comparison_status с этим job_id, чтобы увидеть прогресс.",
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
 
 
 @mcp.tool()
@@ -981,7 +1060,7 @@ def pick_pdf_exclude_region(
 
         pdf = resolve_path(pdf_path, must_exist=True)
         if int(page_number) < 1:
-            return {"ok": False, "error": "page_number должен быть >= 1"}
+            raise InvalidInput("page_number_min")
         existing_regions = normalize_exclude_regions(existing) if existing else []
 
         root = tk.Tk()
@@ -1016,11 +1095,11 @@ def pick_pdf_exclude_region(
             ),
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
 
 
 @mcp.tool()
-def get_pdf_comparison_status(job_id: str = "") -> dict[str, Any]:
+def get_pdf_comparison_status(job_id: str = "", lang: str = "ru") -> dict[str, Any]:
     """Return one comparison job status, or recent background jobs when job_id is omitted."""
     try:
         cleanup_stale_job_artifacts()
@@ -1028,11 +1107,13 @@ def get_pdf_comparison_status(job_id: str = "") -> dict[str, Any]:
             return {"ok": True, "job": load_status(job_id.strip())}
         return {"ok": True, "jobs": list_statuses()}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
 
 
 @mcp.tool()
-def list_pdf_comparisons(out_dir: str = "runs", old_path: str = "", new_path: str = "", limit: int = 20) -> dict[str, Any]:
+def list_pdf_comparisons(
+    out_dir: str = "runs", old_path: str = "", new_path: str = "", limit: int = 20, lang: str = "ru"
+) -> dict[str, Any]:
     """List completed comparison folders, optionally filtered by two input PDFs."""
     try:
         cleanup_stale_job_artifacts()
@@ -1045,80 +1126,145 @@ def list_pdf_comparisons(out_dir: str = "runs", old_path: str = "", new_path: st
             "comparisons": find_existing_comparisons(output_dir, old_pdf, new_pdf, limit=max(1, int(limit))),
         }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
 
 
 @mcp.tool()
-def cancel_pdf_comparison(job_id: str, grace_sec: float = 20.0) -> dict[str, Any]:
-    """Stop a running background job.
+def cancel_pdf_comparison(
+    job_id: str, grace_sec: float = 20.0, max_wait_sec: float = 300.0, lang: str = "ru"
+) -> dict[str, Any]:
+    """Stop a running background job. Asks first, kills only as a last resort.
 
-    Asks first, kills second. A re-render updates an existing report in place, so
-    a worker killed between "new pages swapped in" and "summary/report written"
-    would leave the run inconsistent with no rollback — the transaction only
-    exists in the worker's memory. So we drop a cancel marker, give the worker
-    time to unwind its transaction, and only force-kill if it does not exit.
+    A re-render rewrites an existing report in place, so a worker killed between
+    "new pages swapped in" and "summary/report written" leaves the run inconsistent
+    with no rollback — the transaction only lives in the worker's memory. So we drop
+    a cancel marker and let the worker unwind.
+
+    ``grace_sec`` is *not* a deadline for finishing: it is how long the worker may
+    stay **silent**. A worker that keeps its heartbeat going is working, not stuck —
+    one heavy A0 sheet at 600 DPI outlasts any fixed grace — and a worker that has
+    acknowledged the cancel is rolling back, which is the worst possible moment to
+    kill it. Both are left alone until ``max_wait_sec``. Force-kill is reserved for
+    a worker that has actually stopped responding; it comes back as ``forced=true``
+    with the warning that the report may be inconsistent.
+
+    The PID is re-verified (creation time, then command line) on every poll and once
+    more immediately before the kill: Windows recycles PIDs within seconds, and a
+    worker that exits mid-wait must not get a stranger killed in its place.
     """
     try:
         status = load_status(job_id)
-        if str(status.get("state") or "") not in {"queued", "running"}:
-            return {"ok": False, "error": f"Задача уже не выполняется: {job_id}", "job": status}
+        if str(status.get("state") or "") not in ACTIVE_JOB_STATES:
+            return error_result(RunFailed("job_not_running", job_id=job_id), lang) | {"job": status}
         pid = int(status.get("pid") or 0)
         if not pid:
-            return {"ok": False, "error": f"У задачи нет PID: {job_id}"}
+            return error_result(RunFailed("job_no_pid", job_id=job_id), lang)
         if not process_matches_worker_job(pid, job_id):
-            return {
-                "ok": False,
-                "error": f"PID больше не похож на worker PDFCompare для задачи: {job_id}",
-                "job": status,
-            }
+            return error_result(RunFailed("job_pid_foreign", job_id=job_id), lang) | {"job": status}
 
         marker = cancel_marker_path(job_id)
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(now_iso(), encoding="utf-8")
 
-        deadline = time.time() + max(0.0, float(grace_sec))
+        started = time.time()
+        hard_deadline = started + max(0.0, float(max_wait_sec))
+        silence_limit = max(1.0, float(grace_sec))
+        acknowledged = False
         forced = False
-        while pid_exists(pid):
-            if time.time() >= deadline:
-                # It is not stopping — an unresponsive worker is worse than an
-                # inconsistent one; kill it and say so.
+        reason = "exited"
+
+        while worker_process_alive(pid, job_id):
+            acknowledged = acknowledged or cancel_acknowledged(job_id)
+            now = time.time()
+            beat = worker_liveness(job_id)
+            silent_for = now - beat if beat else now - started
+            if now >= hard_deadline:
+                reason = "max_wait"
+                break
+            if silent_for >= silence_limit:
+                reason = "unresponsive"
+                break
+            time.sleep(CANCEL_POLL_SEC)
+
+        # The worker may have exited during the last sleep and had its PID handed to
+        # something else. Never signal a process we have not just re-confirmed.
+        pid_reused = False
+        if reason in {"max_wait", "unresponsive"}:
+            if process_matches_worker_job(pid, job_id):
                 if os.name == "nt":
                     subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
                 else:
                     os.kill(pid, signal.SIGTERM)
                 forced = True
-                break
-            time.sleep(0.2)
+            else:
+                pid_reused = pid_exists(pid)
+                reason = "exited"
+        else:
+            pid_reused = pid_exists(pid)
 
         out_dir = status.get("out_dir")
         if out_dir:
             shutil.rmtree(Path(str(out_dir)) / f".pdfcompare_mcp_{job_id}", ignore_errors=True)
 
-        # The worker writes its own "cancelled" status when it unwinds cleanly;
-        # only overwrite it when we had to kill it.
+        waited_sec = round(time.time() - started, 2)
+        # The worker writes its own "cancelled" status when it unwinds cleanly; only
+        # overwrite it when we killed it, or when it never got that far.
         status = load_status(job_id)
-        if forced or str(status.get("state") or "") in {"queued", "running"}:
+        if forced or str(status.get("state") or "") in ACTIVE_JOB_STATES:
+            if forced:
+                message = (
+                    "Задача принудительно остановлена: worker перестал отвечать "
+                    f"({reason}); отчёт мог остаться в промежуточном состоянии"
+                )
+            elif pid_reused:
+                message = (
+                    "Worker уже завершился сам; его PID успел занять другой процесс, "
+                    "поэтому принудительное завершение не выполнялось"
+                )
+            else:
+                message = "Задача остановлена пользователем"
             status.update(
                 {
                     "state": "cancelled",
-                    "message": (
-                        "Задача принудительно остановлена (worker не завершился за отведённое время); "
-                        "отчёт мог остаться в промежуточном состоянии"
-                        if forced
-                        else "Задача остановлена пользователем"
-                    ),
+                    "message": message,
                     "forced": forced,
+                    "cancel_acknowledged": acknowledged,
+                    "cancel_reason": reason,
+                    "pid_reused": pid_reused,
+                    "waited_sec": waited_sec,
                     "updated_at": now_iso(),
                 }
             )
             atomic_write_json(job_dir(job_id) / "status.json", status)
-        return {"ok": True, "forced": forced, "job": status}
+        return {
+            "ok": True,
+            "forced": forced,
+            "cancel_acknowledged": acknowledged,
+            "cancel_reason": reason,
+            "pid_reused": pid_reused,
+            "waited_sec": waited_sec,
+            "job": status,
+        }
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return error_result(exc, lang)
+
+
+def resolve_transport(raw: str) -> Literal["stdio", "sse", "streamable-http"]:
+    """Reject an unknown transport here, not inside FastMCP.
+
+    A typo used to reach ``mcp.run()`` as a plain string and fail somewhere in the
+    library — and, worse, it slipped past the non-stdio guard below, because
+    anything that is not literally "stdio" was treated as a network transport.
+    """
+    wanted = str(raw or "stdio").strip().lower()
+    for transport in TRANSPORTS:
+        if wanted == transport:
+            return transport
+    raise SystemExit(f"Unknown PDFCOMPARE_MCP_TRANSPORT: {raw!r}. Allowed: {', '.join(TRANSPORTS)}.")
 
 
 def main() -> None:
-    transport = os.getenv("PDFCOMPARE_MCP_TRANSPORT", "stdio")
+    transport = resolve_transport(os.getenv("PDFCOMPARE_MCP_TRANSPORT", "stdio"))
     if transport != "stdio":
         # The tools read any PDF and write results anywhere the user can. Over a
         # network transport that is a file-system service, so the allowlist is

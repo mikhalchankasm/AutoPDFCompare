@@ -1,4 +1,5 @@
 import base64
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -291,11 +292,21 @@ class FinalReportTests(unittest.TestCase):
             self.assertIn('class="matrix-tools"', index_html)
             self.assertNotIn('class="filters"', index_html)
             self.assertNotIn('class="chip"', index_html)
+            # The sheet list is shared by every page now (PDF-008), so the drawer's
+            # contents are asserted where they actually live: nav-data.js.
+            nav_data = (run_dir / INTERNAL_REPORT_DIR / "report" / "nav-data.js").read_text(encoding="utf-8")
+            nav_pages = json.loads(nav_data.split("=", 1)[1].rstrip().rstrip(";"))["pages"]
+            self.assertEqual(len(nav_pages), 4)
+            added = next(page for page in nav_pages if page["href"] == "003.html")
+            self.assertFalse(added["hasSlider"], "an added sheet has no slider to open")
+            self.assertTrue(any(page["href"] == "cmp_001.html" for page in nav_pages))
+
+            self.assertIn('src="../nav-data.js"', slider_html)
+            self.assertIn('src="../nav-data.js"', detail_html)
             self.assertIn("cmp_002.html", slider_html)
             self.assertIn('class="sheet-drawer"', slider_html)
             self.assertIn("const allSheets", slider_html)
             self.assertIn("disabled-slider", slider_html)
-            self.assertIn('href=\'003.html\'', slider_html)
             self.assertIn('id="bboxToggle"', slider_html)
             self.assertIn('id="oneBtn"', slider_html)
             self.assertIn('data-bbox="off"', slider_html)

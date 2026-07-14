@@ -19,8 +19,12 @@ Features:
   drawing frame and a dashed 185×55 mm title-block guide;
 - millimetre grid with selectable step and a live size readout;
 - regions can be drawn, selected, moved, resized by handles and deleted, and are
-  listed with their size and anchor;
-- per-region corner anchor.
+  listed with their size, anchor and unit;
+- per-region corner anchor and per-region unit: a zone is written back in the
+  unit it arrived in, so opening a set that mixes percent and mm and pressing OK
+  changes nothing. Converting between the two is a real data migration — it
+  happens only on an explicit click on the unit selector, and only after the user
+  confirms it.
 """
 
 from __future__ import annotations
@@ -28,12 +32,12 @@ from __future__ import annotations
 import json
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Any
 
 import fitz
 
-from pdfcompare_core.exclusions import exclusion_regions_to_pixel_boxes
+from pdfcompare_core.exclusions import exclusion_regions_to_mm_rects
 
 from .i18n import I18N
 
@@ -221,19 +225,29 @@ def detect_format(w_mm: float, h_mm: float) -> str | None:
     return None
 
 
-def incoming_unit(existing: list[dict[str, float | str]] | None) -> str:
-    """Which unit the dialog should start in for an existing set of zones.
+def region_unit(raw: object) -> str:
+    """The picker unit an incoming zone is *stored* in, so OK gives it back.
 
-    Opening the picker and pressing OK without touching anything must give back
-    what came in — silently rewriting saved percent zones as mm would change
-    which part of a differently sized sheet gets excluded. So a set that is
-    entirely percent opens in percent; anything else (including a mixed set,
-    where mm is the only representation that survives) opens in mm.
+    The picker exports two units, mm and percent, and each region remembers its
+    own — a set holding both survives open→OK untouched. Units the picker cannot
+    reproduce (``px`` is tied to a raster's DPI, ``ratio`` to the sheet) map to
+    mm, the physical representation, exactly as before.
+    """
+    unit = str((raw.get("unit") if isinstance(raw, dict) else None) or UNIT_PERCENT).strip().casefold()
+    return UNIT_PERCENT if unit in {UNIT_PERCENT, "%"} else UNIT_MM
+
+
+def incoming_unit(existing: list[dict[str, float | str]] | None) -> str:
+    """Which unit the *unit selector* starts on — the unit new zones get.
+
+    It no longer decides how existing zones are written back: every region keeps
+    its own unit (see ``region_unit``). This only picks a sensible default for
+    zones drawn from now on: keep working in percent if that is all that came in,
+    otherwise mm.
     """
     if not existing:
         return UNIT_MM
-    units = {str((r.get("unit") if isinstance(r, dict) else None) or UNIT_PERCENT).casefold() for r in existing}
-    if units <= {UNIT_PERCENT, "%"}:
+    if all(region_unit(r) == UNIT_PERCENT for r in existing):
         return UNIT_PERCENT
     return UNIT_MM
 
@@ -242,6 +256,51 @@ def nearest_format(w_mm: float, h_mm: float) -> str:
     """Closest ISO format by area — the sheet to show for a non-standard page."""
     area = max(w_mm * h_mm, 1.0)
     return min(ISO_FORMATS, key=lambda f: abs(f[1] * f[2] - area))[0]
+
+
+def import_regions_to_model(
+    existing: list[dict[str, float | str]] | None,
+    sheet_w: float,
+    sheet_h: float,
+    *,
+    px_dpi: float = 96.0,
+) -> list[dict[str, Any]]:
+    """What opening the dialog does: incoming zones -> the picker's mm model.
+
+    Each region is converted on its own, so one malformed neighbour cannot drop
+    the rest, and each one remembers the unit it came in with.
+    """
+    model: list[dict[str, Any]] = []
+    for raw in existing or []:
+        try:
+            rects = exclusion_regions_to_mm_rects([raw], sheet_w, sheet_h, px_dpi=px_dpi)
+        except (ValueError, KeyError, TypeError):
+            continue
+        if not rects:
+            continue
+        left, top, w, h = rects[0]
+        anchor = _canonical_anchor(raw.get("anchor") if isinstance(raw, dict) else None)
+        region = region_from_rect_mm(left, top, w, h, anchor, sheet_w, sheet_h)
+        region["unit"] = region_unit(raw)
+        model.append(region)
+    return model
+
+
+def export_regions_from_model(
+    regions: list[dict[str, Any]], sheet_w: float, sheet_h: float, default_unit: str = UNIT_MM
+) -> list[dict[str, float | str]]:
+    """What pressing OK does: the mm model -> zones, each in its own unit.
+
+    A region keeps the unit it was imported (or drawn) with. That is what makes
+    open→OK a no-op even for a set holding both percent and mm zones — the old
+    single dialog-wide unit quietly rewrote one of the two.
+    """
+    out: list[dict[str, float | str]] = []
+    for region in regions:
+        if float(region["w_mm"]) <= 0 or float(region["h_mm"]) <= 0:
+            continue
+        out.append(region_to_export(region, sheet_w, sheet_h, str(region.get("unit") or default_unit)))
+    return out
 
 
 class _RegionPicker:
@@ -415,25 +474,27 @@ class _RegionPicker:
         urow.pack(fill=tk.X)
         ttk.Radiobutton(
             urow, text=self._tr("pick_unit_mm"), value=UNIT_MM, variable=self.unit_var,
-            style="Toolbutton", command=self._update_readout, width=12,
+            style="Toolbutton", command=self._on_unit_change, width=12,
         ).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Radiobutton(
             urow, text=self._tr("pick_unit_percent"), value=UNIT_PERCENT, variable=self.unit_var,
-            style="Toolbutton", command=self._update_readout, width=12,
+            style="Toolbutton", command=self._on_unit_change, width=12,
         ).pack(side=tk.LEFT)
         self.unit_hint = ttk.Label(unit_group, text=self._tr("pick_unit_mm_hint"), foreground="#6b7280", wraplength=280)
         self.unit_hint.pack(anchor="w", pady=(6, 0))
 
         list_group = self._group(panel, "pick_regions")
         self.region_list = ttk.Treeview(
-            list_group, columns=("n", "size", "anchor"), show="headings", height=5, selectmode="browse"
+            list_group, columns=("n", "size", "anchor", "unit"), show="headings", height=5, selectmode="browse"
         )
         self.region_list.heading("n", text="#")
         self.region_list.heading("size", text=self._tr("pick_col_size"))
         self.region_list.heading("anchor", text=self._tr("pick_col_anchor"))
-        self.region_list.column("n", width=30, anchor="center", stretch=False)
-        self.region_list.column("size", width=120, anchor="w")
-        self.region_list.column("anchor", width=110, anchor="w")
+        self.region_list.heading("unit", text=self._tr("pick_col_unit"))
+        self.region_list.column("n", width=26, anchor="center", stretch=False)
+        self.region_list.column("size", width=94, anchor="w")
+        self.region_list.column("anchor", width=98, anchor="w")
+        self.region_list.column("unit", width=62, anchor="w", stretch=False)
         self.region_list.pack(fill=tk.X)
         self.region_list.bind("<<TreeviewSelect>>", self._on_list_select)
 
@@ -558,25 +619,11 @@ class _RegionPicker:
         return max(0.0, min(float(self.disp_h), y))
 
     def _import_existing(self, existing: list[dict[str, float | str]]) -> None:
-        """Convert incoming regions (any unit/anchor) into the mm model.
-
-        Converted one by one so a malformed neighbour cannot drop the rest.
-        """
         sheet_w, sheet_h = self._sheet_mm()
-        ppx, ppy = self._px_per_mm()
-        display_dpi = ppx * 25.4
-        for raw in existing or []:
-            try:
-                boxes = exclusion_regions_to_pixel_boxes([raw], self.disp_w, self.disp_h, dpi=display_dpi)
-            except (ValueError, KeyError, TypeError):
-                continue
-            if not boxes:
-                continue
-            x_px, y_px, w_px, h_px = boxes[0]
-            anchor = _canonical_anchor(raw.get("anchor") if isinstance(raw, dict) else None)
-            self.regions.append(
-                region_from_rect_mm(x_px / ppx, y_px / ppy, w_px / ppx, h_px / ppy, anchor, sheet_w, sheet_h)
-            )
+        ppx, _ppy = self._px_per_mm()
+        self.regions.extend(
+            import_regions_to_model(existing, sheet_w, sheet_h, px_dpi=ppx * 25.4)
+        )
 
     # ----- drawing -----
 
@@ -696,6 +743,7 @@ class _RegionPicker:
                         idx + 1,
                         f"{float(region['w_mm']):.0f}×{float(region['h_mm']):.0f} {self._mm()}",
                         f"{ANCHOR_ARROWS[anchor]} {self._tr(ANCHOR_KEYS[anchor])}",
+                        self._unit_label(region),
                     ),
                 )
             if self.selected is not None and self.selected < len(self.regions):
@@ -720,9 +768,22 @@ class _RegionPicker:
         self._sync_anchor_control()
         self._redraw()
 
+    def _unit_label(self, region: dict[str, Any]) -> str:
+        key = "pick_unit_mm" if str(region.get("unit") or UNIT_MM) == UNIT_MM else "pick_unit_percent"
+        return self._tr(key)
+
+    def _units_in_use(self) -> set[str]:
+        return {str(region.get("unit") or UNIT_MM) for region in self.regions}
+
     def _update_readout(self) -> None:
         unit_mm = self.unit_var.get() == UNIT_MM
-        self.unit_hint.configure(text=self._tr("pick_unit_mm_hint" if unit_mm else "pick_unit_percent_hint"))
+        # With zones in both units the hint must say so, or the selector reads as
+        # "everything here is mm" while half the set is still percent.
+        if len(self._units_in_use()) > 1:
+            hint = self._tr("pick_unit_mixed_hint")
+        else:
+            hint = self._tr("pick_unit_mm_hint" if unit_mm else "pick_unit_percent_hint")
+        self.unit_hint.configure(text=hint)
         if self.selected is None or self.selected >= len(self.regions):
             self.readout.configure(text=self._tr("pick_count", count=len(self.regions)))
             return
@@ -731,7 +792,38 @@ class _RegionPicker:
         arrow = ANCHOR_ARROWS[anchor]
         x, y = float(region["x_mm"]), float(region["y_mm"])
         w, h = float(region["w_mm"]), float(region["h_mm"])
-        self.readout.configure(text=f"{arrow} x {x:.0f} · y {y:.0f} · {w:.0f}×{h:.0f} {self._mm()}")
+        unit = self._unit_label(region)
+        self.readout.configure(text=f"{arrow} x {x:.0f} · y {y:.0f} · {w:.0f}×{h:.0f} {self._mm()} → {unit}")
+
+    # ----- units -----
+
+    def _confirm_unit_migration(self, count: int, unit: str) -> bool:
+        return bool(
+            messagebox.askyesno(
+                self._tr("pick_unit_migrate_title"),
+                self._tr(
+                    "pick_unit_migrate_body",
+                    count=count,
+                    unit=self._tr("pick_unit_mm" if unit == UNIT_MM else "pick_unit_percent"),
+                ),
+                parent=self.dialog,
+            )
+        )
+
+    def _on_unit_change(self) -> None:
+        """The unit selector is the *only* thing that may rewrite a saved zone.
+
+        Converting a zone between mm and percent changes what it excludes on a
+        differently sized sheet, so it happens on an explicit click and only after
+        the user confirms it. Declining still switches the unit for zones drawn
+        from now on — the existing ones simply keep theirs.
+        """
+        unit = self.unit_var.get()
+        stale = [region for region in self.regions if str(region.get("unit") or UNIT_MM) != unit]
+        if stale and self._confirm_unit_migration(len(stale), unit):
+            for region in stale:
+                region["unit"] = unit
+        self._redraw()
 
     # ----- anchor -----
 
@@ -842,9 +934,12 @@ class _RegionPicker:
             ppx, ppy = self._px_per_mm()
             if w / ppx >= MIN_BOX_MM and h / ppy >= MIN_BOX_MM:
                 sheet_w, sheet_h = self._sheet_mm()
-                self.regions.append(
-                    region_from_rect_mm(x / ppx, y / ppy, w / ppx, h / ppy, self.default_anchor, sheet_w, sheet_h)
+                region = region_from_rect_mm(
+                    x / ppx, y / ppy, w / ppx, h / ppy, self.default_anchor, sheet_w, sheet_h
                 )
+                # A newly drawn zone is written in whatever the unit selector shows.
+                region["unit"] = self.unit_var.get()
+                self.regions.append(region)
                 self.selected = len(self.regions) - 1
         self._mode = None
         self._handle = None
@@ -897,13 +992,9 @@ class _RegionPicker:
 
     def _accept(self) -> None:
         sheet_w, sheet_h = self._sheet_mm()
-        unit = self.unit_var.get()
-        out: list[dict[str, float | str]] = []
-        for region in self.regions:
-            if float(region["w_mm"]) <= 0 or float(region["h_mm"]) <= 0:
-                continue
-            out.append(region_to_export(region, sheet_w, sheet_h, unit))
-        self.result["regions"] = out
+        self.result["regions"] = export_regions_from_model(
+            self.regions, sheet_w, sheet_h, default_unit=self.unit_var.get()
+        )
         self.dialog.destroy()
 
     def _cancel(self, _event: tk.Event | None = None) -> None:

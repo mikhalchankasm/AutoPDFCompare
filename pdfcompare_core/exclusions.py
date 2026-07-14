@@ -103,6 +103,52 @@ def exclusion_regions_to_pixel_boxes(regions: object, width: int, height: int, d
     return boxes
 
 
+def exclusion_regions_to_mm_rects(
+    regions: object, sheet_w_mm: float, sheet_h_mm: float, *, px_dpi: float = 96.0
+) -> list[tuple[float, float, float, float]]:
+    """Regions -> exact ``(left, top, w, h)`` in mm from the sheet's top-left corner.
+
+    The raster path above rounds every edge to a whole pixel and clamps it to the
+    image — right for masking a bitmap, wrong for *editing*: a zone that goes
+    through the picker and back must return the numbers it arrived with, and a
+    70% offset that becomes 70.0431% after a pixel round-trip is a silent data
+    migration. So the editor converts in millimetres, exactly, and only the
+    drawing is pixellated.
+
+    ``px`` regions are the exception: pixels have no physical size without a
+    raster, so they are read at ``px_dpi``.
+    """
+    rects: list[tuple[float, float, float, float]] = []
+    for region in normalize_exclude_regions(regions):
+        unit = str(region.get("unit") or "percent").casefold()
+        anchor = str(region.get("anchor") or "top_left").strip().casefold().replace("-", "_")
+        x = float(region["x"])
+        y = float(region["y"])
+        w = float(region["w"])
+        h = float(region["h"])
+
+        if unit in {"px", "pixel", "pixels"}:
+            scale = 25.4 / float(px_dpi)
+            x, y, w, h = x * scale, y * scale, w * scale, h * scale
+        elif unit not in {"mm", "millimeter", "millimeters"}:
+            factor = 0.01 if unit in {"percent", "%"} else 1.0  # ratio/relative are already 0..1
+            x, w = sheet_w_mm * x * factor, sheet_w_mm * w * factor
+            y, h = sheet_h_mm * y * factor, sheet_h_mm * h * factor
+
+        if anchor in {"top_left", "left_top", "tl"}:
+            left, top = x, y
+        elif anchor in {"top_right", "right_top", "tr"}:
+            left, top = sheet_w_mm - x - w, y
+        elif anchor in {"bottom_left", "left_bottom", "bl"}:
+            left, top = x, sheet_h_mm - y - h
+        elif anchor in {"bottom_right", "right_bottom", "br"}:
+            left, top = sheet_w_mm - x - w, sheet_h_mm - y - h
+        else:
+            raise InvalidInput("zone_bad_anchor", anchor=anchor)
+        rects.append((left, top, w, h))
+    return rects
+
+
 def _parse_region_text(raw_text: str) -> list[ExcludeRegion]:
     parts = [part.strip() for part in re.split(r"[;\n]+", raw_text) if part.strip()]
     regions: list[ExcludeRegion] = []

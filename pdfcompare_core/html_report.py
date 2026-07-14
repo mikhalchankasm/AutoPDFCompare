@@ -180,6 +180,106 @@ def _prepare_pages_records(
 
 
 
+NAV_DATA_FILE = "nav-data.js"
+
+
+def _build_nav_data(ctx: _ReportContext) -> dict:
+    """The sheet list every page navigates by — built once, for all of them.
+
+    It used to be built per page and inlined into each one: the detail nav was
+    pasted into all N detail pages, and every slider re-walked all N sheets to
+    emit its own copy of the drawer *and* a JSON copy of the same list beside it.
+    That is O(N²) bytes and O(N²) work — at 1000 sheets, ~2 GB of HTML and half a
+    minute of generation, most of it the same list over and over.
+
+    Now it is one file the pages load. It stays a plain ``.js`` assigning a global,
+    not JSON fetched at runtime: the report has to open from the file system, with
+    no server, and `fetch()` of a local file is blocked by the browser's origin
+    rules. A `<script src>` is not.
+    """
+    strings, badges = ctx.strings, ctx.badges
+    i18n = strings.all
+    status_label_keys = STATUS_LABEL_KEYS
+
+    pages: list[dict] = []
+    for p in ctx.pages_records:
+        nav_a = "—" if p["a_index"] is None else f"A{p['a_index']}"
+        nav_b = "—" if p["b_index"] is None else f"B{p['b_index']}"
+        nav_diff = "—" if p["diff_metric"] is None else f'{p["diff_metric"]:.3f}%'
+        nav_fg = "—" if p.get("diff_foreground_metric") is None else f'{float(p["diff_foreground_metric"]):.2f}%'
+        nav_boxes = "—" if p["bboxes_count"] is None else str(p["bboxes_count"])
+        has_slider = bool(p.get("slider_file"))
+        status_tag = str(p.get("_status_tag") or "CHANGED")
+        level_tag = str(p.get("_level_tag") or "")
+        status_key = status_label_keys.get(status_tag, "")
+
+        pages.append(
+            {
+                # The slider drawer highlights the current sheet by view order.
+                "seq": p["view_ord"],
+                "label": f"{nav_a} -> {nav_b}",
+                "status": status_tag,
+                "statusRu": str(i18n["ru"].get(status_key, status_tag)),
+                "statusEn": str(i18n["en"].get(status_key, status_tag)),
+                "level": level_tag,
+                "hasSlider": has_slider,
+                "href": str(p["slider_file"] if has_slider else p["view_file"]),
+                "diff": nav_diff,
+                "boxes": nav_boxes,
+                "metaRu": (
+                    "Слайдер недоступен · открыть страницу листа"
+                    if not has_slider
+                    else f"заполнено {nav_fg} · {nav_boxes} областей"
+                ),
+                "metaEn": (
+                    "Slider unavailable · open sheet page"
+                    if not has_slider
+                    else f"drawn {nav_fg} · {nav_boxes} boxes"
+                ),
+                "titleRu": (
+                    "Слайдер недоступен для добавленных/удалённых листов" if not has_slider else p["nav_label"]
+                ),
+                "titleEn": ("Slider not available for added/removed sheets" if not has_slider else p["nav_label"]),
+                "ariaRu": (
+                    "Слайдер недоступен для добавленных/удалённых листов"
+                    if not has_slider
+                    else "Открыть лист в слайдере"
+                ),
+                "ariaEn": (
+                    "Slider not available for added/removed sheets" if not has_slider else "Open sheet in slider"
+                ),
+                "search": (
+                    f"{p['view_ord']} {nav_a} {nav_b} {p['status_ru']} {status_tag} "
+                    f"{level_tag} {nav_fg} {nav_diff} {nav_boxes} {p['notes']}"
+                ).lower(),
+                # The detail-page sidebar lists sheets by their report row number.
+                "viewFile": str(p["view_file"]),
+                "navShort": f"{p['seq']} · {nav_a} -> {nav_b}",
+                "navLabel": str(p["nav_label"]),
+                "navSearch": (
+                    f"{p['seq']} · {nav_a} -> {nav_b} {p['nav_label']} {p['status_ru']} {status_tag} "
+                    f"{level_tag} {p['b_index'] or ''} {p['a_index'] or ''}"
+                ).lower(),
+            }
+        )
+
+    # Only a handful of distinct badges exist, so they are rendered once here
+    # instead of once per sheet per page.
+    badge_html = {
+        tag: badges.status_badge_html(tag) for tag in sorted({str(p["status"]) for p in pages} | {"CHANGED"})
+    }
+    return {
+        "badges": badge_html,
+        "navOkIcon": report_icon("check-circle", "ic nav-ok", 16),
+        "pages": pages,
+    }
+
+
+def _write_nav_data(ctx: _ReportContext) -> None:
+    payload = json.dumps(_build_nav_data(ctx), ensure_ascii=False, separators=(",", ":"))
+    (ctx.bundle_dir / NAV_DATA_FILE).write_text(f"window.PDFCOMPARE_NAV={payload};\n", encoding="utf-8")
+
+
 @dataclass
 class _ReportContext:
     """Everything the page builders need from the run.
@@ -617,7 +717,7 @@ def _write_slider_view(
 ) -> None:
     """Write the side-by-side slider page for one sheet (cmp_NNN.html)."""
     strings, badges = ctx.strings, ctx.badges
-    lang, t, i18n = strings.lang, strings.t, strings.all
+    lang, t = strings.lang, strings.t
     i18n_span_text = strings.i18n_span_text
     i18n_aria = strings.i18n_aria
     i18n_placeholder_text = strings.i18n_placeholder_text
@@ -625,7 +725,6 @@ def _write_slider_view(
     title_text = strings.title_text
     status_badge_html = badges.status_badge_html
     level_badge_html = badges.level_badge_html
-    status_label_keys = STATUS_LABEL_KEYS
     pages_records = ctx.pages_records
     views_dir = ctx.views_dir
     slider_record_by_file = ctx.slider_record_by_file
@@ -651,90 +750,6 @@ def _write_slider_view(
             if next_slider_file and next_slider_rec
             else f'<span class="btn primary disabled">{i18n_span_text("Последний лист", "Last sheet")}{report_icon("chevron-right", size=16)}</span>'
         )
-        slider_nav_items: list[str] = []
-        all_sheets_data: list[dict] = []
-        for nav_p in pages_records:
-            nav_a = "—" if nav_p["a_index"] is None else f"A{nav_p['a_index']}"
-            nav_b = "—" if nav_p["b_index"] is None else f"B{nav_p['b_index']}"
-            nav_diff = "—" if nav_p["diff_metric"] is None else f'{nav_p["diff_metric"]:.3f}%'
-            nav_fg = "—" if nav_p.get("diff_foreground_metric") is None else f'{float(nav_p["diff_foreground_metric"]):.2f}%'
-            nav_boxes = "—" if nav_p["bboxes_count"] is None else str(nav_p["bboxes_count"])
-            nav_has_slider = bool(nav_p.get("slider_file"))
-            nav_href = str(nav_p["slider_file"] if nav_has_slider else nav_p["view_file"])
-            nav_current = " current" if nav_p.get("slider_file") == slider_file else ""
-            nav_disabled = "" if nav_has_slider else " disabled-slider"
-            nav_status_tag = str(nav_p.get("_status_tag") or "CHANGED")
-            nav_level_tag = str(nav_p.get("_level_tag") or "")
-            status_key = status_label_keys.get(nav_status_tag, "")
-            nav_status_ru = str(i18n["ru"].get(status_key, nav_status_tag))
-            nav_status_en = str(i18n["en"].get(status_key, nav_status_tag))
-            nav_search = (
-                f"{nav_p['view_ord']} {nav_a} {nav_b} {nav_p['status_ru']} {nav_status_tag} "
-                f"{nav_level_tag} {nav_fg} {nav_diff} {nav_boxes} {nav_p['notes']}"
-            ).lower()
-            nav_title_ru = (
-                "Слайдер недоступен для добавленных/удалённых листов"
-                if not nav_has_slider
-                else nav_p["nav_label"]
-            )
-            nav_title_en = (
-                "Slider not available for added/removed sheets"
-                if not nav_has_slider
-                else nav_p["nav_label"]
-            )
-            nav_aria_ru = (
-                "Слайдер недоступен для добавленных/удалённых листов"
-                if not nav_has_slider
-                else "Открыть лист в слайдере"
-            )
-            nav_aria_en = (
-                "Slider not available for added/removed sheets"
-                if not nav_has_slider
-                else "Open sheet in slider"
-            )
-            nav_meta_ru = (
-                "Слайдер недоступен · открыть страницу листа"
-                if not nav_has_slider
-                else f"заполнено {nav_fg} · {nav_boxes} областей"
-            )
-            nav_meta_en = (
-                "Slider unavailable · open sheet page"
-                if not nav_has_slider
-                else f"drawn {nav_fg} · {nav_boxes} boxes"
-            )
-            nav_title = title_text(nav_title_ru, nav_title_en)
-            nav_aria = i18n_aria(nav_aria_ru, nav_aria_en)
-            nav_meta = i18n_span_text(nav_meta_ru, nav_meta_en)
-            all_sheets_data.append(
-                {
-                    "seq": nav_p["view_ord"],
-                    "label": f"{nav_a} -> {nav_b}",
-                    "status": nav_status_tag,
-                    "statusRu": nav_status_ru,
-                    "statusEn": nav_status_en,
-                    "level": nav_level_tag,
-                    "hasSlider": nav_has_slider,
-                    "href": nav_href,
-                    "diff": nav_diff,
-                    "boxes": nav_boxes,
-                    "metaRu": nav_meta_ru,
-                    "metaEn": nav_meta_en,
-                    "titleRu": nav_title_ru,
-                    "titleEn": nav_title_en,
-                    "ariaRu": nav_aria_ru,
-                    "ariaEn": nav_aria_en,
-                    "search": nav_search,
-                }
-            )
-            slider_nav_items.append(
-                f"<a class='slider-nav-item{nav_current}{nav_disabled}' data-label='{html.escape(nav_search, quote=True)}' "
-                f"href='{html.escape(nav_href, quote=True)}' role='menuitem' title='{nav_title}' {nav_aria}>"
-                f"<span class='slider-nav-main'><b>{html.escape(str(nav_p['view_ord']))} · {html.escape(nav_a)} -> {html.escape(nav_b)}</b>"
-                f"{status_badge_html(nav_status_tag)}</span>"
-                f"<span class='slider-nav-meta'>{nav_meta}</span></a>"
-            )
-        slider_nav_html = "".join(slider_nav_items)
-        all_sheets_js = json.dumps(all_sheets_data, ensure_ascii=False)
         slider_title_ru = f"Слайдер — лист {view_idx} / {len(pages_records)}"
         slider_title_en = f"Slider — sheet {view_idx} / {len(pages_records)}"
         slider_html = f"""<!doctype html>
@@ -826,7 +841,7 @@ def _write_slider_view(
         <button class="sheet-drawer-pin" id="drawerPin" type="button" {i18n_aria("Открепить панель", "Unpin panel")}>📌</button>
       </div>
       <input id="sliderNavSearch" class="slider-nav-search" type="search" {i18n_placeholder_text("Поиск…", "Search…")}/>
-      <div id="sliderNavList" class="slider-nav-list">{slider_nav_html}</div>
+      <div id="sliderNavList" class="slider-nav-list"></div>
       <div class="sheet-drawer-hint muted">{i18n_span_text("📌 — открепить · ←/→ — соседний лист", "📌 — unpin · ←/→ — adjacent sheet")}</div>
     </div>
   </aside>
@@ -904,6 +919,7 @@ def _write_slider_view(
       </div>
   </div>
   </div>
+  <script src="../{NAV_DATA_FILE}"></script>
   <script>
     const oldSrc = {json.dumps(old_src)};
     const newSrc = {json.dumps(new_src)};
@@ -929,7 +945,7 @@ def _write_slider_view(
     const bboxOpacity = document.getElementById('bboxOpacity');
     const bboxOpacityValue = document.getElementById('bboxOpacityValue');
     const bboxSwatch = document.getElementById('bboxSwatch');
-    const allSheets = {all_sheets_js};
+    const allSheets = (window.PDFCOMPARE_NAV && window.PDFCOMPARE_NAV.pages) || [];
     const currentSeq = {view_idx};
     const drawer = document.getElementById('sheetDrawer');
     const drawerHandle = drawer ? drawer.querySelector('.sheet-drawer-handle') : null;
@@ -1374,7 +1390,6 @@ def _write_page_views(
     ctx: _ReportContext,
     p: dict,
     view_idx: int,
-    nav_html: str,
     status_counts: dict[str, int],
 ) -> None:
     """Write both pages for one sheet: the detail view and the slider view."""
@@ -1538,7 +1553,7 @@ def _write_page_views(
         {report_icon("search", size=16)}
         <input id="search" class="search" {i18n_attr("search_sheet", "placeholder")} placeholder="{tr_attr("search_sheet")}"/>
       </label>
-      <div id="navList" class="nav-list">{nav_html}</div>
+      <div id="navList" class="nav-list"></div>
     </aside>
 
     <main class="view-area">
@@ -1577,9 +1592,34 @@ def _write_page_views(
     </main>
   </div>
 
+  <script src="../{NAV_DATA_FILE}"></script>
   <script>
     const current = "{html.escape(p['view_file'], quote=True)}";
     const primarySliderHref = {json.dumps(slider_file or "")};
+    const NAV = window.PDFCOMPARE_NAV || {{ pages: [], badges: {{}}, navOkIcon: '' }};
+    function escapeHtml(value) {{
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({{
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }}[ch]));
+    }}
+    // The sheet list is the same on every detail page, so it ships once as
+    // nav-data.js and is rendered here — inlining it into all N pages was PDF-008.
+    const navList = document.getElementById('navList');
+    if (navList) {{
+      navList.innerHTML = NAV.pages.map(sheet => {{
+        const badge = sheet.status === 'UNCHANGED'
+          ? NAV.navOkIcon
+          : (NAV.badges[sheet.status] || NAV.badges.CHANGED || '');
+        return '<a class="nav-item" data-label="' + escapeHtml(sheet.navSearch) + '"'
+          + ' title="' + escapeHtml(sheet.navLabel) + '"'
+          + ' href="' + escapeHtml(sheet.viewFile) + '">'
+          + '<span class="nav-main">' + escapeHtml(sheet.navShort) + '</span>' + badge + '</a>';
+      }}).join('');
+    }}
     document.querySelectorAll('.nav-item').forEach(a => {{
       const href = a.getAttribute('href');
       if (href === current) a.classList.add('current');
@@ -1794,7 +1834,6 @@ def generate_html_report(
 
 
     badges = ReportBadges(strings, high_dpi)
-    status_badge_html = badges.status_badge_html
 
     views_dir = bundle_dir / "views"
     views_dir.mkdir(parents=True, exist_ok=True)
@@ -1821,30 +1860,12 @@ def generate_html_report(
     summary_html, status_counts = _build_dashboard_html(ctx)
     (bundle_dir / "index.html").write_text(summary_html, encoding="utf-8")
 
-    nav_items = []
-    for p in pages_records:
-        nav_a = "—" if p["a_index"] is None else f"A{p['a_index']}"
-        nav_b = "—" if p["b_index"] is None else f"B{p['b_index']}"
-        nav_short = f"{p['seq']} · {nav_a} -> {nav_b}"
-        search_label = (
-            f"{nav_short} {p['nav_label']} {p['status_ru']} {p.get('_status_tag', '')} "
-            f"{p.get('_level_tag', '')} {p['b_index'] or ''} {p['a_index'] or ''}"
-        ).lower()
-        nav_status = (
-            report_icon("check-circle", "ic nav-ok", 16)
-            if p.get("_status_tag") == "UNCHANGED"
-            else status_badge_html(str(p.get("_status_tag") or "CHANGED"))
-        )
-        nav_items.append(
-            f"<a class='nav-item' data-label='{html.escape(search_label, quote=True)}' "
-            f"title='{html.escape(p['nav_label'], quote=True)}' href='{html.escape(p['view_file'], quote=True)}'>"
-            f"<span class='nav-main'>{html.escape(nav_short)}</span>{nav_status}</a>"
-        )
-    nav_html = "".join(nav_items)
+    # One shared sheet list for every detail page and every slider (PDF-008).
+    _write_nav_data(ctx)
 
     total_views = max(1, len(pages_records))
     for view_idx, p in enumerate(pages_records, start=1):
-        _write_page_views(ctx, p, view_idx, nav_html, status_counts)
+        _write_page_views(ctx, p, view_idx, status_counts)
         emit(66 + 32 * (view_idx / total_views), t["progress_generate_view"].format(idx=view_idx, total=total_views))
 
     # The report bundle and start.html are published together: the previous

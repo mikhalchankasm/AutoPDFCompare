@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -22,13 +23,40 @@ from compare_pdfs import (
     RunCancelled,
     compare_pdfs,
     find_summary_json_path,
+    localize_error,
     regenerate_report_pages_mixed,
     sanitize_run_folder_name,
 )
+from scripts.process_identity import self_identity
+
+HEARTBEAT_INTERVAL_SEC = 2.0
 
 
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def start_heartbeat(path: Path) -> threading.Event:
+    """Touch a file every couple of seconds for as long as this process runs.
+
+    Without it the MCP server cannot tell a worker that is *slow* from one that is
+    *stuck*: a single A0 sheet at 600 DPI renders for longer than any sensible
+    cancel grace, and killing it there aborts the re-render transaction halfway.
+    The heartbeat is what buys a long, healthy phase the time it needs.
+    """
+    stop = threading.Event()
+
+    def beat() -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        while not stop.is_set():
+            try:
+                path.write_text(now_iso(), encoding="utf-8")
+            except OSError:
+                pass  # a heartbeat that cannot be written must not kill the run
+            stop.wait(HEARTBEAT_INTERVAL_SEC)
+
+    threading.Thread(target=beat, name="pdfcompare-heartbeat", daemon=True).start()
+    return stop
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -81,10 +109,19 @@ def main() -> int:
     parser.add_argument("--status", type=Path, required=True)
     parser.add_argument("--events", type=Path, required=True)
     parser.add_argument("--cancel", type=Path, required=False)
+    parser.add_argument("--heartbeat", type=Path, required=False)
+    parser.add_argument("--identity", type=Path, required=False)
     args = parser.parse_args()
+
+    if args.identity:
+        # We record ourselves, because the server cannot: in a virtualenv the PID it
+        # got back from Popen belongs to the python.exe launcher, not to this process.
+        # A cancel that pinned that PID would be pinning the wrong thing.
+        atomic_write_json(args.identity, {**self_identity(), "recorded_at": now_iso()})
 
     request = load_json(args.request)
     job_id = str(request["job_id"])
+    lang = str(request.get("lang") or "ru")
     operation = str(request.get("operation") or "compare")
     if operation == "rerender":
         expected_run_dir = Path(str(request["run_dir"]))
@@ -122,6 +159,9 @@ def main() -> int:
     atomic_write_json(args.status, status)
     append_event(args.events, {"at": now_iso(), "state": "running", "message": status["message"]})
 
+    if args.heartbeat:
+        start_heartbeat(args.heartbeat)
+
     def is_cancelled() -> bool:
         """Cooperative cancel: the MCP server drops a marker file here.
 
@@ -129,8 +169,23 @@ def main() -> int:
         after the new pages are swapped in but before summary/report are written —
         leaving the run inconsistent with no rollback. Polling a file lets the
         transaction unwind properly.
+
+        Seeing the marker is also acknowledged in the status, so the server knows
+        the cooperative path has engaged and that what follows is a rollback, not a
+        hang. That is the difference between waiting and force-killing.
         """
-        return bool(args.cancel and args.cancel.exists())
+        if not (args.cancel and args.cancel.exists()):
+            return False
+        if not status.get("cancel_acknowledged_at"):
+            status["cancel_acknowledged_at"] = now_iso()
+            status["message"] = "Отмена принята, откат изменений"
+            status["updated_at"] = now_iso()
+            atomic_write_json(args.status, status)
+            append_event(
+                args.events,
+                {"at": status["updated_at"], "state": "cancelling", "message": status["message"]},
+            )
+        return True
 
     def update_progress(progress: float, message: str) -> None:
         display_message = message
@@ -249,19 +304,32 @@ def main() -> int:
         return 0
     except Exception as exc:
         shutil.rmtree(work_out_dir, ignore_errors=True)
+        # What the user reads is in the language they asked for; what a maintainer
+        # reads — error_detail and the traceback — stays the original Russian text,
+        # so existing log matching and diagnostics keep working.
+        message = localize_error(exc, lang)
         status.update(
             {
                 "state": "failed",
                 "progress": status.get("progress", 0.0),
-                "message": str(exc),
-                "error": str(exc),
+                "message": message,
+                "error": message,
+                "error_detail": str(exc),
                 "traceback": traceback.format_exc(),
                 "completed_at": now_iso(),
                 "updated_at": now_iso(),
             }
         )
         atomic_write_json(args.status, status)
-        append_event(args.events, {"at": status["updated_at"], "state": "failed", "message": str(exc)})
+        append_event(
+            args.events,
+            {
+                "at": status["updated_at"],
+                "state": "failed",
+                "message": message,
+                "error_detail": str(exc),
+            },
+        )
         return 1
 
 

@@ -100,7 +100,14 @@ def _normalize(text: str, tmp_root: Path, run_dir: Path) -> str:
 
 def _hash_report(run_dir: Path, tmp_root: Path) -> dict[str, str]:
     bundle = internal_dir(run_dir) / "report"
-    targets = sorted(bundle.rglob("*.html")) + sorted(bundle.rglob("*.json")) + [run_dir / "start.html"]
+    # nav-data.js is the shared sheet list every page renders from (PDF-008): it is
+    # report output like any other, so it is pinned like any other.
+    targets = (
+        sorted(bundle.rglob("*.html"))
+        + sorted(bundle.rglob("*.json"))
+        + sorted(bundle.rglob("*.js"))
+        + [run_dir / "start.html"]
+    )
     digests = {}
     for path in targets:
         if not path.exists():

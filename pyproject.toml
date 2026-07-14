@@ -26,10 +26,31 @@ ignore = [
 "compare_pdfs.py" = ["F401"]  # facade module re-exports pdfcompare_core symbols
 
 [tool.mypy]
+# Not `strict = true`, and the docs must not say it is. Strict adds ~99 findings,
+# most of them bare generics (`list`, `dict`) in the GUI layer and Tk callbacks
+# whose parameters the stubs cannot type. Those are being paid down; what is
+# already clean is switched on here and must stay clean.
+#
+# Still to enable (error count at v0.1.20, run mypy with the flag to re-measure):
+#   disallow_untyped_defs   (5)  — Tk DnD callbacks in pdfcompare_ui/dnd.py
+#   disallow_untyped_calls  (5)  — ttk.Notebook.tab()/index() are untyped in the stubs
+#   warn_return_any         (9)
+#   disallow_any_generics   (45)
 python_version = "3.12"
+# scripts/ is a namespace package (no __init__.py — these are entry points run as
+# files). Without an explicit base, mypy sees scripts/process_identity.py both as
+# `process_identity` and as `scripts.process_identity` and refuses to check it.
+mypy_path = "."
+namespace_packages = true
+explicit_package_bases = true
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
-check_untyped_defs = false
+# The bodies of unannotated functions used to be skipped entirely — the weakest
+# possible setting, and it hid real errors rather than deferring them.
+check_untyped_defs = true
+disallow_untyped_decorators = true
+strict_equality = true
+warn_unused_configs = true
 exclude = '(^|/)(\.venv|build|dist|runs|TestDocs|report_bundle)(/|$)'

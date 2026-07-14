@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import multiprocessing
+import sys
 from pathlib import Path
 
 from .constants import APP_NAME, APP_VERSION, START_REPORT_FILE
-from .errors import RunFailed
+from .errors import InvalidInput, PDFCompareError, RunFailed, localize_error
 from .diff_engine import DIFF_STRICTNESS_CHOICES
 from .exclusions import normalize_exclude_regions
 from .runner import compare_pdfs, validate_render_dpi
@@ -68,35 +69,43 @@ def main() -> None:
         help="Experimental: max merged box area relative to the page area. Default 16.",
     )
     args = parser.parse_args()
+    # --lang picks the report language, and with it the language the user reads
+    # errors in: an English run that fails in Russian is the bug this closes.
+    lang = str(args.lang)
 
     if bool(args.old) != bool(args.new):
-        parser.error("Укажите оба параметра --old и --new (либо ни одного, чтобы использовать --input-dir)")
+        parser.error(localize_error(InvalidInput("cli_old_new_together"), lang))
+
     try:
         args.dpi = validate_render_dpi(args.dpi)
-    except ValueError as exc:
-        parser.error(str(exc))
+        exclude_regions = normalize_exclude_regions(";".join(args.exclude_region))
 
-    if args.old and args.new:
-        file_a = args.old
-        file_b = args.new
-    else:
-        file_a, file_b = pick_two_pdfs(args.input_dir)
+        if args.old and args.new:
+            file_a = args.old
+            file_b = args.new
+        else:
+            file_a, file_b = pick_two_pdfs(args.input_dir)
 
-    run_dir = compare_pdfs(
-        file_a,
-        file_b,
-        args.out_dir,
-        high_dpi=args.dpi,
-        stroke_tol_px=args.stroke_tol,
-        exclude_regions=normalize_exclude_regions(";".join(args.exclude_region)),
-        diff_strictness=args.diff_strictness,
-        report_lang=args.lang,
-        run_name=args.run_name or None,
-        keep_debug_images=args.keep_debug_images,
-        workers=args.workers,
-        bbox_merge_gap_mm=args.bbox_merge_gap_mm,
-        bbox_merge_max_area_ratio=args.bbox_merge_max_area_ratio,
-    )
+        run_dir = compare_pdfs(
+            file_a,
+            file_b,
+            args.out_dir,
+            high_dpi=args.dpi,
+            stroke_tol_px=args.stroke_tol,
+            exclude_regions=exclude_regions,
+            diff_strictness=args.diff_strictness,
+            report_lang=args.lang,
+            run_name=args.run_name or None,
+            keep_debug_images=args.keep_debug_images,
+            workers=args.workers,
+            bbox_merge_gap_mm=args.bbox_merge_gap_mm,
+            bbox_merge_max_area_ratio=args.bbox_merge_max_area_ratio,
+        )
+    except PDFCompareError as exc:
+        # str(exc) stays Russian for logs; the user gets their own language.
+        print(localize_error(exc, lang), file=sys.stderr)
+        raise SystemExit(2) from exc
+
     print(f"Готово. Результаты: {run_dir}")
     print(f"Открыть отчёт: {run_dir / START_REPORT_FILE}")
 
