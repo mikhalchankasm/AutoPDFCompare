@@ -24,7 +24,6 @@ from mcp.server.fastmcp import FastMCP
 from compare_pdfs import (
     APP_VERSION,
     DIFF_STRICTNESS_CHOICES,
-    MAX_RUN_FOLDER_NAME_LEN,
     START_REPORT_FILE,
     InvalidInput,
     PDFCompareError,
@@ -35,6 +34,7 @@ from compare_pdfs import (
     sanitize_run_folder_name,
     validate_render_dpi,
 )
+from pdfcompare_core.run_names import suggest_folder_names
 from scripts.process_identity import pid_exists, process_create_time, same_process
 
 TRANSPORTS: tuple[Literal["stdio", "sse", "streamable-http"], ...] = ("stdio", "sse", "streamable-http")
@@ -78,7 +78,6 @@ mcp = FastMCP(
 STATE_ROOT = REPO_ROOT / ".pdfcompare_mcp"
 JOBS_ROOT = STATE_ROOT / "jobs"
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
-TOKEN_RE = re.compile(r"[A-Za-zА-Яа-я0-9]+")
 ACTIVE_JOB_STATES = {"queued", "running"}
 LAST_CLEANUP_AT = 0.0
 CANCEL_POLL_SEC = 0.2
@@ -275,90 +274,6 @@ def find_existing_comparisons(out_dir: Path, old_path: Path | None = None, new_p
             runs.append(item)
     runs.sort(key=lambda row: (float(row.get("similarity") or 0.0), str(row.get("created_at") or "")), reverse=True)
     return runs[:limit]
-
-
-def extract_revision(stem: str) -> str | None:
-    patterns = [
-        r"(?i)(?:^|[^A-Za-zА-Яа-я0-9])(?:rev(?:ision)?|r)[-_ ]*([A-Za-zА-Яа-я]*\d+[A-Za-zА-Яа-я]*)\b",
-        r"(?i)([A-Za-zА-Яа-я]{1,3}\d{1,4}[A-Za-zА-Яа-я]{0,2})$",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, stem)
-        if match:
-            return match.group(1).upper()
-    return None
-
-
-def common_prefix_tokens(left: str, right: str) -> list[str]:
-    left_tokens = TOKEN_RE.findall(left)
-    right_tokens = TOKEN_RE.findall(right)
-    common: list[str] = []
-    for left_token, right_token in zip(left_tokens, right_tokens, strict=False):
-        if left_token.casefold() != right_token.casefold():
-            break
-        common.append(left_token)
-    return common
-
-
-def compact_name(name: str, max_len: int = 70) -> str:
-    normalized = re.sub(r"\s+", "_", str(name or "").strip(), flags=re.UNICODE)
-    normalized = re.sub(r"_+", "_", normalized).strip(" ._")
-    if not normalized:
-        normalized = "Comparison"
-    if len(normalized) > max_len:
-        normalized = normalized[:max_len].rstrip(" ._")
-    return sanitize_run_folder_name(normalized)
-
-
-def available_folder_name(out_dir: Path, raw_name: str) -> str:
-    base = compact_name(raw_name, MAX_RUN_FOLDER_NAME_LEN)
-    candidate = base
-    index = 2
-    while (out_dir / candidate).exists():
-        suffix = f"_{index}"
-        candidate = sanitize_run_folder_name(f"{base[: max(1, MAX_RUN_FOLDER_NAME_LEN - len(suffix))]}{suffix}")
-        index += 1
-    return sanitize_run_folder_name(candidate)
-
-
-def suggest_folder_names(old_path: Path, new_path: Path, out_dir: Path) -> list[dict[str, str]]:
-    old_stem = old_path.stem
-    new_stem = new_path.stem
-    old_rev = extract_revision(old_stem)
-    new_rev = extract_revision(new_stem)
-    common = common_prefix_tokens(old_stem, new_stem)
-    if common:
-        base = compact_name("_".join(common[:8]), max_len=60)
-    else:
-        prefix = os.path.commonprefix([old_stem, new_stem]).strip(" ._-")
-        base = compact_name(prefix or old_stem[:36], max_len=60)
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    raw_suggestions: list[tuple[str, str]] = []
-    if old_rev and new_rev:
-        raw_suggestions.append((f"{base}_{old_rev}_vs_{new_rev}", "общая часть имени + найденные ревизии"))
-    raw_suggestions.extend(
-        [
-            (f"{base}_old_vs_new", "нейтральное имя для пары старый/новый"),
-            (f"{compact_name(old_stem, 36)}_vs_{compact_name(new_stem, 36)}", "полные имена обоих PDF"),
-            (f"Comparison_{today}_{base}", "дата запуска + общий идентификатор документов"),
-        ]
-    )
-
-    seen: set[str] = set()
-    suggestions: list[dict[str, str]] = []
-    for raw_name, reason in raw_suggestions:
-        try:
-            name = available_folder_name(out_dir, raw_name)
-        except ValueError:
-            continue
-        if name.casefold() in seen:
-            continue
-        seen.add(name.casefold())
-        suggestions.append({"name": name, "reason": reason})
-        if len(suggestions) >= 4:
-            break
-    return suggestions
 
 
 def job_dir(job_id: str) -> Path:

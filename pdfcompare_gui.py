@@ -30,6 +30,7 @@ from compare_pdfs import (
     sanitize_run_folder_name,
 )
 from pdfcompare_core.errors import localize_error
+from pdfcompare_core.run_names import available_folder_name, suggest_run_folder_name
 from pdfcompare_ui.compare_tab import CompareTabMixin
 from pdfcompare_ui.dnd import DragDropMixin
 from pdfcompare_ui.exclusion_picker import format_regions_for_field, pick_exclude_regions
@@ -106,7 +107,6 @@ class PDFCompareApp(
         self.old_pdf = tk.StringVar()
         self.new_pdf = tk.StringVar()
         self.out_dir = tk.StringVar()
-        self.run_name = tk.StringVar()
         self.dpi = tk.StringVar(value="250")
         self.stroke_tol = tk.StringVar(value="2.0")
         self.diff_strictness = tk.StringVar(value="normal")
@@ -179,8 +179,7 @@ class PDFCompareApp(
         self.old_label: ttk.Label | None = None
         self.new_label: ttk.Label | None = None
         self.out_label: ttk.Label | None = None
-        self.run_name_label: ttk.Label | None = None
-        self.run_name_hint_label: ttk.Label | None = None
+        self.out_hint_label: ttk.Label | None = None
         # old_entry / new_entry are file-card containers (tk.Frame returned
         # by _build_file_card); only out_entry is a real Entry widget.
         self.old_entry: tk.Frame | None = None
@@ -189,6 +188,7 @@ class PDFCompareApp(
         self.old_pick_btn: ttk.Button | None = None
         self.new_pick_btn: ttk.Button | None = None
         self.out_pick_btn: ttk.Button | None = None
+        self.out_gen_btn: ttk.Button | None = None
         self.options_dpi_label: ttk.Label | None = None
         self.options_dpi_hint_label: ttk.Label | None = None
         self.options_stroke_label: ttk.Label | None = None
@@ -319,10 +319,10 @@ class PDFCompareApp(
             self.new_label.configure(text=self._tr("path_new").replace("● ", "").upper())
         if self.out_label is not None:
             self.out_label.configure(text=self._section_title("path_out"))
-        if self.run_name_label is not None:
-            self.run_name_label.configure(text=self._tr("path_run_name"))
-        if self.run_name_hint_label is not None:
-            self.run_name_hint_label.configure(text=self._tr("path_run_name_hint"))
+        if self.out_hint_label is not None:
+            self.out_hint_label.configure(text=self._tr("path_out_hint"))
+        if self.out_gen_btn is not None:
+            self.out_gen_btn.configure(text=self._tr("btn_gen_folder"))
         if self.old_pick_btn is not None:
             self.old_pick_btn.configure(text=self._tr("btn_select"))
         if self.swap_btn is not None:
@@ -920,7 +920,6 @@ class PDFCompareApp(
             self.old_pdf,
             self.new_pdf,
             self.out_dir,
-            self.run_name,
             self.dpi,
             self.stroke_tol,
             self.diff_strictness,
@@ -997,6 +996,90 @@ class PDFCompareApp(
             self.out_dir.set(p)
             self._save_state()
 
+    def _out_folder_base(self, ask: bool = True) -> Path | None:
+        """The folder a generated run name goes into.
+
+        An existing folder in the field is that folder; anything else is a path
+        that does not exist yet, so its parent is the base — pressing "generate"
+        twice replaces the name instead of nesting one folder inside another.
+        """
+        text = self.out_dir.get().strip()
+        if text:
+            try:
+                path = Path(text)
+                if path.is_dir():
+                    return path
+                parent = path.parent
+                if str(parent) not in ("", "."):
+                    return parent
+            except OSError:
+                pass
+        if not ask:
+            return None
+        selected = filedialog.askdirectory(
+            title=self._tr("dlg_pick_out"), initialdir=self._dialog_initialdir(self.old_pdf.get())
+        )
+        return Path(selected) if selected else None
+
+    def _generate_out_folder_name(self) -> None:
+        """Fill the field with <base folder>/<name built from the two PDFs>."""
+        old = self.old_pdf.get().strip()
+        new = self.new_pdf.get().strip()
+        if not old or not new:
+            messagebox.showinfo(self._tr("err_file_missing_title"), self._tr("err_gen_folder_needs_files"))
+            return
+        base = self._out_folder_base()
+        if base is None:
+            return
+        try:
+            name = available_folder_name(base, suggest_run_folder_name(Path(old), Path(new)))
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(self._tr("err_invalid_option_title"), localize_error(exc, self.lang.get()))
+            return
+        self.out_dir.set(str(base / name))
+        self._save_state()
+
+    def _resolve_run_dir(self, out_text: str, old: Path, new: Path) -> Path | None:
+        """Turn the folder field into the run folder to create, or None on error.
+
+        An existing folder is a container — a name is generated inside it, so
+        "pick a folder, press Compare" never writes a report into a folder that
+        already holds something else.
+        """
+        path = Path(out_text)
+        try:
+            is_dir = path.is_dir()
+            exists = path.exists()
+        except OSError as exc:
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_out_create_failed", path=path, error=exc))
+            return None
+        if exists and not is_dir:
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_out_not_a_folder", path=path))
+            return None
+        if is_dir:
+            try:
+                run_dir = path / available_folder_name(path, suggest_run_folder_name(old, new))
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(self._tr("err_invalid_option_title"), localize_error(exc, self.lang.get()))
+                return None
+        else:
+            try:
+                run_dir = path.parent / sanitize_run_folder_name(path.name)
+            except ValueError as exc:
+                messagebox.showerror(self._tr("err_invalid_option_title"), localize_error(exc, self.lang.get()))
+                return None
+        # What runs is what the field shows: sanitising happened above.
+        self.out_dir.set(str(run_dir))
+        try:
+            run_dir.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            messagebox.showerror(
+                self._tr("err_invalid_option_title"),
+                self._tr("err_out_create_failed", path=run_dir.parent, error=exc),
+            )
+            return None
+        return run_dir
+
     def _swap_files(self) -> None:
         """Swap old and new PDF paths"""
         old_val = self.old_pdf.get()
@@ -1011,7 +1094,6 @@ class PDFCompareApp(
         self.old_pdf.set("")
         self.new_pdf.set("")
         self.out_dir.set("")
-        self.run_name.set("")
         self.exclude_regions.set("")
         self.bbox_merge.set("off")
         self.bbox_merge_gap.set("5")
@@ -1073,8 +1155,12 @@ class PDFCompareApp(
                 return
             self.out_dir.set(selected)
             out = selected
-        out_path = Path(out)
-        out_path.mkdir(parents=True, exist_ok=True)
+        run_dir = self._resolve_run_dir(out, old, new)
+        if run_dir is None:
+            self._set_status("status_run_cancel_no_out")
+            return
+        out_path = run_dir.parent
+        run_name = run_dir.name
 
         try:
             dpi = int(self.dpi.get().strip())
@@ -1109,20 +1195,9 @@ class PDFCompareApp(
         if diff_strictness not in DIFF_STRICTNESS_CHOICES:
             messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_invalid_option_strictness"))
             return
-        run_name = self.run_name.get().strip() or None
-        if run_name is not None:
-            try:
-                run_name = sanitize_run_folder_name(run_name)
-            except ValueError as exc:
-                messagebox.showerror(self._tr("err_invalid_option_title"), localize_error(exc, self.lang.get()))
-                return
-            self.run_name.set(run_name)
-            if (out_path / run_name).exists():
-                messagebox.showerror(
-                    self._tr("err_invalid_option_title"),
-                    self._tr("err_run_exists", path=out_path / run_name),
-                )
-                return
+        if run_dir.exists():
+            messagebox.showerror(self._tr("err_invalid_option_title"), self._tr("err_run_exists", path=run_dir))
+            return
 
         self.last_inputs = self._capture_inputs()
         self._save_state()
@@ -1283,7 +1358,9 @@ class PDFCompareApp(
                             "run_dir": str(run_dir),
                         }
                     )
-                    self.run_name.set("")
+                    # The run folder now exists, so leaving it in the field would make
+                    # the next Compare collide with it: point the field back at its parent.
+                    self.out_dir.set(str(out_dir))
                     self._save_state()
                     self._load_rerender_report(run_dir, quiet=True)
                     messagebox.showinfo(self._tr("dlg_done_title"), self._tr("dlg_done_body", run_dir=run_dir))

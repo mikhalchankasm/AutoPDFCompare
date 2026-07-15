@@ -1,22 +1,22 @@
 {
   "en": {
-    "_pdfcompare/report/index.html": "db619e48cca022ccdb5e82f93c2dab94e436627cdce9f29bef72db789b97d3d5",
+    "_pdfcompare/report/index.html": "f62f1fffe131627344b2e0dd20626b4ddb594153887a7a1907d18f26f9635e8f",
     "_pdfcompare/report/nav-data.js": "378a93a1e0272860f0a37905db60429d3ebd3157a171cdf0a7c6f1b46b20ac25",
     "_pdfcompare/report/report.json": "ac80b30cb8ecf5a775fb42a2e64071e87f5fb7752cc5335853f691c72faad430",
-    "_pdfcompare/report/views/001.html": "a928e2cecae360128cd3b6fc8a756aec5206f2548e84cc68f0b994dc3a6feee8",
-    "_pdfcompare/report/views/002.html": "2aa7a7bef98422767c316cc8ceb322e38af9872bcbd2484b3c3d60d648f6fcd4",
-    "_pdfcompare/report/views/cmp_001.html": "d2d92808b1757371eae8bd350645f04db8b79efbf581a35bc677ca56af8f8152",
-    "_pdfcompare/report/views/cmp_002.html": "06e8d28a7f10a6dc64c7dc2cc4f43d7eef1cd698f209a0de0b7aa025f98dbd05",
+    "_pdfcompare/report/views/001.html": "aaa5db29120b1ca465fca693091e108bbe4709f2537fddde9fd3b2ea0943186a",
+    "_pdfcompare/report/views/002.html": "765c600d940a637fe3a8c05ed8bc33b092fc62d1ce99d696c9ef6759c08b5a2e",
+    "_pdfcompare/report/views/cmp_001.html": "dd32e7f3020decc63c110e76370b36810d62c79f1f998dd870ea52102b53afce",
+    "_pdfcompare/report/views/cmp_002.html": "2df504168ba0f0e939e7eaedb9fd22baed5cb6a0544963c20f76f52355bd40f2",
     "start.html": "5bd7f4469696d9bec5c7c95bd37d0b9dca15b4adcffc14c6613190dff203873c"
   },
   "ru": {
-    "_pdfcompare/report/index.html": "cc208d963a05c62f2b5249d127e07a5f18d75c9b90316a417ac30f3f5daea7b1",
+    "_pdfcompare/report/index.html": "89a148f9c19e4e07ff0f751ebec81cf20f8fafa4388982ae811b54236be957fe",
     "_pdfcompare/report/nav-data.js": "d9c0b991dc80d48463c4e861250e291eb04ccc0e7dfa1dabae5c7abd5850e8bf",
     "_pdfcompare/report/report.json": "2a59016bc000afe008504e841411c572815706754fa6a4361e4fc26671d1658e",
-    "_pdfcompare/report/views/001.html": "e49407075c6fb2a9332fa1dc54f51ea79eb3bc8e7c16d0d8fd9979687917f8c2",
-    "_pdfcompare/report/views/002.html": "811002862b70f10a2b066d8b41e65960f283268a77c176797a41d7a5124dee8a",
-    "_pdfcompare/report/views/cmp_001.html": "4deee59e00a9baead83b8de8d4f77170d81b589e1a88287fcd1365e102aeae9d",
-    "_pdfcompare/report/views/cmp_002.html": "b7b723c1cf9883583e118d036944f7b08c42b649ba78744bc59cef5bce250641",
+    "_pdfcompare/report/views/001.html": "bb752f558a46af2f0d49f590fe83fdc46e585e4f9d6cdc34295a7051a21043fe",
+    "_pdfcompare/report/views/002.html": "58af5df8b9396c4e94095c992cc90b1bbdb97ece9c88bd28d8bd7e5ef9b512bf",
+    "_pdfcompare/report/views/cmp_001.html": "e064ada35f5451e71bdb65167391d8f0b8230c009da27706965fd33c3e41d0d1",
+    "_pdfcompare/report/views/cmp_002.html": "40a7ac914e6db7ad5234eb3ba6b69bc506937cea517a87446b4927d8a9b79e78",
     "start.html": "f4445523639baf283385d0393b23345545c7dc91e5f98d0cf8c787c72fcb4b3d"
   }
 }

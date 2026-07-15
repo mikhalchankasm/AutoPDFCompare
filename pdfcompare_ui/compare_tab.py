@@ -36,7 +36,6 @@ PANEL = BG_CARD
 
 class CompareTabMixin:
     progress: ttk.Progressbar
-    run_name_entry: ttk.Entry
     swap_btn: ttk.Button | None
     bbox_merge_chip: ttk.Checkbutton | None
     bbox_merge_gap_entry: ttk.Entry | None
@@ -62,12 +61,12 @@ class CompareTabMixin:
     options_strictness_hint_label: ttk.Label | None
     options_strictness_label: ttk.Label | None
     out_entry: ttk.Entry | None
+    out_gen_btn: ttk.Button | None
+    out_hint_label: ttk.Label | None
     out_label: ttk.Label | None
     out_pick_btn: ttk.Button | None
     report_ready_label: tk.Label | None
     run_btn: tk.Button | None
-    run_name_hint_label: ttk.Label | None
-    run_name_label: ttk.Label | None
     status_text_label: tk.Label | None
 
     def _build_files_section(self: AppProtocol) -> None:
@@ -99,7 +98,7 @@ class CompareTabMixin:
         )
 
     def _build_output_section(self: AppProtocol) -> None:
-        """Output folder and the optional run name."""
+        """The one output field: the folder this run will create."""
         out_wrap = tk.Frame(self.compare_tab, bg=BG_WINDOW)
         out_wrap.pack(fill=tk.X, pady=(0, 12))
         head, self.out_label = section_header(out_wrap, self._section_title("path_out"))
@@ -112,15 +111,16 @@ class CompareTabMixin:
         add_tooltip(self.out_entry, lambda: self._tr("tip_out"))
         add_tooltip(self.out_pick_btn, lambda: self._tr("tip_out"))
         self.out_pick_btn.pack(side=tk.LEFT, padx=(8, 0))
-        run_name_wrap = tk.Frame(out_wrap, bg=BG_WINDOW)
-        run_name_wrap.pack(fill=tk.X, pady=(8, 0))
-        self.run_name_label = ttk.Label(run_name_wrap, text=self._tr("path_run_name"), style="Hint.TLabel")
-        self.run_name_label.pack(side=tk.LEFT, padx=(0, 8))
-        self.run_name_entry = ttk.Entry(run_name_wrap, textvariable=self.run_name, style="Path.TEntry")
-        add_tooltip(self.run_name_entry, lambda: self._tr("tip_run_name"))
-        self.run_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4)
-        self.run_name_hint_label = ttk.Label(out_wrap, text=self._tr("path_run_name_hint"), style="Hint.TLabel")
-        self.run_name_hint_label.pack(anchor="w", pady=(2, 0))
+        self.out_gen_btn = ttk.Button(
+            out_fields,
+            text=self._tr("btn_gen_folder"),
+            style="Small.TButton",
+            command=self._generate_out_folder_name,
+        )
+        self.out_gen_btn.pack(side=tk.LEFT, padx=(6, 0))
+        add_tooltip(self.out_gen_btn, lambda: self._tr("tip_gen_folder"))
+        self.out_hint_label = ttk.Label(out_wrap, text=self._tr("path_out_hint"), style="Hint.TLabel")
+        self.out_hint_label.pack(anchor="w", pady=(4, 0))
 
 
     def _build_options_section(self: AppProtocol) -> None:

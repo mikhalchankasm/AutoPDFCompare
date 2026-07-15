@@ -738,6 +738,17 @@ def _write_slider_view(
         next_slider_rec = slider_record_by_file.get(next_slider_file)
         prev_slider_ord = prev_slider_rec["view_ord"] if prev_slider_rec else ""
         next_slider_ord = next_slider_rec["view_ord"] if next_slider_rec else ""
+        # "Home" as a button, not only as a key: the keyboard shortcut is invisible
+        # to anyone who has not read the hint line.
+        at_first = not (first_slider_file and first_slider_file != slider_file)
+        first_cmp_btn = (
+            f'<a class="btn nav-edge" href="{html.escape(str(first_slider_file), quote=True)}" '
+            f'{i18n_aria("В начало (Home)", "First sheet (Home)")}>'
+            f'{report_icon("chevrons-left", size=16)}{i18n_span_text("В начало", "First")}</a>'
+            if not at_first
+            else f'<span class="btn nav-edge disabled">{report_icon("chevrons-left", size=16)}'
+            f'{i18n_span_text("В начало", "First")}</span>'
+        )
         prev_cmp_btn = (
             f'<a class="btn" href="{html.escape(str(prev_slider_file), quote=True)}">'
             f'{report_icon("chevron-left", size=16)}{i18n_span_text(f"Лист {prev_slider_ord}", f"Sheet {prev_slider_ord}")}</a>'
@@ -848,6 +859,7 @@ def _write_slider_view(
   <div class="cmp-main">
     <header class="cmp-header">
       <div class="cmp-left">
+        <a class="btn home-neon icon-only" href="../index.html" {i18n_aria("В начало — к матрице изменений", "Home — to the change matrix")}>{report_icon("home", size=16)}{i18n_span_text("В начало", "Home", "sr-only")}</a>
         <a class="btn ghost" href="{html.escape(p['view_file'], quote=True)}">{report_icon("arrow-left", size=16)}{i18n_span_text("К листу", "Back to sheet")}</a>
       </div>
       <div class="cmp-title">
@@ -857,44 +869,35 @@ def _write_slider_view(
         <span class="muted">· {html.escape(fg_diff_txt)} FG · {html.escape(diff_txt)}</span>
       </div>
       <div class="cmp-right">
+        <!-- No sheet counter here: the title already says "Лист 5 / 12", and two
+             copies of it cost the header the width its controls need. -->
         <div class="cmp-nav">
+          {first_cmp_btn}
           {prev_cmp_btn}
-          <span class="cmp-count">{i18n_span_text(f"Лист {view_idx} / {len(pages_records)}", f"Sheet {view_idx} / {len(pages_records)}")}</span>
           {next_cmp_btn}
         </div>
         <div class="segmented" {i18n_aria("Управление слайдером", "Slider controls")}>
           <button class="seg-btn" id="fitBtn" type="button">{report_icon("maximize-2", size=16)}{i18n_span_text("Вписать", "Fit")}</button>
           <button class="seg-btn" id="oneBtn" type="button">{report_icon("square", size=16)}{i18n_span_text("1:1", "1:1")}</button>
-          <div class="dropdown" data-dropdown>
-            <button class="seg-btn" id="bboxMenuBtn" type="button" aria-haspopup="menu" aria-expanded="false" {i18n_aria("Настройки выделения", "Bbox settings")}>
-              <span class="bbox-swatch swatch-yellow" id="bboxSwatch" aria-hidden="true"></span>
-              {i18n_span_text("Bbox", "Bbox")}
-              <span class="caret">▾</span>
-            </button>
-            <div class="dropdown-menu bbox-panel" role="menu">
-              <div class="bbox-row">
-                <span class="bbox-row-label">{i18n_span_text("Показывать", "Show")}</span>
-                <div class="seg-toggle" id="bboxToggle" role="group" {i18n_aria("Показывать Bbox", "Show Bbox")}>
-                  <button type="button" class="seg-toggle-opt active" data-bbox="on">{i18n_span_text("ON", "ON")}</button>
-                  <button type="button" class="seg-toggle-opt" data-bbox="off">{i18n_span_text("OFF", "OFF")}</button>
-                </div>
-              </div>
-              <div class="bbox-row">
-                <span class="bbox-row-label">{i18n_span_text("Цвет", "Color")}</span>
-                <div class="bbox-colors">
-                  <button type="button" class="swatch-option active" data-color="yellow" {i18n_aria("Жёлтый", "Yellow")}><span class="swatch swatch-yellow"></span></button>
-                  <button type="button" class="swatch-option" data-color="pink" {i18n_aria("Розовый", "Pink")}><span class="swatch swatch-pink"></span></button>
-                  <button type="button" class="swatch-option" data-color="green" {i18n_aria("Зелёный", "Green")}><span class="swatch swatch-green"></span></button>
-                </div>
-              </div>
-              <div class="bbox-row">
-                <span class="bbox-row-label">{i18n_span_text("Прозрачность", "Opacity")}</span>
-                <input class="bbox-opacity" id="bboxOpacity" type="range" min="0" max="100" value="74"/>
-                <span class="bbox-opacity-value" id="bboxOpacityValue">74%</span>
-              </div>
-            </div>
-          </div>
+          <button class="seg-btn seg-btn-accent" id="zonesBtn" type="button" {i18n_aria("Подсветить зоны изменений", "Highlight change zones")}>{report_icon("target", size=16)}{i18n_span_text("Зоны", "Zones")}</button>
           <span class="seg-btn">{report_icon("zoom-in", size=16)}<span>{i18n_span_text("Масштаб", "Zoom")}</span><span id="zoomVal">100%</span></span>
+        </div>
+        <!-- Bbox controls sit open in the header: colour and opacity are adjusted
+             while looking at the sheet, and a dropdown made every tweak a two-step trip. -->
+        <div class="bbox-bar" {i18n_aria("Настройки выделения", "Bbox settings")}>
+          <span class="bbox-swatch swatch-yellow" id="bboxSwatch" aria-hidden="true"></span>
+          <span class="bbox-bar-label">{i18n_span_text("Bbox", "Bbox")}</span>
+          <div class="seg-toggle" id="bboxToggle" role="group" {i18n_aria("Показывать Bbox", "Show Bbox")}>
+            <button type="button" class="seg-toggle-opt active" data-bbox="on">{i18n_span_text("ON", "ON")}</button>
+            <button type="button" class="seg-toggle-opt" data-bbox="off">{i18n_span_text("OFF", "OFF")}</button>
+          </div>
+          <div class="bbox-colors">
+            <button type="button" class="swatch-option active" data-color="yellow" {i18n_aria("Жёлтый", "Yellow")}><span class="swatch swatch-yellow"></span></button>
+            <button type="button" class="swatch-option" data-color="pink" {i18n_aria("Розовый", "Pink")}><span class="swatch swatch-pink"></span></button>
+            <button type="button" class="swatch-option" data-color="green" {i18n_aria("Зелёный", "Green")}><span class="swatch swatch-green"></span></button>
+          </div>
+          <input class="bbox-opacity" id="bboxOpacity" type="range" min="0" max="100" value="74" {i18n_aria("Прозрачность рамок", "Bbox opacity")}/>
+          <span class="bbox-opacity-value" id="bboxOpacityValue">74%</span>
         </div>
       </div>
     </header>
@@ -903,9 +906,11 @@ def _write_slider_view(
           <img id="imgNew" class="layer new-layer" alt="{html.escape(t["slider_new"])}" draggable="false"/>
           <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(t["slider_old"])}" draggable="false"/></div>
           <div id="bboxLayer" class="bbox-layer"></div>
+          <div id="zoneLayer" class="zone-layer" aria-hidden="true"></div>
           <div id="zoomRect" class="zoom-rect"></div>
           <div id="divider" class="divider"></div>
         </div>
+        <div id="zoneCounter" class="zone-counter" role="status" aria-live="polite"></div>
         <div id="loadMsg" class="load-msg">{html.escape(t["no_data"])}</div>
       </div>
       <div class="slider-panel">
@@ -945,6 +950,9 @@ def _write_slider_view(
     const bboxOpacity = document.getElementById('bboxOpacity');
     const bboxOpacityValue = document.getElementById('bboxOpacityValue');
     const bboxSwatch = document.getElementById('bboxSwatch');
+    const zonesBtn = document.getElementById('zonesBtn');
+    const zoneLayer = document.getElementById('zoneLayer');
+    const zoneCounter = document.getElementById('zoneCounter');
     const allSheets = (window.PDFCOMPARE_NAV && window.PDFCOMPARE_NAV.pages) || [];
     const currentSeq = {view_idx};
     const drawer = document.getElementById('sheetDrawer');
@@ -1087,6 +1095,7 @@ def _write_slider_view(
       const tag = (e.target && e.target.tagName || '').toLowerCase();
       if (e.key === 'Escape') {{
         closeDrawer();
+        clearZones();
         document.querySelectorAll('[data-dropdown].open').forEach(dropdown => {{
           dropdown.classList.remove('open');
           const btn = dropdown.querySelector('button');
@@ -1095,6 +1104,10 @@ def _write_slider_view(
         return;
       }}
       if (tag === 'input' || tag === 'button') return;
+      if (e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я') {{
+        highlightZones();
+        return;
+      }}
       if ((e.key === 'ArrowLeft' || e.key === 'PageUp') && prevSliderHref) {{
         window.location.href = prevSliderHref;
       }} else if ((e.key === 'ArrowRight' || e.key === 'PageDown') && nextSliderHref) {{
@@ -1183,6 +1196,7 @@ def _write_slider_view(
       loadMsg.style.display = 'none';
       buildBboxes();
       applyBboxStyle();
+      updateZonesBtn();
       applySplit();
       fitToWindow();
     }}
@@ -1377,6 +1391,92 @@ def _write_slider_view(
     zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value)));
     fitBtn.addEventListener('click', fitToWindow);
     oneBtn.addEventListener('click', () => setZoomPercent(100));
+    // --- "Показать зоны": briefly pulse rings over where changes cluster. ---
+    // Reuses bboxData (image-pixel rects) and the surface coordinate space, so
+    // the rings land exactly on the changes and pan/zoom with the sheet.
+    function usableBoxes() {{
+      return bboxData
+        .map(b => ({{ x: Number(b.x) || 0, y: Number(b.y) || 0, w: Number(b.w) || 0, h: Number(b.h) || 0 }}))
+        .filter(b => b.w > 1 && b.h > 1);
+    }}
+    function clusterZones(boxes, gap) {{
+      // Union-find: two boxes join a zone when their rects (grown by `gap`) touch.
+      const n = boxes.length;
+      const parent = boxes.map((_, i) => i);
+      function find(i) {{ while (parent[i] !== i) {{ parent[i] = parent[parent[i]]; i = parent[i]; }} return i; }}
+      function near(a, b) {{
+        return a.x <= b.x + b.w + gap && a.x + a.w >= b.x - gap
+            && a.y <= b.y + b.h + gap && a.y + a.h >= b.y - gap;
+      }}
+      for (let i = 0; i < n; i++) {{
+        for (let j = i + 1; j < n; j++) {{
+          if (near(boxes[i], boxes[j])) parent[find(i)] = find(j);
+        }}
+      }}
+      const groups = {{}};
+      for (let i = 0; i < n; i++) {{
+        const r = find(i);
+        (groups[r] = groups[r] || []).push(boxes[i]);
+      }}
+      return Object.keys(groups).map(k => {{
+        let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+        groups[k].forEach(b => {{
+          x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y);
+          x2 = Math.max(x2, b.x + b.w); y2 = Math.max(y2, b.y + b.h);
+        }});
+        return {{ x1: x1, y1: y1, x2: x2, y2: y2 }};
+      }});
+    }}
+    let zoneTimer = null;
+    function clearZones() {{
+      if (zoneTimer) {{ window.clearTimeout(zoneTimer); zoneTimer = null; }}
+      zoneLayer.innerHTML = '';
+      zoneLayer.classList.remove('active');
+      zoneCounter.classList.remove('show');
+      zoneCounter.textContent = '';
+    }}
+    function highlightZones() {{
+      if (!naturalW || !naturalH) return;
+      const boxes = usableBoxes();
+      if (!boxes.length) return;
+      clearZones();
+      // The rings only make sense when the whole sheet is on screen.
+      fitToWindow();
+      const gap = Math.max(naturalW, naturalH) * 0.05;
+      const pad = Math.max(naturalW, naturalH) * 0.012;  // a little breathing room around the box
+      const zones = clusterZones(boxes, gap);
+      zones.forEach(c => {{
+        // A tight bounding box of the whole zone: it wraps exactly the changed
+        // area (a 100% hit), instead of a circle that inflates to max side and
+        // spills off the sheet when a change runs along an edge.
+        const x = Math.max(0, c.x1 - pad);
+        const y = Math.max(0, c.y1 - pad);
+        const w = Math.min(naturalW, c.x2 + pad) - x;
+        const h = Math.min(naturalH, c.y2 + pad) - y;
+        const ring = document.createElement('div');
+        ring.className = 'zone-ring';
+        ring.style.left = (100 * x / naturalW) + '%';
+        ring.style.top = (100 * y / naturalH) + '%';
+        ring.style.width = (100 * w / naturalW) + '%';
+        ring.style.height = (100 * h / naturalH) + '%';
+        zoneLayer.appendChild(ring);
+      }});
+      zoneLayer.classList.add('active');
+      const en = document.documentElement.lang === 'en';
+      zoneCounter.textContent = (en ? 'Change zones: ' : 'Зон с изменениями: ') + zones.length;
+      zoneCounter.classList.add('show');
+      zoneTimer = window.setTimeout(clearZones, 3200);
+    }}
+    function updateZonesBtn() {{
+      if (!zonesBtn) return;
+      zonesBtn.disabled = usableBoxes().length === 0;
+    }}
+    if (zonesBtn) {{
+      zonesBtn.addEventListener('click', () => {{
+        if (zoneLayer.classList.contains('active')) clearZones();
+        else highlightZones();
+      }});
+    }}
     window.addEventListener('resize', () => {{
       if (Number(zoom.value) <= 5) fitToWindow();
     }});
@@ -1520,7 +1620,7 @@ def _write_page_views(
 </head>
 <body>
   <header class="toolbar" {i18n_aria("Навигация по листу", "Sheet navigation")}>
-    <div><a class="btn ghost" href="../index.html">{report_icon("arrow-left", size=16)}{i18n_span_text("К матрице изменений", "Back to change matrix")}</a></div>
+    <div><a class="btn home-neon" href="../index.html" {i18n_aria("В начало — к матрице изменений", "Home — to the change matrix")}>{report_icon("home", size=16)}{i18n_span_text("К матрице изменений", "Back to change matrix")}</a></div>
     <div class="toolbar-center">
       <span class="sheet-title">{i18n_span_text(f"Лист {view_idx} из {len(pages_records)}", f"Sheet {view_idx} of {len(pages_records)}")}</span>
       {status_badge_html(status_tag)}

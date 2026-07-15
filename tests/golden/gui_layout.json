@@ -301,7 +301,7 @@
     "path": "/!frame/!notebook/!frame/!frame3/!frame/!label",
     "class": "TLabel",
     "manager": "pack",
-    "text": "ПАПКА ВЫВОДА",
+    "text": "ПАПКА ОТЧЁТА",
     "style": "Section.TLabel",
     "state": "normal"
   },
@@ -330,34 +330,18 @@
     "state": "normal"
   },
   {
-    "path": "/!frame/!notebook/!frame/!frame3/!frame3",
-    "class": "Frame",
+    "path": "/!frame/!notebook/!frame/!frame3/!frame2/!button2",
+    "class": "TButton",
     "manager": "pack",
-    "width": "0"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame3/!frame3/!label",
-    "class": "TLabel",
-    "manager": "pack",
-    "text": "Имя отчёта:",
-    "style": "Hint.TLabel",
+    "text": "Сгенерировать имя",
+    "style": "Small.TButton",
     "state": "normal"
-  },
-  {
-    "path": "/!frame/!notebook/!frame/!frame3/!frame3/!entry",
-    "class": "TEntry",
-    "manager": "pack",
-    "text": "PY_VAR",
-    "style": "Path.TEntry",
-    "state": "normal",
-    "width": "20",
-    "cursor": "ibeam"
   },
   {
     "path": "/!frame/!notebook/!frame/!frame3/!label",
     "class": "TLabel",
     "manager": "pack",
-    "text": "Необязательно: имя папки результата. Пусто — авто-имя по дате и времени.",
+    "text": "Папка будет создана при запуске. Можно вставить путь и дописать имя; «Сгенерировать имя» соберёт имя по файлам.",
     "style": "Hint.TLabel",
     "state": "normal"
   },

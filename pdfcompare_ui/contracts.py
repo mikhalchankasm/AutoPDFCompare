@@ -37,7 +37,6 @@ class AppProtocol(Protocol):
     old_pdf: tk.StringVar
     new_pdf: tk.StringVar
     out_dir: tk.StringVar
-    run_name: tk.StringVar
     dpi: tk.StringVar
     stroke_tol: tk.StringVar
     diff_strictness: tk.StringVar
@@ -107,11 +106,10 @@ class AppProtocol(Protocol):
     clear_btn: ttk.Button | None
     from_history_btn: ttk.Button | None
     swap_btn: ttk.Button | None
-    run_name_entry: ttk.Entry
-    run_name_label: ttk.Label | None
-    run_name_hint_label: ttk.Label | None
     out_label: ttk.Label | None
+    out_hint_label: ttk.Label | None
     out_pick_btn: ttk.Button | None
+    out_gen_btn: ttk.Button | None
     status_text_label: tk.Label | None
     options_body: tk.Frame | None
     options_group_label: ttk.Label | None
@@ -192,6 +190,7 @@ class AppProtocol(Protocol):
     def _clear_inputs(self) -> None: ...
     def _swap_files(self) -> None: ...
     def _pick_out_dir(self) -> None: ...
+    def _generate_out_folder_name(self) -> None: ...
     def _pick_exclude_regions(self) -> None: ...
     def _open_run_folder(self) -> None: ...
     def _build_file_card(self, parent: tk.Frame, var: tk.StringVar, old: bool) -> tk.Frame: ...

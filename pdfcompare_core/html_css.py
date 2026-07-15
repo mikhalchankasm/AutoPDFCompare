@@ -161,6 +161,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
   padding: 0;
   border-radius: 999px;
 }
+/* "Home" button: jumps to the change matrix from any page. A steady neon outline
+   so it reads as the one way back to the start, distinct from the ghost nav
+   links. Static glow (not a perpetual pulse) — it must not nag while reading a
+   drawing; the hover brightens it. */
+.btn.home-neon {
+  border: 1.5px solid #22d3ee;
+  color: var(--text);
+  background: rgba(34, 211, 238, 0.08);
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.55), inset 0 0 4px rgba(34, 211, 238, 0.22);
+  transition: box-shadow .18s ease, background .18s ease, border-color .18s ease;
+}
+.btn.home-neon .ic { color: #06b6d4; }
+.btn.home-neon:hover {
+  border-color: #06b6d4;
+  background: rgba(34, 211, 238, 0.16);
+  box-shadow: 0 0 11px rgba(34, 211, 238, 0.9), 0 0 20px rgba(34, 211, 238, 0.5);
+}
 .btn[disabled], .btn.disabled {
   opacity: .45;
   cursor: not-allowed;
@@ -847,7 +864,9 @@ html.embed .cmp-page, html.embed .cmp-page.pinned { grid-template-columns: 0 min
 html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
 .cmp-header {
   display: grid;
-  grid-template-columns: minmax(140px,1fr) minmax(0,auto) minmax(auto,1fr);
+  /* The controls column is sized by its content: the title is what gives way when
+     the header gets tight (it clips its metrics tail), not the buttons. */
+  grid-template-columns: auto minmax(0,1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 6px 10px;
@@ -864,7 +883,9 @@ html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
 .cmp-title {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* Left-aligned, not centred: a centred title that outgrows its column is cut on
+     both sides, and "Лист 5 / 12" loses the half that names the sheet. */
+  justify-content: flex-start;
   gap: 8px;
   min-width: 0;
   font-weight: 800;
@@ -882,8 +903,16 @@ html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .cmp-nav { display: flex; align-items: center; gap: 6px; }
+/* "Лист 9" must stay on one line: a flex item may shrink below its content width,
+   and the label then wraps to two lines and pushes the button out of the header row. */
+.cmp-nav .btn {
+  flex: 0 0 auto;
+  justify-content: center;
+  white-space: nowrap;
+}
 .sheet-drawer {
   position: fixed;
   top: 0;
@@ -1025,29 +1054,34 @@ html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 48px minmax(0,1fr) auto;
+  /* auto, not a fixed 48px: the header shrinks its labels first, but if it still
+     needs a second line the row grows instead of the buttons spilling out of it. */
+  grid-template-rows: minmax(48px, auto) minmax(0,1fr) auto;
   container-type: inline-size;
 }
 .cmp-page.pinned .cmp-main { grid-column: 2; }
-/* Header adapts to the content column width (matters when the sidebar is pinned). */
-@container (max-width: 1240px) {
+/* Header adapts to the content column width (matters when the sidebar is pinned).
+   Order of what gives way: the metrics tail, then the control labels, then the
+   sheet buttons become icons — the controls themselves never wrap or shrink. */
+@container (max-width: 1400px) {
+  .cmp-title > .muted { display: none; }
+}
+@container (max-width: 1340px) {
+  .bbox-bar-label, .bbox-opacity-value { display: none; }
+  .nav-edge span { display: none; }
+  .nav-edge { width: 32px; min-width: 32px; padding: 0; }
+}
+/* Too narrow for one row: the controls take a row of their own instead of
+   squeezing the title down to nothing (a 0-width title column shows no sheet
+   number at all, which is the one thing the header must never lose). */
+@container (max-width: 1100px) {
+  .cmp-header { grid-template-columns: auto minmax(0,1fr); }
+  .cmp-right { grid-column: 1 / -1; justify-content: flex-start; }
   .cmp-nav .btn { width: 32px; min-width: 32px; padding: 0; }
   .cmp-nav .btn span { display: none; }
-}
-@container (max-width: 1040px) {
   .segmented .seg-btn > span[data-i18n-ru] { display: none; }
-}
-.cmp-count {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 10px;
-  color: var(--text-muted);
-  background: var(--surface);
-  font-size: 12px;
-  font-weight: 800;
+  .bbox-bar { gap: 4px; padding: 2px 5px; }
+  .bbox-bar .bbox-opacity { width: 72px; }
 }
 .segmented {
   display: inline-flex;
@@ -1074,30 +1108,43 @@ html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
 .segmented .seg-btn:last-child,
 .segmented > .dropdown:last-child > .seg-btn { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
 .segmented .seg-btn:hover { background: var(--brand-soft); }
+.segmented .seg-btn:disabled:hover { background: var(--surface); }
 .segmented .dropdown { display: inline-flex; }
 .segmented .dropdown .seg-btn { border-left: 1px solid var(--border); }
 .caret { color: var(--text-faint); font-size: 10px; }
-.bbox-panel { width: 280px; padding: 10px; gap: 10px; }
-.bbox-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: center; }
-.bbox-row-label {
+/* Bbox controls live open in the header — colour and opacity are adjusted while
+   looking at the sheet, so they must not cost a click to reach. */
+.bbox-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+.bbox-bar-label {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .5px;
   text-transform: uppercase;
 }
-.bbox-colors { display: inline-flex; gap: 6px; }
-.bbox-panel .swatch-option {
+.bbox-colors { display: inline-flex; gap: 4px; }
+.bbox-bar .swatch-option {
   width: auto;
+  display: inline-flex;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 5px;
+  padding: 3px;
   background: var(--surface);
   cursor: pointer;
 }
-.bbox-panel .swatch-option.active { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
-.swatch { display: inline-block; width: 18px; height: 18px; border-radius: 4px; border: 2px solid currentColor; box-sizing: border-box; }
-.bbox-opacity { width: 100%; }
+.bbox-bar .swatch-option.active { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+.swatch { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 2px solid currentColor; box-sizing: border-box; }
+.bbox-bar .bbox-opacity { width: 92px; }
 .bbox-opacity-value { color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
 .bbox-swatch {
   position: relative;
@@ -1147,6 +1194,64 @@ html[data-bbox-enabled="false"] .bbox-layer { display: none; }
 .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--brand); pointer-events: none; }
 .load-msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); }
 .stage.panning .compare-surface { cursor: grabbing; }
+/* "Показать зоны": transient rings pulsing where the changes cluster. The layer
+   lives inside the surface, so rings scale and pan with the sheet. */
+.zone-layer { position: absolute; inset: 0; pointer-events: none; display: none; z-index: 5; }
+.zone-layer.active { display: block; }
+.zone-ring {
+  position: absolute;
+  border-radius: 5px;
+  border: 3px solid #ff5a1f;
+  background: rgba(255, 90, 31, 0.10);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  animation: zoneFade 3.2s ease forwards;
+}
+.zone-ring::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 0 rgba(255, 90, 31, 0.6);
+  animation: zonePing 1s ease-out 3;
+}
+/* An expanding glow of constant on-screen thickness, so a wide box does not get
+   a proportionally huge halo (that was the whole problem with the circle). */
+@keyframes zonePing {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 90, 31, 0.60); }
+  100% { box-shadow: 0 0 0 14px rgba(255, 90, 31, 0); }
+}
+@keyframes zoneFade {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  82%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.zone-counter {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%) translateY(8px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(20, 20, 24, 0.86);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+  z-index: 6;
+}
+.zone-counter.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.seg-btn-accent { color: #d1490f; font-weight: 700; }
+.seg-btn-accent:hover:not(:disabled) { background: rgba(255, 90, 31, 0.12); }
+.seg-btn-accent:disabled { color: var(--text-muted); opacity: .55; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .zone-ring::after { display: none; }
+  .zone-ring { animation: zoneFade 3.2s ease forwards; }
+}
 .slider-panel {
   border-top: 1px solid var(--border);
   padding: 10px 18px 12px;
