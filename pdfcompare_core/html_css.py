@@ -1109,6 +1109,9 @@ html.embed .cmp-page.pinned .cmp-main { grid-column: 1 / -1; }
 .segmented > .dropdown:last-child > .seg-btn { border-top-right-radius: var(--radius-sm); border-bottom-right-radius: var(--radius-sm); }
 .segmented .seg-btn:hover { background: var(--brand-soft); }
 .segmented .seg-btn:disabled:hover { background: var(--surface); }
+/* The zoom-value readout is a span wearing seg-btn chrome: it must not look or feel clickable. */
+.segmented .seg-btn-static { cursor: default; }
+.segmented .seg-btn-static:hover { background: var(--surface); }
 .segmented .dropdown { display: inline-flex; }
 .segmented .dropdown .seg-btn { border-left: 1px solid var(--border); }
 .caret { color: var(--text-faint); font-size: 10px; }

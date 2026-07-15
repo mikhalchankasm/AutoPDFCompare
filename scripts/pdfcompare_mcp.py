@@ -34,6 +34,7 @@ from compare_pdfs import (
     sanitize_run_folder_name,
     validate_render_dpi,
 )
+from pdfcompare_core import history_index
 from pdfcompare_core.run_names import suggest_folder_names
 from scripts.process_identity import pid_exists, process_create_time, same_process
 
@@ -666,6 +667,178 @@ def prepare_pdf_comparison(old_path: str, new_path: str, out_dir: str = "runs", 
         return error_result(exc, lang)
 
 
+def _resolve_comparison_settings(
+    old_path: str,
+    new_path: str,
+    out_dir: str,
+    run_name: str,
+    dpi: int,
+    stroke_tol: float,
+    diff_strictness: str,
+    exclude_regions: str | list[dict[str, Any]] | None,
+    bbox_merge_gap_mm: float,
+    bbox_merge_max_area_ratio: float,
+    *,
+    require_free_run_dir: bool = True,
+) -> dict[str, Any]:
+    """Validate and normalize the inputs shared by preview and start.
+
+    Raises exactly the user-facing errors ``start_pdf_comparison`` would, so a
+    preview never green-lights a run that start would then reject.
+    """
+    old_pdf = resolve_path(old_path, must_exist=True)
+    new_pdf = resolve_path(new_path, must_exist=True)
+    output_dir = resolve_path(out_dir, must_exist=False)
+    safe_run_name = sanitize_run_folder_name(run_name)
+    dpi_value = validate_render_dpi(dpi)
+    strictness = str(diff_strictness or "normal").strip().lower()
+    if strictness not in DIFF_STRICTNESS_CHOICES:
+        raise InvalidInput("strictness_invalid", value=diff_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES))
+    normalized_exclusions = normalize_exclude_regions(exclude_regions)
+    run_dir = output_dir / safe_run_name
+    if require_free_run_dir and run_dir.exists():
+        raise RunFailed("run_dir_exists", path=run_dir)
+    return {
+        "old_pdf": old_pdf,
+        "new_pdf": new_pdf,
+        "output_dir": output_dir,
+        "safe_run_name": safe_run_name,
+        "dpi": int(dpi_value),
+        "stroke_tol": float(stroke_tol),
+        "diff_strictness": strictness,
+        "exclude_regions": normalized_exclusions,
+        "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
+        "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
+        "run_dir": run_dir,
+    }
+
+
+def _exclusion_summary(regions: list[dict[str, Any]]) -> list[str]:
+    """One human-readable line per exclusion zone for the pre-launch checklist."""
+    lines: list[str] = []
+    for idx, region in enumerate(regions, start=1):
+        unit = str(region.get("unit") or "percent")
+        anchor = str(region.get("anchor") or "top_left")
+        label = str(region.get("label") or "").strip()
+        suffix = f" — {label}" if label else ""
+        lines.append(
+            f"#{idx}: {region.get('w')}×{region.get('h')} {unit} @ "
+            f"({region.get('x')},{region.get('y')}) from {anchor}{suffix}"
+        )
+    return lines
+
+
+@mcp.tool()
+def preview_pdf_comparison(
+    old_path: str,
+    new_path: str,
+    out_dir: str,
+    run_name: str,
+    dpi: int = 250,
+    stroke_tol: float = 2.0,
+    diff_strictness: str = "normal",
+    exclude_regions: str | list[dict[str, Any]] | None = None,
+    bbox_merge_gap_mm: float = 0.0,
+    bbox_merge_max_area_ratio: float = 16.0,
+    workers: int = 0,
+    lang: str = "ru",
+    keep_debug_images: bool = False,
+) -> dict[str, Any]:
+    """Build the final pre-launch checklist for a comparison — WITHOUT starting it.
+
+    Call this right before start_pdf_comparison, after the user has chosen the run
+    name, strictness and exclusion zones. It validates and normalizes exactly what
+    start_pdf_comparison would (paths, run-folder name, DPI, strictness, exclusion
+    zones, output-folder collision), so it never green-lights a run that start
+    would reject, and returns a ready-to-read checklist:
+
+      - which old / new file, with page counts and the page delta;
+      - the precision settings (DPI, stroke_tol, strictness) and whether each is
+        still at its default;
+      - whether any exclusion zones are set, and a one-line summary of each;
+      - the bbox-merge setting;
+      - where the report is saved (out_dir) and under what run name / run_dir.
+
+    Show the checklist to the user, ask whether every line is correct or which one
+    to change (files, tolerances, excluded zones, output folder/name), and only
+    then call start_pdf_comparison with the confirmed values. Accepts the same
+    arguments as start_pdf_comparison so the confirmed call is a straight copy.
+    """
+    try:
+        settings = _resolve_comparison_settings(
+            old_path,
+            new_path,
+            out_dir,
+            run_name,
+            dpi,
+            stroke_tol,
+            diff_strictness,
+            exclude_regions,
+            bbox_merge_gap_mm,
+            bbox_merge_max_area_ratio,
+        )
+        old_pdf = settings["old_pdf"]
+        new_pdf = settings["new_pdf"]
+        old_pages = count_pdf_pages(old_pdf)
+        new_pages = count_pdf_pages(new_pdf)
+        regions = settings["exclude_regions"]
+        strictness = settings["diff_strictness"]
+        gap = settings["bbox_merge_gap_mm"]
+        checklist = {
+            "old_file": {"path": str(old_pdf), "name": old_pdf.name, "pages": old_pages},
+            "new_file": {"path": str(new_pdf), "name": new_pdf.name, "pages": new_pages},
+            "page_delta": new_pages - old_pages,
+            "precision": {
+                "dpi": settings["dpi"],
+                "dpi_is_default": settings["dpi"] == 250,
+                "stroke_tol": settings["stroke_tol"],
+                "stroke_tol_is_default": abs(settings["stroke_tol"] - 2.0) < 1e-9,
+                "diff_strictness": strictness,
+                "diff_strictness_is_default": strictness == "normal",
+            },
+            "exclude_regions": {
+                "count": len(regions),
+                "items": _exclusion_summary(regions),
+                "raw": regions,
+            },
+            "bbox_merge": {
+                "gap_mm": gap,
+                "enabled": gap > 0,
+                "max_area_ratio": settings["bbox_merge_max_area_ratio"],
+            },
+            "output": {
+                "out_dir": str(settings["output_dir"]),
+                "run_name": settings["safe_run_name"],
+                "run_dir": str(settings["run_dir"]),
+                "report_path": str(settings["run_dir"] / START_REPORT_FILE),
+            },
+            "keep_debug_images": bool(keep_debug_images),
+            "workers": int(workers),
+        }
+        return {
+            "ok": True,
+            "requires_user_choice": True,
+            "checklist": checklist,
+            "next_step": (
+                "Покажи пользователю чек-лист. Спроси, всё ли верно или какой пункт изменить "
+                "(файлы, допуски/строгость, исключаемые зоны, папку и имя результата). После "
+                "подтверждения вызови start_pdf_comparison с этими же значениями."
+            ),
+            "prompt_for_agent": (
+                "Собери короткий чек-лист перед запуском и покажи пользователю:\n"
+                "• Старый файл — имя и число листов;\n"
+                "• Новый файл — имя и число листов;\n"
+                "• Точность — DPI, stroke_tol, строгость (пометь, если по умолчанию);\n"
+                "• Исключаемые зоны — сколько и какие, либо «нет»;\n"
+                "• Результат — папка и имя.\n"
+                "Затем спроси: всё запускаем или что-то изменить?"
+            ),
+            "lang": lang,
+        }
+    except Exception as exc:
+        return error_result(exc, lang)
+
+
 @mcp.tool()
 def start_pdf_comparison(
     old_path: str,
@@ -701,20 +874,26 @@ def start_pdf_comparison(
                 "active_jobs": active_jobs
             }
 
-        old_pdf = resolve_path(old_path, must_exist=True)
-        new_pdf = resolve_path(new_path, must_exist=True)
-        output_dir = resolve_path(out_dir, must_exist=False)
-        safe_run_name = sanitize_run_folder_name(run_name)
-        dpi = validate_render_dpi(dpi)
-        strictness = str(diff_strictness or "normal").strip().lower()
-        if strictness not in DIFF_STRICTNESS_CHOICES:
-            raise InvalidInput(
-                "strictness_invalid", value=diff_strictness, allowed=", ".join(DIFF_STRICTNESS_CHOICES)
-            )
-        normalized_exclusions = normalize_exclude_regions(exclude_regions)
-        run_dir = output_dir / safe_run_name
-        if run_dir.exists():
-            raise RunFailed("run_dir_exists", path=run_dir)
+        settings = _resolve_comparison_settings(
+            old_path,
+            new_path,
+            out_dir,
+            run_name,
+            dpi,
+            stroke_tol,
+            diff_strictness,
+            exclude_regions,
+            bbox_merge_gap_mm,
+            bbox_merge_max_area_ratio,
+        )
+        old_pdf = settings["old_pdf"]
+        new_pdf = settings["new_pdf"]
+        output_dir = settings["output_dir"]
+        safe_run_name = settings["safe_run_name"]
+        dpi = settings["dpi"]
+        strictness = settings["diff_strictness"]
+        normalized_exclusions = settings["exclude_regions"]
+        run_dir = settings["run_dir"]
 
         job_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
         current_job_dir = job_dir(job_id)
@@ -1096,6 +1275,159 @@ def list_pdf_comparisons(
             "out_dir": str(output_dir),
             "comparisons": find_existing_comparisons(output_dir, old_pdf, new_pdf, limit=max(1, int(limit))),
         }
+    except Exception as exc:
+        return error_result(exc, lang)
+
+
+def _history_view(record: dict[str, Any]) -> dict[str, Any]:
+    """The compact, agent-facing row: the number, date, origin and file names."""
+    return {
+        "index": record.get("index"),
+        "id": record.get("id"),
+        "source": record.get("source"),
+        "date": record.get("date"),
+        "result": record.get("result"),
+        "old": Path(str(record.get("old_pdf") or "")).name,
+        "new": Path(str(record.get("new_pdf") or "")).name,
+        "out_dir": record.get("out_dir"),
+        "run_dir": record.get("run_dir"),
+    }
+
+
+def _unique_restore_run_name(output_dir: Path, base: str) -> str:
+    """A run-folder name under ``output_dir`` that does not collide with an existing run.
+
+    Restore never overwrites the original: it always makes a new folder. The
+    record's own name is tried first, then ``<name>_restore``, ``<name>_restore2``…
+    """
+    safe_base = sanitize_run_folder_name(base or "restore")
+    if not (output_dir / safe_base).exists():
+        return safe_base
+    counter = 1
+    while True:
+        suffix = "_restore" if counter == 1 else f"_restore{counter}"
+        candidate = sanitize_run_folder_name(f"{safe_base}{suffix}")
+        if not (output_dir / candidate).exists():
+            return candidate
+        counter += 1
+
+
+@mcp.tool()
+def list_comparison_history(limit: int = 50, source: str = "", lang: str = "ru") -> dict[str, Any]:
+    """List past comparisons from both the GUI and this MCP server as one numbered, dated log.
+
+    Unlike list_pdf_comparisons (which scans a single out_dir on disk as it looks
+    right now), this reads the persistent history under ~/.pdfcompare_local/ — the
+    user's home, not this checkout — so it survives a fresh MCP clone or a GUI
+    reinstall, and it lists runs no matter where their reports were written.
+
+    Each row carries:
+      - index: a position, newest = 1, for quick reference ("restore #5");
+      - id: a stable handle ('mcp:<job>' / 'ui:<hash>') for an unambiguous restore;
+      - source: 'ui' (GUI History tab) or 'mcp' (started via this server);
+      - date, result, the two file names, out_dir and run_dir.
+
+    Pass source='ui' or source='mcp' to see only one origin. The index is valid
+    against the most recent listing; if another comparison finishes between listing
+    and restore, prefer the id.
+    """
+    try:
+        requested = str(source or "").strip().lower()
+        source_filter = requested if requested in ("ui", "mcp") else None
+        records = history_index.list_records(limit=max(1, int(limit)), source=source_filter)
+        return {
+            "ok": True,
+            "history_dir": str(history_index.STATE_DIR),
+            "source": source_filter or "all",
+            "count": len(records),
+            "comparisons": [_history_view(row) for row in records],
+        }
+    except Exception as exc:
+        return error_result(exc, lang)
+
+
+@mcp.tool()
+def restore_comparison(
+    ref: str,
+    out_dir: str = "",
+    run_name: str = "",
+    confirm: bool = False,
+    source: str = "",
+    lang: str = "ru",
+) -> dict[str, Any]:
+    """Re-run a past comparison from history. Two steps by design.
+
+    Step 1 (confirm=False, the default): resolve the record referenced by ``ref``
+    — a position from the last list_comparison_history ('5' or '#5') or a stable
+    id ('mcp:2026…', 'ui:ab12cd34') — and return its inputs and options for the
+    user to confirm: which two PDFs, which settings, where the new report will go,
+    and whether the source PDFs still exist on disk. Nothing runs yet.
+
+    Step 2 (confirm=True): start a fresh comparison with those inputs. The original
+    run folder is never touched — the result goes to a new folder. By default that
+    is the record's out_dir with a non-colliding run name (shown as
+    suggested_run_name in step 1); override with out_dir/run_name to place it
+    elsewhere.
+    """
+    try:
+        requested = str(source or "").strip().lower()
+        source_filter = requested if requested in ("ui", "mcp") else None
+        record = history_index.find_record(ref, source=source_filter)
+        if record is None:
+            raise RunFailed("history_record_not_found", ref=ref)
+
+        replay = dict(record["replay"])
+        old_path = str(record.get("old_pdf") or "")
+        new_path = str(record.get("new_pdf") or "")
+        old_exists = bool(old_path) and Path(old_path).exists()
+        new_exists = bool(new_path) and Path(new_path).exists()
+
+        target_out = str(out_dir or "").strip() or str(record.get("out_dir") or "") or "runs"
+        output_dir = resolve_path(target_out, must_exist=False)
+        base_name = str(record.get("run_name") or "") or Path(str(record.get("run_dir") or "")).name or "restore"
+        suggested = _unique_restore_run_name(output_dir, base_name)
+
+        if not confirm:
+            return {
+                "ok": True,
+                "requires_user_choice": True,
+                "record": _history_view(record),
+                "inputs": {
+                    "old_path": old_path,
+                    "new_path": new_path,
+                    "old_exists": old_exists,
+                    "new_exists": new_exists,
+                    **replay,
+                },
+                "target_out_dir": str(output_dir),
+                "suggested_run_name": suggested,
+                "files_missing": (not old_exists) or (not new_exists),
+                "next_step": (
+                    "Покажи пользователю параметры записи и спроси подтверждение. Затем вызови "
+                    "restore_comparison ещё раз с confirm=true (при желании передай свои out_dir/run_name)."
+                ),
+                "lang": lang,
+            }
+
+        missing = [path for path, ok in ((old_path, old_exists), (new_path, new_exists)) if not ok]
+        if missing:
+            raise RunFailed("history_source_files_missing", paths="; ".join(missing))
+
+        final_run_name = str(run_name or "").strip() or suggested
+        return start_pdf_comparison(
+            old_path=old_path,
+            new_path=new_path,
+            out_dir=str(output_dir),
+            run_name=final_run_name,
+            dpi=int(replay["dpi"]),
+            stroke_tol=float(replay["stroke_tol"]),
+            diff_strictness=str(replay["diff_strictness"]),
+            exclude_regions=replay["exclude_regions"] or None,
+            bbox_merge_gap_mm=float(replay["bbox_merge_gap_mm"]),
+            bbox_merge_max_area_ratio=float(replay["bbox_merge_max_area_ratio"]),
+            lang=lang,
+            keep_debug_images=bool(replay["keep_debug_images"]),
+        )
     except Exception as exc:
         return error_result(exc, lang)
 

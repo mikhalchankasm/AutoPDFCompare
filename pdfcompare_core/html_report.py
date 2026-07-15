@@ -727,17 +727,28 @@ def _write_slider_view(
     level_badge_html = badges.level_badge_html
     pages_records = ctx.pages_records
     views_dir = ctx.views_dir
-    slider_record_by_file = ctx.slider_record_by_file
     first_slider_file = ctx.first_slider_file
     last_slider_file = ctx.last_slider_file
 
     if slider_file and old_src and new_src:
-        prev_slider_file = p.get("prev_slider_file")
-        next_slider_file = p.get("next_slider_file")
-        prev_slider_rec = slider_record_by_file.get(prev_slider_file)
-        next_slider_rec = slider_record_by_file.get(next_slider_file)
-        prev_slider_ord = prev_slider_rec["view_ord"] if prev_slider_rec else ""
-        next_slider_ord = next_slider_rec["view_ord"] if next_slider_rec else ""
+        # Immediate neighbours in view order. Unlike prev/next *slider* files — which
+        # skip added/removed sheets, because those have no slider — these step exactly
+        # one sheet at a time; a sheet without a slider opens in its detail view. So
+        # ←/→ and the sheet buttons never silently jump over a sheet.
+        prev_any_rec = pages_records[view_idx - 2] if view_idx - 2 >= 0 else None
+        next_any_rec = pages_records[view_idx] if view_idx < len(pages_records) else None
+        prev_any_file = (
+            (str(prev_any_rec.get("slider_file") or prev_any_rec.get("view_file") or "") or None)
+            if prev_any_rec
+            else None
+        )
+        next_any_file = (
+            (str(next_any_rec.get("slider_file") or next_any_rec.get("view_file") or "") or None)
+            if next_any_rec
+            else None
+        )
+        prev_any_ord = view_idx - 1 if prev_any_rec else ""
+        next_any_ord = view_idx + 1 if next_any_rec else ""
         # "Home" as a button, not only as a key: the keyboard shortcut is invisible
         # to anyone who has not read the hint line.
         at_first = not (first_slider_file and first_slider_file != slider_file)
@@ -750,15 +761,15 @@ def _write_slider_view(
             f'{i18n_span_text("В начало", "First")}</span>'
         )
         prev_cmp_btn = (
-            f'<a class="btn" href="{html.escape(str(prev_slider_file), quote=True)}">'
-            f'{report_icon("chevron-left", size=16)}{i18n_span_text(f"Лист {prev_slider_ord}", f"Sheet {prev_slider_ord}")}</a>'
-            if prev_slider_file and prev_slider_rec
+            f'<a class="btn" href="{html.escape(str(prev_any_file), quote=True)}">'
+            f'{report_icon("chevron-left", size=16)}{i18n_span_text(f"Лист {prev_any_ord}", f"Sheet {prev_any_ord}")}</a>'
+            if prev_any_file
             else f'<span class="btn disabled">{report_icon("chevron-left", size=16)}{i18n_span_text("Первый лист", "First sheet")}</span>'
         )
         next_cmp_btn = (
-            f'<a class="btn primary" href="{html.escape(str(next_slider_file), quote=True)}">'
-            f'{i18n_span_text(f"Лист {next_slider_ord}", f"Sheet {next_slider_ord}")}{report_icon("chevron-right", size=16)}</a>'
-            if next_slider_file and next_slider_rec
+            f'<a class="btn primary" href="{html.escape(str(next_any_file), quote=True)}">'
+            f'{i18n_span_text(f"Лист {next_any_ord}", f"Sheet {next_any_ord}")}{report_icon("chevron-right", size=16)}</a>'
+            if next_any_file
             else f'<span class="btn primary disabled">{i18n_span_text("Последний лист", "Last sheet")}{report_icon("chevron-right", size=16)}</span>'
         )
         slider_title_ru = f"Слайдер — лист {view_idx} / {len(pages_records)}"
@@ -834,6 +845,28 @@ def _write_slider_view(
     .swatch-green {{ color:rgb(22,163,74); background:rgba(134,239,172,.45); }}
     .bbox-opacity {{ width:110px; }}
     .zoom-rect {{ position:absolute; border:2px dashed rgba(20,120,255,.95); background:rgba(20,120,255,.12); box-sizing:border-box; pointer-events:none; z-index:5; display:none; }}
+    .annot-layer {{ position:absolute; inset:0; pointer-events:none; z-index:6; }}
+    .annot-layer.annot-hidden {{ display:none; }}
+    .annot-box {{ position:absolute; box-sizing:border-box; border:2px solid; border-radius:3px; pointer-events:none; }}
+    .annot-box.green {{ border-color:rgba(22,163,74,.95); background:rgba(22,163,74,.16); }}
+    .annot-box.yellow {{ border-color:rgba(202,138,4,.95); background:rgba(234,179,8,.18); }}
+    .annot-box.red {{ border-color:rgba(220,38,38,.95); background:rgba(239,68,68,.16); }}
+    .annot-note {{ position:absolute; left:-2px; top:0; transform:translateY(-100%); max-width:240px; background:rgba(17,24,39,.9); color:#fff; font:12px/1.3 Segoe UI,Arial,sans-serif; padding:2px 6px; border-radius:4px 4px 4px 0; white-space:pre-wrap; }}
+    .annot-del {{ position:absolute; right:-9px; top:-9px; width:18px; height:18px; border-radius:50%; border:0; background:#dc2626; color:#fff; font-size:12px; line-height:18px; padding:0; cursor:pointer; pointer-events:auto; display:none; }}
+    .stage.annot-mode .annot-box {{ pointer-events:auto; cursor:pointer; }}
+    .stage.annot-mode .annot-del {{ display:block; }}
+    .stage.annot-mode .compare-surface {{ cursor:crosshair; }}
+    .annot-draft {{ position:absolute; border:2px dashed; border-radius:3px; box-sizing:border-box; pointer-events:none; z-index:7; display:none; }}
+    .annot-draft.green {{ border-color:rgba(22,163,74,.95); background:rgba(22,163,74,.12); }}
+    .annot-draft.yellow {{ border-color:rgba(202,138,4,.95); background:rgba(234,179,8,.14); }}
+    .annot-draft.red {{ border-color:rgba(220,38,38,.95); background:rgba(239,68,68,.12); }}
+    .annot-tools {{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }}
+    .annot-swatch {{ width:20px; height:20px; border-radius:5px; border:2px solid rgba(0,0,0,.15); cursor:pointer; padding:0; }}
+    .annot-swatch.active {{ outline:2px solid #111827; outline-offset:1px; }}
+    .annot-swatch.green {{ background:rgba(22,163,74,.55); }}
+    .annot-swatch.yellow {{ background:rgba(234,179,8,.6); }}
+    .annot-swatch.red {{ background:rgba(239,68,68,.55); }}
+    .btn.active {{ background:#0f4fa8; color:#fff; border-color:#0f4fa8; }}
 {REPORT_CSS_TOKENS}
 {CSS_CMP}
   </style>
@@ -880,7 +913,9 @@ def _write_slider_view(
           <button class="seg-btn" id="fitBtn" type="button">{report_icon("maximize-2", size=16)}{i18n_span_text("Вписать", "Fit")}</button>
           <button class="seg-btn" id="oneBtn" type="button">{report_icon("square", size=16)}{i18n_span_text("1:1", "1:1")}</button>
           <button class="seg-btn seg-btn-accent" id="zonesBtn" type="button" {i18n_aria("Подсветить зоны изменений", "Highlight change zones")}>{report_icon("target", size=16)}{i18n_span_text("Зоны", "Zones")}</button>
-          <span class="seg-btn">{report_icon("zoom-in", size=16)}<span>{i18n_span_text("Масштаб", "Zoom")}</span><span id="zoomVal">100%</span></span>
+          <button class="seg-btn" id="zoomOutBtn" type="button" {i18n_aria("Отдалить (мелкий шаг)", "Zoom out (fine step)")}>{report_icon("zoom-out", size=16)}</button>
+          <span class="seg-btn seg-btn-static">{i18n_span_text("Масштаб", "Zoom")} <span id="zoomVal">100%</span></span>
+          <button class="seg-btn" id="zoomInBtn" type="button" {i18n_aria("Приблизить (мелкий шаг)", "Zoom in (fine step)")}>{report_icon("zoom-in", size=16)}</button>
         </div>
         <!-- Bbox controls sit open in the header: colour and opacity are adjusted
              while looking at the sheet, and a dropdown made every tweak a two-step trip. -->
@@ -907,7 +942,9 @@ def _write_slider_view(
           <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(t["slider_old"])}" draggable="false"/></div>
           <div id="bboxLayer" class="bbox-layer"></div>
           <div id="zoneLayer" class="zone-layer" aria-hidden="true"></div>
+          <div id="annotLayer" class="annot-layer" aria-hidden="true"></div>
           <div id="zoomRect" class="zoom-rect"></div>
+          <div id="annotDraft" class="annot-draft"></div>
           <div id="divider" class="divider"></div>
         </div>
         <div id="zoneCounter" class="zone-counter" role="status" aria-live="polite"></div>
@@ -920,7 +957,16 @@ def _write_slider_view(
           {i18n_span_text("NEW", "NEW", "split-label new")}
         </div>
         <input id="zoom" class="sr-only" type="range" min="1" max="500" value="100"/>
-        <div class="hint">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · СКМ-выделение - zoom · Ctrl+Wheel - zoom", "Left click - split · Right drag - pan · Middle drag - zoom to rect · Ctrl+Wheel - zoom")}</div>
+        <div class="hint">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · СКМ-выделение - zoom · Ctrl+Wheel - zoom · Z/H - зоны", "Left click - split · Right drag - pan · Middle drag - zoom to rect · Ctrl+Wheel - zoom · Z/H - zones")}</div>
+        <div class="annot-tools" {i18n_aria("Заметки к зонам", "Zone notes")}>
+          <button id="annotBtn" class="btn" type="button" {i18n_aria("Режим заметок: выделите область и впишите комментарий", "Note mode: drag a box and type a comment")}>{report_icon("square-dashed", size=16)}{i18n_span_text("Заметка", "Note")}</button>
+          <button class="annot-swatch green" data-annot-color="green" type="button" {i18n_aria("Зелёный — нет изменений", "Green — no change")}></button>
+          <button class="annot-swatch yellow active" data-annot-color="yellow" type="button" {i18n_aria("Жёлтый — спорное", "Yellow — unsure")}></button>
+          <button class="annot-swatch red" data-annot-color="red" type="button" {i18n_aria("Красный — изменение", "Red — change")}></button>
+          <button id="annotShowBtn" class="btn" type="button">{i18n_span_text("Скрыть заметки", "Hide notes")}</button>
+          <span id="annotCount" class="muted"></span>
+          <span class="muted">{i18n_span_text("· хранится в браузере, ✎ дв.клик — правка", "· stored in the browser, ✎ double-click to edit")}</span>
+        </div>
       </div>
   </div>
   </div>
@@ -929,8 +975,8 @@ def _write_slider_view(
     const oldSrc = {json.dumps(old_src)};
     const newSrc = {json.dumps(new_src)};
     const bboxData = {json.dumps(bboxes_data, ensure_ascii=False)};
-    const prevSliderHref = {json.dumps(prev_slider_file)};
-    const nextSliderHref = {json.dumps(next_slider_file)};
+    const prevSheetHref = {json.dumps(prev_any_file)};
+    const nextSheetHref = {json.dumps(next_any_file)};
     const firstSliderHref = {json.dumps(first_slider_file)};
     const lastSliderHref = {json.dumps(last_slider_file)};
     const slider = document.getElementById('split');
@@ -938,6 +984,8 @@ def _write_slider_view(
     const zoomVal = document.getElementById('zoomVal');
     const fitBtn = document.getElementById('fitBtn');
     const oneBtn = document.getElementById('oneBtn');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
     const stage = document.getElementById('stage');
     const surface = document.getElementById('surface');
     const oldLayer = document.getElementById('oldLayer');
@@ -1096,6 +1144,7 @@ def _write_slider_view(
       if (e.key === 'Escape') {{
         closeDrawer();
         clearZones();
+        if (typeof setAnnotDrawMode === 'function' && annotDrawMode) setAnnotDrawMode(false);
         document.querySelectorAll('[data-dropdown].open').forEach(dropdown => {{
           dropdown.classList.remove('open');
           const btn = dropdown.querySelector('button');
@@ -1104,17 +1153,30 @@ def _write_slider_view(
         return;
       }}
       if (tag === 'input' || tag === 'button') return;
-      if (e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я') {{
-        highlightZones();
+      // Highlight change zones. Z or H (both keyboard layouts; Ctrl+H works too —
+      // preventDefault keeps the browser from opening History). Toggles, so the
+      // same key clears the rings.
+      if (e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я'
+          || e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р') {{
+        e.preventDefault();
+        toggleZones();
         return;
       }}
-      if ((e.key === 'ArrowLeft' || e.key === 'PageUp') && prevSliderHref) {{
-        window.location.href = prevSliderHref;
-      }} else if ((e.key === 'ArrowRight' || e.key === 'PageDown') && nextSliderHref) {{
-        window.location.href = nextSliderHref;
+      // Sheet flipping. preventDefault matters when the sheet is zoomed in: the
+      // stage is a scroll container, so without it ArrowLeft/Right would pan the
+      // image instead of moving to the neighbouring sheet. The targets step one
+      // sheet at a time (added/removed included), so nothing is skipped.
+      if ((e.key === 'ArrowLeft' || e.key === 'PageUp') && prevSheetHref) {{
+        e.preventDefault();
+        window.location.href = prevSheetHref;
+      }} else if ((e.key === 'ArrowRight' || e.key === 'PageDown') && nextSheetHref) {{
+        e.preventDefault();
+        window.location.href = nextSheetHref;
       }} else if (e.key === 'Home' && firstSliderHref) {{
+        e.preventDefault();
         window.location.href = firstSliderHref;
       }} else if (e.key === 'End' && lastSliderHref) {{
+        e.preventDefault();
         window.location.href = lastSliderHref;
       }}
     }});
@@ -1197,6 +1259,7 @@ def _write_slider_view(
       buildBboxes();
       applyBboxStyle();
       updateZonesBtn();
+      renderAnnots();
       applySplit();
       fitToWindow();
     }}
@@ -1292,6 +1355,22 @@ def _write_slider_view(
       stage.scrollTop = Math.max(0, imgY * z - (stage.clientHeight - imgH * z) / 2);
     }}
     surface.addEventListener('mousedown', (e) => {{
+      if (annotDrawMode && e.button === 0) {{
+        // In note mode the left button draws an annotation box instead of moving
+        // the split; preventDefault suppresses the image drag-select.
+        e.preventDefault();
+        annotDrawing = true;
+        annotStartX = e.clientX;
+        annotStartY = e.clientY;
+        const pt = clientToSurfaceXY(e.clientX, e.clientY);
+        annotDraft.className = 'annot-draft ' + annotColor;
+        annotDraft.style.display = 'block';
+        annotDraft.style.left = pt.x + 'px';
+        annotDraft.style.top = pt.y + 'px';
+        annotDraft.style.width = '0px';
+        annotDraft.style.height = '0px';
+        return;
+      }}
       if (e.button === 2) {{
         panning = true;
         stage.classList.add('panning');
@@ -1323,6 +1402,15 @@ def _write_slider_view(
       setSplitFromClientX(e.clientX);
     }});
     window.addEventListener('mousemove', (e) => {{
+      if (annotDrawing) {{
+        const s = clientToSurfaceXY(annotStartX, annotStartY);
+        const c = clientToSurfaceXY(e.clientX, e.clientY);
+        annotDraft.style.left = Math.min(s.x, c.x) + 'px';
+        annotDraft.style.top = Math.min(s.y, c.y) + 'px';
+        annotDraft.style.width = Math.abs(c.x - s.x) + 'px';
+        annotDraft.style.height = Math.abs(c.y - s.y) + 'px';
+        return;
+      }}
       if (selecting) {{
         const start = clientToSurfaceXY(selStartClientX, selStartClientY);
         const cur = clientToSurfaceXY(e.clientX, e.clientY);
@@ -1345,6 +1433,21 @@ def _write_slider_view(
       setSplitFromClientX(e.clientX);
     }});
     window.addEventListener('mouseup', (e) => {{
+      if (annotDrawing) {{
+        annotDrawing = false;
+        annotDraft.style.display = 'none';
+        const rect = surface.getBoundingClientRect();
+        const s = clientToSurfaceXY(annotStartX, annotStartY);
+        const c = clientToSurfaceXY(e.clientX, e.clientY);
+        const left = Math.min(s.x, c.x);
+        const top = Math.min(s.y, c.y);
+        const w = Math.abs(c.x - s.x);
+        const h = Math.abs(c.y - s.y);
+        if (w >= 5 && h >= 5 && rect.width && rect.height && naturalW && naturalH) {{
+          addAnnot(left / rect.width * naturalW, top / rect.height * naturalH, w / rect.width * naturalW, h / rect.height * naturalH);
+        }}
+        return;
+      }}
       if (selecting) {{
         selecting = false;
         zoomRect.style.display = 'none';
@@ -1391,6 +1494,16 @@ def _write_slider_view(
     zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value)));
     fitBtn.addEventListener('click', fitToWindow);
     oneBtn.addEventListener('click', () => setZoomPercent(100));
+    function zoomByStep(dir) {{
+      // A finer step than the wheel's fixed ±6: 2% of the current zoom (min 1pp),
+      // so repeated clicks creep in/out for precise framing when the mouse wheel
+      // is set to a coarse scroll step.
+      const cur = Number(zoom.value) || 100;
+      const step = Math.max(1, Math.round(cur * 0.02));
+      setZoomPercent(cur + dir * step);
+    }}
+    if (zoomInBtn) zoomInBtn.addEventListener('click', () => zoomByStep(1));
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoomByStep(-1));
     // --- "Показать зоны": briefly pulse rings over where changes cluster. ---
     // Reuses bboxData (image-pixel rects) and the surface coordinate space, so
     // the rings land exactly on the changes and pan/zoom with the sheet.
@@ -1440,8 +1553,11 @@ def _write_slider_view(
       const boxes = usableBoxes();
       if (!boxes.length) return;
       clearZones();
-      // The rings only make sense when the whole sheet is on screen.
-      fitToWindow();
+      // Highlight at the CURRENT zoom/pan — no forced fit. The rings live in the
+      // surface's coordinate space (percent of the sheet), so they land on the
+      // changes at whatever scale you are viewing: zoom into an area, press Zones
+      // again, and it rings the changes right there instead of snapping back to
+      // the whole-sheet view. Use Fit first if you want the global overview.
       const gap = Math.max(naturalW, naturalH) * 0.05;
       const pad = Math.max(naturalW, naturalH) * 0.012;  // a little breathing room around the box
       const zones = clusterZones(boxes, gap);
@@ -1471,12 +1587,116 @@ def _write_slider_view(
       if (!zonesBtn) return;
       zonesBtn.disabled = usableBoxes().length === 0;
     }}
-    if (zonesBtn) {{
-      zonesBtn.addEventListener('click', () => {{
-        if (zoneLayer.classList.contains('active')) clearZones();
-        else highlightZones();
-      }});
+    function toggleZones() {{
+      if (zoneLayer.classList.contains('active')) clearZones();
+      else highlightZones();
     }}
+    if (zonesBtn) {{
+      zonesBtn.addEventListener('click', toggleZones);
+    }}
+    // --- Local annotations: green/yellow/red boxes + a note, per run + sheet. ---
+    // Stored in localStorage, namespaced by the run folder in the URL and the sheet
+    // number, so notes persist across reloads and never collide between runs. They
+    // are browser-local: they do NOT yet survive a report re-render (that needs the
+    // notes written back into the run and re-emitted) — a deliberate next step.
+    const annotLayer = document.getElementById('annotLayer');
+    const annotDraft = document.getElementById('annotDraft');
+    const annotBtn = document.getElementById('annotBtn');
+    const annotShowBtn = document.getElementById('annotShowBtn');
+    const annotCount = document.getElementById('annotCount');
+    const annotKey = 'pdfcompare.annot:' + location.pathname.replace(/[^/]*$/, '') + ':' + currentSeq;
+    let annots = [];
+    let annotColor = 'yellow';
+    let annotDrawMode = false;
+    let annotVisible = true;
+    let annotDrawing = false;
+    let annotStartX = 0;
+    let annotStartY = 0;
+    function loadAnnots() {{
+      try {{ annots = JSON.parse(localStorage.getItem(annotKey) || '[]'); }} catch (e) {{ annots = []; }}
+      if (!Array.isArray(annots)) annots = [];
+    }}
+    function saveAnnots() {{
+      try {{ localStorage.setItem(annotKey, JSON.stringify(annots)); }} catch (e) {{}}
+    }}
+    function annotNewId() {{ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }}
+    function updateAnnotCount() {{
+      if (!annotCount) return;
+      const en = document.documentElement.lang === 'en';
+      annotCount.textContent = annots.length ? ((en ? 'Notes: ' : 'Заметок: ') + annots.length) : '';
+    }}
+    function updateAnnotShowBtn() {{
+      if (!annotShowBtn) return;
+      const en = document.documentElement.lang === 'en';
+      annotShowBtn.textContent = annotVisible ? (en ? 'Hide notes' : 'Скрыть заметки') : (en ? 'Show notes' : 'Показать заметки');
+    }}
+    function updateAnnotPalette() {{
+      document.querySelectorAll('[data-annot-color]').forEach(b => b.classList.toggle('active', b.dataset.annotColor === annotColor));
+    }}
+    function removeAnnot(id) {{ annots = annots.filter(a => a.id !== id); saveAnnots(); renderAnnots(); }}
+    function editAnnot(id) {{
+      const a = annots.find(x => x.id === id);
+      if (!a) return;
+      const en = document.documentElement.lang === 'en';
+      const text = window.prompt(en ? 'Note text:' : 'Текст заметки:', a.text || '');
+      if (text === null) return;
+      a.text = text;
+      saveAnnots(); renderAnnots();
+    }}
+    function renderAnnots() {{
+      if (!annotLayer) return;
+      annotLayer.innerHTML = '';
+      if (naturalW && naturalH) {{
+        annots.forEach(a => {{
+          const box = document.createElement('div');
+          box.className = 'annot-box ' + (a.color || 'yellow');
+          box.style.left = (100 * a.x / naturalW) + '%';
+          box.style.top = (100 * a.y / naturalH) + '%';
+          box.style.width = (100 * a.w / naturalW) + '%';
+          box.style.height = (100 * a.h / naturalH) + '%';
+          if (a.text) {{
+            const note = document.createElement('div');
+            note.className = 'annot-note';
+            note.textContent = a.text;
+            box.appendChild(note);
+          }}
+          const del = document.createElement('button');
+          del.className = 'annot-del';
+          del.type = 'button';
+          del.textContent = '×';
+          del.addEventListener('click', ev => {{ ev.stopPropagation(); removeAnnot(a.id); }});
+          box.appendChild(del);
+          box.addEventListener('dblclick', ev => {{ ev.stopPropagation(); editAnnot(a.id); }});
+          annotLayer.appendChild(box);
+        }});
+      }}
+      annotLayer.classList.toggle('annot-hidden', !annotVisible);
+      updateAnnotCount();
+    }}
+    function addAnnot(x, y, w, h) {{
+      const a = {{ id: annotNewId(), x: x, y: y, w: w, h: h, color: annotColor, text: '' }};
+      annots.push(a);
+      saveAnnots(); renderAnnots();
+      editAnnot(a.id);
+    }}
+    function setAnnotDrawMode(on) {{
+      annotDrawMode = on;
+      if (on) annotVisible = true;
+      stage.classList.toggle('annot-mode', on);
+      if (annotBtn) annotBtn.classList.toggle('active', on);
+      updateAnnotShowBtn();
+      renderAnnots();
+    }}
+    if (annotBtn) annotBtn.addEventListener('click', () => setAnnotDrawMode(!annotDrawMode));
+    if (annotShowBtn) annotShowBtn.addEventListener('click', () => {{ annotVisible = !annotVisible; updateAnnotShowBtn(); renderAnnots(); }});
+    document.querySelectorAll('[data-annot-color]').forEach(b => b.addEventListener('click', () => {{
+      annotColor = b.dataset.annotColor || 'yellow';
+      updateAnnotPalette();
+      if (!annotDrawMode) setAnnotDrawMode(true);
+    }}));
+    loadAnnots();
+    updateAnnotPalette();
+    updateAnnotShowBtn();
     window.addEventListener('resize', () => {{
       if (Number(zoom.value) <= 5) fitToWindow();
     }});

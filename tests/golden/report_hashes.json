@@ -5,8 +5,8 @@
     "_pdfcompare/report/report.json": "ac80b30cb8ecf5a775fb42a2e64071e87f5fb7752cc5335853f691c72faad430",
     "_pdfcompare/report/views/001.html": "aaa5db29120b1ca465fca693091e108bbe4709f2537fddde9fd3b2ea0943186a",
     "_pdfcompare/report/views/002.html": "765c600d940a637fe3a8c05ed8bc33b092fc62d1ce99d696c9ef6759c08b5a2e",
-    "_pdfcompare/report/views/cmp_001.html": "dd32e7f3020decc63c110e76370b36810d62c79f1f998dd870ea52102b53afce",
-    "_pdfcompare/report/views/cmp_002.html": "2df504168ba0f0e939e7eaedb9fd22baed5cb6a0544963c20f76f52355bd40f2",
+    "_pdfcompare/report/views/cmp_001.html": "bc82b7130a0c79bc270eb1052858d0b12a134000f7c39d58e21ced1046f4b2af",
+    "_pdfcompare/report/views/cmp_002.html": "ef2d849ac07a127bbd7095b08a628ba453e352649b76b4fc3462747ca02fac25",
     "start.html": "5bd7f4469696d9bec5c7c95bd37d0b9dca15b4adcffc14c6613190dff203873c"
   },
   "ru": {
@@ -15,8 +15,8 @@
     "_pdfcompare/report/report.json": "2a59016bc000afe008504e841411c572815706754fa6a4361e4fc26671d1658e",
     "_pdfcompare/report/views/001.html": "bb752f558a46af2f0d49f590fe83fdc46e585e4f9d6cdc34295a7051a21043fe",
     "_pdfcompare/report/views/002.html": "58af5df8b9396c4e94095c992cc90b1bbdb97ece9c88bd28d8bd7e5ef9b512bf",
-    "_pdfcompare/report/views/cmp_001.html": "e064ada35f5451e71bdb65167391d8f0b8230c009da27706965fd33c3e41d0d1",
-    "_pdfcompare/report/views/cmp_002.html": "40a7ac914e6db7ad5234eb3ba6b69bc506937cea517a87446b4927d8a9b79e78",
+    "_pdfcompare/report/views/cmp_001.html": "ca2402c4ee74ff7085c2323dab6e0fcc9b8e0665959b564c0bad9873ce0003e8",
+    "_pdfcompare/report/views/cmp_002.html": "692ff6cea1486495b747a8133c2512baaedd5b5d892226bc5d35a59fd499cb34",
     "start.html": "f4445523639baf283385d0393b23345545c7dc91e5f98d0cf8c787c72fcb4b3d"
   }
 }

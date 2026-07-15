@@ -75,6 +75,9 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "rerender_need_seqs": "Передайте seqs или page_settings",
         "page_settings_not_list": "page_settings должен быть списком объектов",
         "page_number_min": "page_number должен быть >= 1",
+        # --- history / restore ---
+        "history_record_not_found": "Запись истории не найдена: {ref}",
+        "history_source_files_missing": "Исходные PDF из записи истории не найдены на диске: {paths}",
     },
     "en": {
         "run_name_empty": "The comparison folder name cannot be empty",
@@ -125,6 +128,8 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "rerender_need_seqs": "Pass seqs or page_settings",
         "page_settings_not_list": "page_settings must be a list of objects",
         "page_number_min": "page_number must be >= 1",
+        "history_record_not_found": "History record not found: {ref}",
+        "history_source_files_missing": "The source PDFs from the history record are missing from disk: {paths}",
     },
 }
 

@@ -59,6 +59,7 @@ from compare_pdfs import (  # noqa: E402  (deliberate: the identity must land fi
     regenerate_report_pages_mixed,
     sanitize_run_folder_name,
 )
+from pdfcompare_core.history_index import append_mcp_record  # noqa: E402
 
 HEARTBEAT_INTERVAL_SEC = 2.0
 
@@ -121,6 +122,47 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
         if level in counts:
             counts[level] += 1
     return {"summary_path": str(summary_path), "counts": counts}
+
+
+def record_mcp_history(
+    request: dict[str, Any], run_dir: Path | str, result: str, summary: dict[str, Any] | None = None
+) -> None:
+    """Append this comparison to the global, install-independent MCP history.
+
+    The store lives in ~/.pdfcompare_local/ (see history_index), so it outlives a
+    fresh MCP clone. A re-render edits an existing run in place rather than being a
+    new comparison, so it is skipped. Best-effort by design: history is a
+    convenience and must never turn a finished run into a failed one, so every
+    error here is swallowed — the same stance the GUI takes in _save_state().
+    """
+    if str(request.get("operation") or "compare") != "compare":
+        return
+    try:
+        counts = summary.get("counts") if isinstance(summary, dict) else None
+        append_mcp_record(
+            {
+                "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "result": result,
+                "job_id": str(request.get("job_id") or ""),
+                "old_pdf": str(request.get("old_path") or ""),
+                "new_pdf": str(request.get("new_path") or ""),
+                "out_dir": str(request.get("out_dir") or ""),
+                "run_name": str(request.get("run_name") or ""),
+                "run_dir": str(run_dir or ""),
+                "dpi": request.get("dpi"),
+                "stroke_tol": request.get("stroke_tol"),
+                "diff_strictness": request.get("diff_strictness"),
+                "exclude_regions": request.get("exclude_regions"),
+                "bbox_merge_gap_mm": request.get("bbox_merge_gap_mm"),
+                "bbox_merge_max_area_ratio": request.get("bbox_merge_max_area_ratio"),
+                "keep_debug_images": request.get("keep_debug_images"),
+                "created_at": request.get("created_at"),
+                "completed_at": now_iso(),
+                "counts": counts,
+            }
+        )
+    except Exception:
+        pass
 
 
 def main() -> int:
@@ -301,6 +343,7 @@ def main() -> int:
         )
         atomic_write_json(args.status, status)
         append_event(args.events, {"at": status["updated_at"], "state": "completed", "message": "Готово"})
+        record_mcp_history(request, run_dir, "completed", status.get("summary"))
         return 0
     except RunCancelled:
         # The run rolled itself back; nothing half-applied is left behind.
@@ -315,6 +358,7 @@ def main() -> int:
         )
         atomic_write_json(args.status, status)
         append_event(args.events, {"at": status["updated_at"], "state": "cancelled", "message": status["message"]})
+        record_mcp_history(request, "", "cancelled")
         return 0
     except Exception as exc:
         shutil.rmtree(work_out_dir, ignore_errors=True)
@@ -344,6 +388,7 @@ def main() -> int:
                 "error_detail": str(exc),
             },
         )
+        record_mcp_history(request, "", "failed")
         return 1
 
 

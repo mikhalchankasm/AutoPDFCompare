@@ -30,6 +30,11 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - `bbox_merge_max_area_ratio`: prevents distant thin changes from becoming one huge empty rectangle; default is `16.0`, with an additional page-area guard;
   - `keep_debug_images`: when `true`, keeps full-size alignment debug images (increases report size).
 
+- `preview_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, diff_strictness = "normal", exclude_regions = [...], bbox_merge_gap_mm = 0, ...)`
+  - builds the **final pre-launch checklist without starting anything**: it validates and normalizes exactly what `start_pdf_comparison` would (paths, run-folder name, DPI, strictness, exclusion zones, output collision), so it never green-lights a run start would reject;
+  - returns page counts + page delta, the precision settings with a `*_is_default` flag on each, an `exclude_regions` summary (count + one line per zone), the bbox-merge setting, and the output folder / run name / run_dir;
+  - takes the same arguments as `start_pdf_comparison`, so after the user confirms, the start call is a straight copy. Call it right before `start_pdf_comparison`.
+
 - `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...])`
   - re-renders selected rows of an existing report in place and rebuilds one combined report;
   - use after a full compare when a user says "recalculate sheet 4 with higher precision";
@@ -46,7 +51,17 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - without `job_id`: lists recent background jobs.
 
 - `list_pdf_comparisons(out_dir = "runs", old_path = "", new_path = "", limit = 20)`
-  - lists completed comparison folders, optionally filtered by the two PDF paths.
+  - lists completed comparison folders, optionally filtered by the two PDF paths — a live scan of one `out_dir` on disk, not a history log.
+
+- `list_comparison_history(limit = 50, source = "")`
+  - the persistent comparison log shared by the GUI and this server, stored in `~/.pdfcompare_local/` (the user's home, **not** this checkout), so it survives a fresh MCP clone or a GUI reinstall;
+  - one merged, numbered list, newest first: each row has `index` (position, for "restore #5"), a stable `id` (`mcp:<job>` / `ui:<hash>`), `source` (`ui` = GUI History tab, `mcp` = started here), `date`, `result`, the two file names, `out_dir`, `run_dir`;
+  - pass `source="ui"` or `source="mcp"` to see one origin; the `index` is valid against the most recent listing — prefer the `id` if another run finished in between.
+
+- `restore_comparison(ref, out_dir = "", run_name = "", confirm = false, source = "")`
+  - re-runs a past comparison from history; `ref` is a position (`"5"` / `"#5"`) or a stable `id`;
+  - **step 1** (`confirm=false`, default): resolves the record and returns its inputs, options, whether the source PDFs still exist, and a non-colliding `suggested_run_name` — nothing runs yet;
+  - **step 2** (`confirm=true`): starts a fresh comparison with those inputs; the original run folder is never touched — the result goes to a new folder (record's `out_dir` + `suggested_run_name` by default; override with `out_dir`/`run_name`). Returns a `job_id` to poll like any other run.
 
 - `cancel_pdf_comparison(job_id, grace_sec = 20)`
   - asks the worker to stop and unwind (a re-render updates a report in place, so a killed worker could leave it half-updated); force-kills only if the worker does not exit within `grace_sec`, and then reports `forced: true`.
@@ -65,7 +80,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - `normal`: default;
    - `loose`: ignores more small jitter/noise.
 6. If the user did not already mention bbox merging, ask whether to enable experimental merging of nearby bbox regions. Recommend keeping it disabled unless the user explicitly wants grouped boxes. Offer the current limits: disabled by default with `bbox_merge_gap_mm=0`; a typical trial value is `5` mm; `bbox_merge_max_area_ratio=16` plus a page-area/sparse-fill guard limits over-merging.
-7. Call `start_pdf_comparison` with `run_name`, `diff_strictness`, `exclude_regions`, and the selected bbox merge settings.
+7. Call `preview_pdf_comparison` with the chosen settings and show the user the returned checklist — old file, new file, tolerances/strictness, excluded zones (or "none"), and the output folder + name. Ask whether to start as-is or change a specific line. Only after confirmation call `start_pdf_comparison` with the same arguments.
 8. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
 9. When completed, give the user `report_path` and summarize counts from `summary.counts`. The HTML report shows both page-level `Diff %` and content-relative `FG %`, plus physical changed area in `mm²`.
 10. If a specific report row needs higher precision, call `rerender_pdf_comparison_pages` with the existing `run_dir` and target `seq`; the report is rebuilt in place.
