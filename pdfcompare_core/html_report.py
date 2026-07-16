@@ -852,8 +852,15 @@ def _write_slider_view(
     .annot-box.yellow {{ border-color:rgba(202,138,4,.95); background:rgba(234,179,8,.18); }}
     .annot-box.red {{ border-color:rgba(220,38,38,.95); background:rgba(239,68,68,.16); }}
     .annot-note {{ position:absolute; left:-2px; top:0; transform:translateY(-100%); max-width:240px; background:rgba(17,24,39,.9); color:#fff; font:12px/1.3 Segoe UI,Arial,sans-serif; padding:2px 6px; border-radius:4px 4px 4px 0; white-space:pre-wrap; }}
-    .annot-del {{ position:absolute; right:-9px; top:-9px; width:18px; height:18px; border-radius:50%; border:0; background:#dc2626; color:#fff; font-size:12px; line-height:18px; padding:0; cursor:pointer; pointer-events:auto; display:none; }}
-    .stage.annot-mode .annot-box {{ pointer-events:auto; cursor:pointer; }}
+    .annot-note.below {{ top:100%; transform:none; border-radius:0 4px 4px 4px; }}
+    .annot-del {{ position:absolute; right:-9px; top:-9px; width:18px; height:18px; border-radius:50%; border:0; background:#dc2626; color:#fff; font-size:12px; line-height:18px; padding:0; cursor:pointer; pointer-events:auto; display:none; z-index:3; }}
+    .annot-handle {{ position:absolute; width:12px; height:12px; background:#0f4fa8; border:2px solid #fff; border-radius:50%; box-sizing:border-box; display:none; pointer-events:auto; z-index:2; }}
+    .annot-handle.nw {{ left:-7px; top:-7px; cursor:nwse-resize; }}
+    .annot-handle.ne {{ right:-7px; top:-7px; cursor:nesw-resize; }}
+    .annot-handle.sw {{ left:-7px; bottom:-7px; cursor:nesw-resize; }}
+    .annot-handle.se {{ right:-7px; bottom:-7px; cursor:nwse-resize; }}
+    .stage.annot-mode .annot-box {{ pointer-events:auto; cursor:move; }}
+    .stage.annot-mode .annot-handle {{ display:block; }}
     .stage.annot-mode .annot-del {{ display:block; }}
     .stage.annot-mode .compare-surface {{ cursor:crosshair; }}
     .annot-draft {{ position:absolute; border:2px dashed; border-radius:3px; box-sizing:border-box; pointer-events:none; z-index:7; display:none; }}
@@ -965,7 +972,7 @@ def _write_slider_view(
           <button class="annot-swatch red" data-annot-color="red" type="button" {i18n_aria("Красный — изменение", "Red — change")}></button>
           <button id="annotShowBtn" class="btn" type="button">{i18n_span_text("Скрыть заметки", "Hide notes")}</button>
           <span id="annotCount" class="muted"></span>
-          <span class="muted">{i18n_span_text("· хранится в браузере, ✎ дв.клик — правка", "· stored in the browser, ✎ double-click to edit")}</span>
+          <span class="muted">{i18n_span_text("· в браузере · тянуть — двигать, углы — размер, дв.клик — текст", "· in the browser · drag to move, corners to resize, double-click for text")}</span>
         </div>
       </div>
   </div>
@@ -1411,6 +1418,36 @@ def _write_slider_view(
         annotDraft.style.height = Math.abs(c.y - s.y) + 'px';
         return;
       }}
+      if (annotEditing) {{
+        const a = annots.find(x => x.id === annotEditing.id);
+        if (!a) {{ annotEditing = null; return; }}
+        // Client-pixel drag → image-pixel delta, so move/resize track the cursor
+        // at any zoom. All coordinates stay in image space (a.x/a.y/a.w/a.h).
+        const dxImg = (e.clientX - annotEditing.startX) / annotEditing.rectW * naturalW;
+        const dyImg = (e.clientY - annotEditing.startY) / annotEditing.rectH * naturalH;
+        const o = annotEditing.orig;
+        if (annotEditing.mode === 'move') {{
+          a.x = clampNum(o.x + dxImg, 0, Math.max(0, naturalW - o.w));
+          a.y = clampNum(o.y + dyImg, 0, Math.max(0, naturalH - o.h));
+        }} else {{
+          let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+          if (annotEditing.corner.indexOf('w') >= 0) x1 = o.x + dxImg;
+          if (annotEditing.corner.indexOf('e') >= 0) x2 = o.x + o.w + dxImg;
+          if (annotEditing.corner.indexOf('n') >= 0) y1 = o.y + dyImg;
+          if (annotEditing.corner.indexOf('s') >= 0) y2 = o.y + o.h + dyImg;
+          a.x = Math.max(0, Math.min(x1, x2));
+          a.y = Math.max(0, Math.min(y1, y2));
+          a.w = Math.max(6, Math.abs(x2 - x1));
+          a.h = Math.max(6, Math.abs(y2 - y1));
+        }}
+        if (annotEditing.el) {{
+          annotEditing.el.style.left = (100 * a.x / naturalW) + '%';
+          annotEditing.el.style.top = (100 * a.y / naturalH) + '%';
+          annotEditing.el.style.width = (100 * a.w / naturalW) + '%';
+          annotEditing.el.style.height = (100 * a.h / naturalH) + '%';
+        }}
+        return;
+      }}
       if (selecting) {{
         const start = clientToSurfaceXY(selStartClientX, selStartClientY);
         const cur = clientToSurfaceXY(e.clientX, e.clientY);
@@ -1446,6 +1483,14 @@ def _write_slider_view(
         if (w >= 5 && h >= 5 && rect.width && rect.height && naturalW && naturalH) {{
           addAnnot(left / rect.width * naturalW, top / rect.height * naturalH, w / rect.width * naturalW, h / rect.height * naturalH);
         }}
+        return;
+      }}
+      if (annotEditing) {{
+        // Persist the moved/resized box and re-render so its label re-picks the
+        // roomy side for the new position.
+        annotEditing = null;
+        saveAnnots();
+        renderAnnots();
         return;
       }}
       if (selecting) {{
@@ -1612,6 +1657,8 @@ def _write_slider_view(
     let annotDrawing = false;
     let annotStartX = 0;
     let annotStartY = 0;
+    let annotEditing = null;
+    function clampNum(v, lo, hi) {{ return Math.max(lo, Math.min(hi, v)); }}
     function loadAnnots() {{
       try {{ annots = JSON.parse(localStorage.getItem(annotKey) || '[]'); }} catch (e) {{ annots = []; }}
       if (!Array.isArray(annots)) annots = [];
@@ -1656,7 +1703,11 @@ def _write_slider_view(
           box.style.height = (100 * a.h / naturalH) + '%';
           if (a.text) {{
             const note = document.createElement('div');
-            note.className = 'annot-note';
+            // Put the label on the side with room: below the box when it sits in
+            // the upper half of the sheet (above would run off the top edge),
+            // above it otherwise. Recomputed on every render, so moving a box
+            // near the top flips its label down.
+            note.className = 'annot-note' + (a.y < naturalH * 0.5 ? ' below' : '');
             note.textContent = a.text;
             box.appendChild(note);
           }}
@@ -1666,7 +1717,31 @@ def _write_slider_view(
           del.textContent = '×';
           del.addEventListener('click', ev => {{ ev.stopPropagation(); removeAnnot(a.id); }});
           box.appendChild(del);
+          ['nw', 'ne', 'sw', 'se'].forEach(cn => {{
+            const hd = document.createElement('div');
+            hd.className = 'annot-handle ' + cn;
+            hd.dataset.corner = cn;
+            box.appendChild(hd);
+          }});
           box.addEventListener('dblclick', ev => {{ ev.stopPropagation(); editAnnot(a.id); }});
+          box.addEventListener('mousedown', ev => {{
+            if (!annotDrawMode || ev.button !== 0) return;
+            ev.stopPropagation();  // pressing an existing box must never start a new one
+            if (ev.target.classList.contains('annot-del')) return;  // delete is handled on click
+            ev.preventDefault();
+            const rect = surface.getBoundingClientRect();
+            annotEditing = {{
+              id: a.id,
+              mode: ev.target.dataset.corner ? 'resize' : 'move',
+              corner: ev.target.dataset.corner || '',
+              startX: ev.clientX,
+              startY: ev.clientY,
+              orig: {{ x: a.x, y: a.y, w: a.w, h: a.h }},
+              rectW: rect.width || 1,
+              rectH: rect.height || 1,
+              el: box,
+            }};
+          }});
           annotLayer.appendChild(box);
         }});
       }}
