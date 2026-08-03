@@ -55,8 +55,36 @@ def size_compatible(a: PageInfo, b: PageInfo) -> bool:
     return area_ratio >= 0.96 and aspect_delta <= 0.015
 
 
+def content_compatible_across_sizes(a: PageInfo, b: PageInfo) -> bool:
+    """Allow a revision to move to another paper size when its identity is clear.
+
+    Paper size is normally a useful hard gate, but drawings are sometimes
+    republished on a larger sheet without changing the drawing itself.  Keep
+    this exception deliberately narrow: the aspect ratio must stay the same,
+    both the rendered content and a substantial body of extracted text must
+    agree, and conflicting sheet marks still reject the pair.
+    """
+    if min(a.width_pt, a.height_pt, b.width_pt, b.height_pt) <= 0:
+        return False
+    aspect_a = a.width_pt / a.height_pt
+    aspect_b = b.width_pt / b.height_pt
+    aspect_delta = abs(aspect_a - aspect_b) / max(aspect_a, aspect_b)
+    if aspect_delta > 0.015:
+        return False
+    if a.sheet_mark and b.sheet_mark and sheet_mark_similarity(a.sheet_mark, b.sheet_mark) == 0.0:
+        return False
+    shared_tokens = len(a.text_tokens & b.text_tokens)
+    if shared_tokens < 20:
+        return False
+    return text_similarity(a.text_tokens, b.text_tokens) >= 0.85 and visual_similarity(a.thumb, b.thumb) >= 0.90
+
+
+def pages_compatible(a: PageInfo, b: PageInfo) -> bool:
+    return size_compatible(a, b) or content_compatible_across_sizes(a, b)
+
+
 def pair_similarity(a: PageInfo, b: PageInfo) -> float:
-    if not size_compatible(a, b):
+    if not pages_compatible(a, b):
         return 0.0
     v = visual_similarity(a.thumb, b.thumb)
     t = text_similarity(a.text_tokens, b.text_tokens)
@@ -81,7 +109,7 @@ def build_similarity_matrices(
     compatible = np.zeros((n, m), dtype=bool)
     for i in range(n):
         for j in range(m):
-            ok = size_compatible(pages_a[i], pages_b[j])
+            ok = pages_compatible(pages_a[i], pages_b[j])
             compatible[i, j] = ok
             if ok:
                 sims[i, j] = pair_similarity(pages_a[i], pages_b[j])

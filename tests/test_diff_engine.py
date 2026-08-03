@@ -288,6 +288,23 @@ class HarmonizeCanvasTests(unittest.TestCase):
         result = harmonize_canvas(a, b)
         self.assertIsNone(result)
 
+    def test_large_same_aspect_delta_can_be_scaled(self) -> None:
+        a = _white_canvas(100, 140)
+        b = _white_canvas(200, 280)
+
+        result = harmonize_canvas(a, b, allow_scale=True)
+
+        self.assertIsNotNone(result)
+        out_a, out_b = result
+        self.assertEqual(out_a.shape, (100, 140, 3))
+        self.assertEqual(out_b.shape, (100, 140, 3))
+
+    def test_scaling_rejects_different_aspect_ratios(self) -> None:
+        a = _white_canvas(100, 140)
+        b = _white_canvas(200, 200)
+
+        self.assertIsNone(harmonize_canvas(a, b, allow_scale=True))
+
     def test_max_delta_threshold_respected(self) -> None:
         a = _white_canvas(100, 100)
         b = _white_canvas(100, 95)  # width delta 5

@@ -352,7 +352,11 @@ def process_pair_task(
             b_img = render_page(doc_b, b_idx, effective_dpi)
             check_cancelled()
             remember_shape(a_img)
-            harmonized = harmonize_canvas(a_img, b_img)
+            # Page matching has already established strong revision identity.
+            # A drawing may be republished on a larger same-aspect sheet (for
+            # example A1 -> A0), so normalize both rasters to the smaller one
+            # before registration and diffing instead of reporting two sheets.
+            harmonized = harmonize_canvas(a_img, b_img, allow_scale=True)
             if harmonized is None:
                 entry["status"] = "size_mismatch"
                 entry["change_level"] = "size_mismatch"

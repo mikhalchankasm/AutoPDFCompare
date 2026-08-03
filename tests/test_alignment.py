@@ -32,11 +32,12 @@ def _page(
     width: float = 595.0,
     height: float = 842.0,
     sheet_mark: str | None = None,
+    text_tokens: set[str] | None = None,
 ) -> PageInfo:
     return PageInfo(
         index=idx,
         thumb=_thumb(intensity),
-        text_tokens=set(),
+        text_tokens=set() if text_tokens is None else text_tokens,
         width_pt=width,
         height_pt=height,
         sheet_mark=sheet_mark,
@@ -165,6 +166,24 @@ class MonotonicAlignmentTests(unittest.TestCase):
 
 
 class AlignPagesV1Tests(unittest.TestCase):
+    def test_matches_revision_republished_on_larger_same_aspect_sheet(self) -> None:
+        common = {f"DRAWING_TOKEN_{i}" for i in range(30)}
+        a = [_page(0, 100.0, width=2383.0, height=1683.0, sheet_mark="1", text_tokens=common | {"2025"})]
+        b = [_page(0, 100.0, width=3370.0, height=2383.0, sheet_mark="1", text_tokens=common | {"2026"})]
+
+        pairs = align_pages_v1(a, b)
+
+        self.assertEqual(_statuses(pairs), ["matched"])
+        self.assertEqual((pairs[0].a_idx, pairs[0].b_idx), (0, 0))
+
+    def test_does_not_relax_size_gate_for_weak_content_match(self) -> None:
+        a = [_page(0, 100.0, width=2383.0, height=1683.0, text_tokens={"A", "B"})]
+        b = [_page(0, 100.0, width=3370.0, height=2383.0, text_tokens={"A", "B"})]
+
+        pairs = align_pages_v1(a, b)
+
+        self.assertEqual(sorted(_statuses(pairs)), ["added", "removed"])
+
     def test_picks_global_when_reorder_dominates(self) -> None:
         """For swapped pages, global (hungarian) recovers all matches and should win."""
         a = [_page(0, 0.0), _page(1, 255.0)]

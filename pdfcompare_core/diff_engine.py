@@ -41,11 +41,22 @@ def harmonize_canvas(
     a_bgr: np.ndarray,
     b_bgr: np.ndarray,
     max_delta: int = 3,
+    *,
+    allow_scale: bool = False,
 ) -> tuple[np.ndarray, np.ndarray] | None:
     ha, wa = a_bgr.shape[:2]
     hb, wb = b_bgr.shape[:2]
     if abs(ha - hb) > max_delta or abs(wa - wb) > max_delta:
-        return None
+        aspect_a = wa / ha
+        aspect_b = wb / hb
+        aspect_delta = abs(aspect_a - aspect_b) / max(aspect_a, aspect_b)
+        if not allow_scale or aspect_delta > 0.015:
+            return None
+        if ha * wa <= hb * wb:
+            b_bgr = cv2.resize(b_bgr, (wa, ha), interpolation=cv2.INTER_AREA)
+        else:
+            a_bgr = cv2.resize(a_bgr, (wb, hb), interpolation=cv2.INTER_AREA)
+        return a_bgr, b_bgr
     h = max(ha, hb)
     w = max(wa, wb)
     if ha != h or wa != w:
