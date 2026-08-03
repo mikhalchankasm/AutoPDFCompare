@@ -47,7 +47,7 @@ jobs:
         run: |
           if (-not (Test-Path requirements/lock.txt)) { throw "requirements/lock.txt is missing" }
           python -m pip install --upgrade pip
-          pip install --require-hashes -r requirements/lock.txt
+          python -m pip install --require-hashes -r requirements/lock.txt
 
       - name: Lint
         run: .\scripts\lint.ps1
@@ -88,7 +88,7 @@ jobs:
         run: |
           if (-not (Test-Path requirements/lock.txt)) { throw "requirements/lock.txt is missing" }
           python -m pip install --upgrade pip
-          pip install --require-hashes -r requirements/lock.txt
+          python -m pip install --require-hashes -r requirements/lock.txt
 
       # Two builds on purpose: the standalone download is one file, the installer
       # ships one dir (no %TEMP% extraction, so nothing races with the silent
