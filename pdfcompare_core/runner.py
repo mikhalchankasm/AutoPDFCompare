@@ -264,6 +264,7 @@ def process_pair_task(
     diff_strictness: str = "normal",
     bbox_merge_gap_mm: float = 0.0,
     bbox_merge_max_area_ratio: float = 16.0,
+    ignore_line_weight: bool = False,
     limit_cv_threads: bool = False,
     *,
     cancel_event: CancelFlag | None = None,
@@ -318,6 +319,7 @@ def process_pair_task(
         "stroke_tol_px": float(stroke_tol_px),
         "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
         "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
+        "ignore_line_weight": bool(ignore_line_weight),
         "ecc_failed": False,
         "width_px": None,
         "height_px": None,
@@ -381,6 +383,7 @@ def process_pair_task(
                 render_dpi=effective_dpi,
                 bbox_merge_gap_px=bbox_merge_gap_px,
                 bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
+                ignore_line_weight=ignore_line_weight,
             )
             diff_percent = float(metrics["diff_percent"])
             level = classify(
@@ -509,6 +512,7 @@ def _write_run_summary_files(
     diff_strictness: str = "normal",
     bbox_merge_gap_mm: float = 0.0,
     bbox_merge_max_area_ratio: float = 16.0,
+    ignore_line_weight: bool = False,
 ) -> None:
     normalized_exclusions = normalize_exclude_regions(exclude_regions)
     pairs = _details_to_pairs(details)
@@ -528,6 +532,7 @@ def _write_run_summary_files(
                 "exclude_regions": normalized_exclusions,
                 "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
                 "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
+                "ignore_line_weight": bool(ignore_line_weight),
                 "pairs": list(details),
             },
             ensure_ascii=False,
@@ -554,6 +559,7 @@ def _write_run_summary_files(
             "stroke_tol_px",
             "bbox_merge_gap_mm",
             "bbox_merge_max_area_ratio",
+            "ignore_line_weight",
             "ecc_failed",
             "width_px",
             "height_px",
@@ -694,6 +700,7 @@ def regenerate_report_pages(
     diff_strictness: str | None = None,
     bbox_merge_gap_mm: float | None = None,
     bbox_merge_max_area_ratio: float | None = None,
+    ignore_line_weight: bool | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
@@ -753,6 +760,9 @@ def regenerate_report_pages(
         if bbox_merge_max_area_ratio is not None
         else payload.get("bbox_merge_max_area_ratio", 16.0)
     )
+    line_weight_mode = bool(
+        ignore_line_weight if ignore_line_weight is not None else payload.get("ignore_line_weight", False)
+    )
     worker_count = resolve_worker_count(workers, len(selected))
     pages_root_resolved = pages_dir.resolve()
     staging_pages = _staging_pages_dir(run_dir)
@@ -788,6 +798,7 @@ def regenerate_report_pages(
                 strictness,
                 merge_gap_mm,
                 merge_max_area_ratio,
+                line_weight_mode,
                 worker_count > 1,
             )
         )
@@ -841,6 +852,7 @@ def regenerate_report_pages(
             strictness,
             merge_gap_mm,
             merge_max_area_ratio,
+            line_weight_mode,
         )
         emit(82, "Пересборка HTML отчёта")
         generate_html_report(
@@ -889,6 +901,7 @@ def regenerate_report_pages_mixed(
     diff_strictness: str | None = None,
     bbox_merge_gap_mm: float | None = None,
     bbox_merge_max_area_ratio: float | None = None,
+    ignore_line_weight: bool | None = None,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
@@ -945,6 +958,9 @@ def regenerate_report_pages_mixed(
         if bbox_merge_max_area_ratio is not None
         else payload.get("bbox_merge_max_area_ratio", 16.0)
     )
+    default_line_weight_mode = bool(
+        ignore_line_weight if ignore_line_weight is not None else payload.get("ignore_line_weight", False)
+    )
 
     tasks = []
     settings_by_seq: dict[int, dict] = {}
@@ -962,6 +978,7 @@ def regenerate_report_pages_mixed(
         )
         spec_merge_gap = float(spec.get("bbox_merge_gap_mm", default_merge_gap))
         spec_merge_ratio = float(spec.get("bbox_merge_max_area_ratio", default_merge_ratio))
+        spec_line_weight_mode = bool(spec.get("ignore_line_weight", default_line_weight_mode))
 
         for seq in _spec_seqs(spec):
             if seq in settings_by_seq:
@@ -975,6 +992,7 @@ def regenerate_report_pages_mixed(
                 "exclude_regions": spec_exclusions,
                 "bbox_merge_gap_mm": spec_merge_gap,
                 "bbox_merge_max_area_ratio": spec_merge_ratio,
+                "ignore_line_weight": spec_line_weight_mode,
             }
 
     staging_pages = _staging_pages_dir(run_dir)
@@ -1005,6 +1023,7 @@ def regenerate_report_pages_mixed(
                 str(setting["diff_strictness"]),
                 float(setting["bbox_merge_gap_mm"]),
                 float(setting["bbox_merge_max_area_ratio"]),
+                bool(setting["ignore_line_weight"]),
                 False,
             )
         )
@@ -1061,6 +1080,7 @@ def regenerate_report_pages_mixed(
             default_strictness,
             default_merge_gap,
             default_merge_ratio,
+            default_line_weight_mode,
         )
         summary_payload = json.loads(summary_json_path(run_dir).read_text(encoding="utf-8"))
         summary_payload["mixed_page_settings"] = [
@@ -1103,6 +1123,7 @@ def compare_pdfs(
     diff_strictness: str = "normal",
     bbox_merge_gap_mm: float = 0.0,
     bbox_merge_max_area_ratio: float = 16.0,
+    ignore_line_weight: bool = False,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_cb: Callable[[], bool] | None = None,
 ) -> Path:
@@ -1169,6 +1190,7 @@ def compare_pdfs(
                 strictness,
                 bbox_merge_gap_mm,
                 bbox_merge_max_area_ratio,
+                ignore_line_weight,
                 worker_count > 1,
             )
             for idx, p in enumerate(pairs, start=1)
@@ -1233,6 +1255,7 @@ def compare_pdfs(
             strictness,
             bbox_merge_gap_mm,
             bbox_merge_max_area_ratio,
+            ignore_line_weight,
         )
         emit(90, "Генерация HTML отчета")
         generate_html_report(

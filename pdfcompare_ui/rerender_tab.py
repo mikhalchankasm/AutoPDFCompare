@@ -56,6 +56,7 @@ class RerenderTabMixin:
     rerender_strictness_chips: dict[str, tk.Label]
     rerender_edit_selected_btn: ttk.Button | None
     rerender_exclude_pick_btn: ttk.Button | None
+    rerender_line_weight_chip: ttk.Checkbutton | None
     rerender_source_pdf: Path | None
 
     def _build_rerender_tab(self: AppProtocol) -> None:
@@ -137,6 +138,14 @@ class RerenderTabMixin:
             self.rerender_strictness_chips[value] = chip
         ttk.Label(overrides_row, text=self._tr("rerender_bbox_merge"), style="FileLabel.TLabel", background=BG_SOFT).pack(side=tk.LEFT)
         ttk.Entry(overrides_row, textvariable=self.rerender_bbox_gap, width=6).pack(side=tk.LEFT, padx=(6, 16))
+        self.rerender_line_weight_chip = ttk.Checkbutton(
+            overrides_row,
+            text=self._tr("rerender_line_weight"),
+            variable=self.rerender_ignore_line_weight,
+            onvalue="on",
+            offvalue="",
+        )
+        self.rerender_line_weight_chip.pack(side=tk.LEFT)
 
         exclude_row = tk.Frame(options_panel, bg=BG_SOFT)
         exclude_row.pack(fill=tk.X, pady=(8, 0))
@@ -331,6 +340,8 @@ class RerenderTabMixin:
             overrides["bbox_merge_gap_mm"] = gap
             # Enable bbox merge with a sane default for the ratio cap when only gap is given.
             overrides.setdefault("bbox_merge_max_area_ratio", 16.0)
+        if self.rerender_ignore_line_weight.get() == "on":
+            overrides["ignore_line_weight"] = True
         return overrides
 
     def _edit_selected_page_settings(self: AppProtocol) -> None:
@@ -346,7 +357,7 @@ class RerenderTabMixin:
         self._update_rerender_mode_chips()
         dialog = tk.Toplevel(self.root)
         dialog.title(self._tr("rerender_edit_selected"))
-        dialog.geometry("420x300")
+        dialog.geometry("440x340")
         dialog.transient(self.root)
         dialog.grab_set()
         local = {
@@ -355,6 +366,7 @@ class RerenderTabMixin:
             "diff_strictness": tk.StringVar(value=""),
             "exclude_regions": tk.StringVar(value=""),
             "bbox_merge_gap_mm": tk.StringVar(value=""),
+            "ignore_line_weight": tk.StringVar(value=""),
         }
         form = tk.Frame(dialog, padx=12, pady=12)
         form.pack(fill=tk.BOTH, expand=True)
@@ -367,6 +379,13 @@ class RerenderTabMixin:
         ):
             ttk.Label(form, text=self._tr(label_key)).pack(anchor="w", pady=(4, 0))
             ttk.Entry(form, textvariable=local[key]).pack(fill=tk.X)
+        ttk.Checkbutton(
+            form,
+            text=self._tr("rerender_line_weight"),
+            variable=local["ignore_line_weight"],
+            onvalue="on",
+            offvalue="",
+        ).pack(anchor="w", pady=(6, 0))
         hint = ttk.Label(form, text=self._tr("rerender_perpage_hint"), style="Hint.TLabel")
         hint.pack(anchor="w", pady=(8, 0))
 
@@ -400,6 +419,8 @@ class RerenderTabMixin:
                 excl_txt = local["exclude_regions"].get().strip()
                 if excl_txt:
                     spec["exclude_regions"] = excl_txt
+                if local["ignore_line_weight"].get() == "on":
+                    spec["ignore_line_weight"] = True
                 self.rerender_page_settings[seq] = spec
             dialog.destroy()
             self._set_status("status_rerender_perpage_set", count=len(seqs))
@@ -533,6 +554,8 @@ class RerenderTabMixin:
         if gap is not None and 0 <= gap <= 50:
             overrides["bbox_merge_gap_mm"] = gap
             overrides.setdefault("bbox_merge_max_area_ratio", 16.0)
+        if self.rerender_ignore_line_weight.get() == "on":
+            overrides["ignore_line_weight"] = True
         return overrides
 
     def _begin_rerender_run(self: AppProtocol) -> None:
@@ -563,6 +586,7 @@ class RerenderTabMixin:
                 exclude_regions=overrides.get("exclude_regions"),
                 bbox_merge_gap_mm=overrides.get("bbox_merge_gap_mm"),
                 bbox_merge_max_area_ratio=overrides.get("bbox_merge_max_area_ratio"),
+                ignore_line_weight=overrides.get("ignore_line_weight"),
                 progress_cb=report_progress,
                 cancel_cb=self.rerender_cancel_requested.is_set,
             )

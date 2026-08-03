@@ -11,6 +11,9 @@ from .exclusions import ExcludeRegion, exclusion_regions_to_pixel_boxes
 
 
 DIFF_STRICTNESS_CHOICES = ("strict", "normal", "loose")
+LINE_WEIGHT_CENTER_TOL_MM = 0.35
+LINE_WEIGHT_MAX_HALF_WIDTH_MM = 1.5
+LINE_WEIGHT_DOWNSAMPLE_THRESHOLD = 4_000_000
 STRICTNESS_PROFILES = {
     "strict": {"tol_multiplier": 0.65, "min_area": 80},
     "normal": {"tol_multiplier": 1.0, "min_area": 180},
@@ -18,6 +21,64 @@ STRICTNESS_PROFILES = {
 }
 
 type BBox = tuple[int, int, int, int]
+
+
+def _stroke_centerline(foreground: np.ndarray) -> np.ndarray:
+    """Approximate stroke medial axes without the opencv-contrib thinning module."""
+    inside_distance = cv2.distanceTransform(foreground, cv2.DIST_L2, 3)
+    local_max = cv2.dilate(inside_distance, np.ones((3, 3), np.uint8))
+    centerline = ((inside_distance > 0) & (inside_distance >= local_max - 0.05)).astype(np.uint8) * 255
+    return centerline
+
+
+def _line_weight_envelope(
+    fg_a: np.ndarray,
+    fg_b: np.ndarray,
+    stroke_tol_px: float,
+    render_dpi: float,
+) -> np.ndarray:
+    """Pixels around matching stroke axes where width-only changes are ignored.
+
+    A shifted or newly added line has no matching medial axis and therefore
+    does not receive an envelope.  The maximum radius is physical so the mode
+    behaves consistently at different render DPIs.
+    """
+    height, width = fg_a.shape[:2]
+    analysis_scale = 0.5 if fg_a.size >= LINE_WEIGHT_DOWNSAMPLE_THRESHOLD else 1.0
+    if analysis_scale < 1.0:
+        analysis_size = (
+            max(1, int(round(width * analysis_scale))),
+            max(1, int(round(height * analysis_scale))),
+        )
+        analysis_a = cv2.resize(fg_a, analysis_size, interpolation=cv2.INTER_NEAREST)
+        analysis_b = cv2.resize(fg_b, analysis_size, interpolation=cv2.INTER_NEAREST)
+    else:
+        analysis_a = fg_a
+        analysis_b = fg_b
+
+    center_a = _stroke_centerline(analysis_a)
+    center_b = _stroke_centerline(analysis_b)
+    physical_center_tol = LINE_WEIGHT_CENTER_TOL_MM * float(render_dpi) / 25.4
+    center_tol = max(float(stroke_tol_px), physical_center_tol) * analysis_scale
+
+    distance_to_b = cv2.distanceTransform(cv2.bitwise_not(center_b), cv2.DIST_L2, 3)
+    matched_a = cv2.bitwise_and(center_a, (distance_to_b <= center_tol).astype(np.uint8) * 255)
+    del distance_to_b
+
+    distance_to_a = cv2.distanceTransform(cv2.bitwise_not(center_a), cv2.DIST_L2, 3)
+    matched_b = cv2.bitwise_and(center_b, (distance_to_a <= center_tol).astype(np.uint8) * 255)
+    del distance_to_a, center_a, center_b
+
+    matched = cv2.bitwise_or(matched_a, matched_b)
+    radius = max(
+        1,
+        int(round(LINE_WEIGHT_MAX_HALF_WIDTH_MM * float(render_dpi) / 25.4 * analysis_scale)),
+    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+    envelope = cv2.dilate(matched, kernel)
+    if analysis_scale < 1.0:
+        envelope = cv2.resize(envelope, (width, height), interpolation=cv2.INTER_NEAREST)
+    return envelope
 
 
 def _empty_metrics() -> dict[str, float | int | bool]:
@@ -198,6 +259,7 @@ def compute_diff_detailed(
     render_dpi: float = 72.0,
     bbox_merge_gap_px: int = 0,
     bbox_merge_max_area_ratio: float = 16.0,
+    ignore_line_weight: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, list[BBox], dict[str, float | int]]:
     hb, wb = b_bgr.shape[:2]
     ha, wa = a_bgr.shape[:2]
@@ -249,6 +311,18 @@ def compute_diff_detailed(
     mask_add = cv2.bitwise_and(fg_b, (dt_to_a > effective_stroke_tol_px).astype(np.uint8) * 255)
     del dt_to_a
 
+    if ignore_line_weight:
+        line_weight_envelope = _line_weight_envelope(
+            fg_a,
+            fg_b,
+            effective_stroke_tol_px,
+            render_dpi,
+        )
+        outside_envelope = cv2.bitwise_not(line_weight_envelope)
+        mask_del = cv2.bitwise_and(mask_del, outside_envelope)
+        mask_add = cv2.bitwise_and(mask_add, outside_envelope)
+        del line_weight_envelope, outside_envelope
+
     mask = cv2.bitwise_or(mask_del, mask_add)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -299,6 +373,7 @@ def compute_diff(
     render_dpi: float = 72.0,
     bbox_merge_gap_px: int = 0,
     bbox_merge_max_area_ratio: float = 16.0,
+    ignore_line_weight: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, list[BBox], float]:
     mask, overlay, bboxes, metrics = compute_diff_detailed(
         a_bgr,
@@ -309,5 +384,6 @@ def compute_diff(
         render_dpi=render_dpi,
         bbox_merge_gap_px=bbox_merge_gap_px,
         bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
+        ignore_line_weight=ignore_line_weight,
     )
     return mask, overlay, bboxes, float(metrics["diff_percent"])

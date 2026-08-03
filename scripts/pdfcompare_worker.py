@@ -156,6 +156,7 @@ def record_mcp_history(
                 "bbox_merge_gap_mm": request.get("bbox_merge_gap_mm"),
                 "bbox_merge_max_area_ratio": request.get("bbox_merge_max_area_ratio"),
                 "keep_debug_images": request.get("keep_debug_images"),
+                "ignore_line_weight": request.get("ignore_line_weight"),
                 "created_at": request.get("created_at"),
                 "completed_at": now_iso(),
                 "counts": counts,
@@ -292,6 +293,7 @@ def main() -> int:
                     if request.get("bbox_merge_max_area_ratio") is not None
                     else None
                 ),
+                ignore_line_weight=request.get("ignore_line_weight"),
                 report_lang=str(request.get("lang", "ru")),
                 workers=int(request.get("workers", 0)),
                 progress_cb=update_progress,
@@ -309,6 +311,7 @@ def main() -> int:
                 report_lang=str(request.get("lang", "ru")),
                 run_name=run_name,
                 keep_debug_images=bool(request.get("keep_debug_images", False)),
+                ignore_line_weight=bool(request.get("ignore_line_weight", False)),
                 workers=int(request.get("workers", 0)),
                 bbox_merge_gap_mm=float(request.get("bbox_merge_gap_mm", 0.0)),
                 bbox_merge_max_area_ratio=float(request.get("bbox_merge_max_area_ratio", 16.0)),

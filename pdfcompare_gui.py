@@ -117,6 +117,7 @@ class PDFCompareApp(
         self.bbox_merge_gap = tk.StringVar(value="5")
         self.bbox_merge_max_ratio = tk.StringVar(value="16")
         self.keep_debug = tk.StringVar(value="off")
+        self.ignore_line_weight = tk.StringVar(value="off")
         self.status = tk.StringVar(value="")
         self.progress_pct = tk.StringVar(value="0%")
         self.elapsed = tk.StringVar(value="00:00")
@@ -142,6 +143,7 @@ class PDFCompareApp(
         self.rerender_exclude = tk.StringVar(value="")
         self.rerender_bbox_merge = tk.StringVar(value="off")
         self.rerender_bbox_gap = tk.StringVar(value="")
+        self.rerender_ignore_line_weight = tk.StringVar(value="")
         self.rerender_mode = tk.StringVar(value="uniform")
         # Per-page overrides in mixed mode: {seq: {dpi, stroke_tol, ...}}.
         self.rerender_page_settings: dict[int, dict[str, Any]] = {}
@@ -203,10 +205,13 @@ class PDFCompareApp(
         self.options_bbox_merge_hint_label: ttk.Label | None = None
         self.options_keep_debug_label: ttk.Label | None = None
         self.options_keep_debug_hint_label: ttk.Label | None = None
+        self.options_line_weight_label: ttk.Label | None = None
+        self.options_line_weight_hint_label: ttk.Label | None = None
         self.bbox_merge_chip: ttk.Checkbutton | None = None
         self.bbox_merge_gap_entry: ttk.Entry | None = None
         self.bbox_merge_max_ratio_entry: ttk.Entry | None = None
         self.keep_debug_chip: ttk.Checkbutton | None = None
+        self.ignore_line_weight_chip: ttk.Checkbutton | None = None
         self.clear_btn: ttk.Button | None = None
         self.from_history_btn: ttk.Button | None = None
         self.exclude_pick_btn: ttk.Button | None = None
@@ -233,6 +238,7 @@ class PDFCompareApp(
         self.rerender_strictness_chips: dict[str, tk.Label] = {}
         self.rerender_edit_selected_btn: ttk.Button | None = None
         self.rerender_exclude_pick_btn: ttk.Button | None = None
+        self.rerender_line_weight_chip: ttk.Checkbutton | None = None
         self.history_filter_buttons: dict[str, tk.Label] = {}
         self.strictness_chips: dict[str, tk.Label] = {}
         self.rerender_by_iid: dict[str, dict[str, Any]] = {}
@@ -351,6 +357,18 @@ class PDFCompareApp(
             self.options_exclude_label.configure(text=self._tr("opts_exclude"))
         if self.options_exclude_hint_label is not None:
             self.options_exclude_hint_label.configure(text=self._tr("opts_exclude_hint"))
+        if self.options_bbox_merge_label is not None:
+            self.options_bbox_merge_label.configure(text=self._tr("opts_bbox_merge"))
+        if self.options_bbox_merge_hint_label is not None:
+            self.options_bbox_merge_hint_label.configure(text=self._tr("opts_bbox_merge_hint"))
+        if self.options_keep_debug_label is not None:
+            self.options_keep_debug_label.configure(text=self._tr("opts_keep_debug"))
+        if self.options_keep_debug_hint_label is not None:
+            self.options_keep_debug_hint_label.configure(text=self._tr("opts_keep_debug_hint"))
+        if self.options_line_weight_label is not None:
+            self.options_line_weight_label.configure(text=self._tr("opts_line_weight"))
+        if self.options_line_weight_hint_label is not None:
+            self.options_line_weight_hint_label.configure(text=self._tr("opts_line_weight_hint"))
         if self.run_btn is not None:
             if self.running:
                 self.run_btn.configure(text=self._tr("btn_cancelling" if self.cancel_requested.is_set() else "btn_cancel"))
@@ -407,6 +425,11 @@ class PDFCompareApp(
                 self.rerender_start_btn.configure(text=self._tr("rerender_start"))
         if self.rerender_open_report_btn is not None:
             self.rerender_open_report_btn.configure(text=self._tr("btn_open_report"))
+        if self.rerender_line_weight_chip is not None:
+            self.rerender_line_weight_chip.configure(text=self._tr("rerender_line_weight"))
+        for chip in (self.bbox_merge_chip, self.keep_debug_chip, self.ignore_line_weight_chip):
+            if chip is not None:
+                chip.configure(text=self._tr("opts_enable"))
         if self.rerender_tree is not None:
             for col, key in (
                 ("seq", "rerender_col_seq"),
@@ -928,6 +951,7 @@ class PDFCompareApp(
             self.bbox_merge_gap,
             self.bbox_merge_max_ratio,
             self.keep_debug,
+            self.ignore_line_weight,
         ):
             var.trace_add("write", self._on_inputs_changed)
         self.history_search.trace_add("write", lambda *_: self._refresh_history_table())
@@ -1099,6 +1123,7 @@ class PDFCompareApp(
         self.bbox_merge_gap.set("5")
         self.bbox_merge_max_ratio.set("16")
         self.keep_debug.set("off")
+        self.ignore_line_weight.set("off")
         self.progress.configure(value=0.0)
         self.progress_pct.set("0%")
         self.last_run_dir = None
@@ -1176,6 +1201,7 @@ class PDFCompareApp(
             return
         diff_strictness = self.diff_strictness.get().strip().lower() or "normal"
         keep_debug = self.keep_debug.get() == "on"
+        ignore_line_weight = self.ignore_line_weight.get() == "on"
 
         if self.bbox_merge.get() == "on":
             if bbox_merge_gap < 0 or bbox_merge_gap > 50:
@@ -1211,7 +1237,7 @@ class PDFCompareApp(
             target=self._run_worker,
             args=(
                 old, new, out_path, dpi, stroke_tol, workers, self.lang.get(), run_name,
-                exclude_regions, diff_strictness, bbox_merge_gap, bbox_merge_ratio, keep_debug,
+                exclude_regions, diff_strictness, bbox_merge_gap, bbox_merge_ratio, keep_debug, ignore_line_weight,
             ),
             daemon=True,
         )
@@ -1233,6 +1259,7 @@ class PDFCompareApp(
         bbox_merge_gap_mm: float,
         bbox_merge_max_area_ratio: float,
         keep_debug_images: bool,
+        ignore_line_weight: bool,
     ) -> None:
         try:
             def report_progress(pct: float, msg: str) -> None:
@@ -1254,6 +1281,7 @@ class PDFCompareApp(
                 bbox_merge_gap_mm=bbox_merge_gap_mm,
                 bbox_merge_max_area_ratio=bbox_merge_max_area_ratio,
                 keep_debug_images=keep_debug_images,
+                ignore_line_weight=ignore_line_weight,
                 progress_cb=report_progress,
                 cancel_cb=self.cancel_requested.is_set,
             )
@@ -1354,6 +1382,7 @@ class PDFCompareApp(
                             "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
                             "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
                             "keep_debug": self.keep_debug.get().strip(),
+                            "ignore_line_weight": self.ignore_line_weight.get().strip(),
                             "workers": str(workers),
                             "run_dir": str(run_dir),
                         }
@@ -1387,6 +1416,7 @@ class PDFCompareApp(
                             "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
                             "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
                             "keep_debug": self.keep_debug.get().strip(),
+                            "ignore_line_weight": self.ignore_line_weight.get().strip(),
                             "workers": str(workers),
                             "run_dir": "",
                         }
@@ -1414,6 +1444,7 @@ class PDFCompareApp(
                             "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
                             "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
                             "keep_debug": self.keep_debug.get().strip(),
+                            "ignore_line_weight": self.ignore_line_weight.get().strip(),
                             "workers": str(workers),
                             "run_dir": "",
                             "error": err,

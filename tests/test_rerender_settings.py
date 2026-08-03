@@ -39,6 +39,7 @@ class StubApp:
         self.rerender_strictness = FakeStringVar("")
         self.rerender_exclude = FakeStringVar("")
         self.rerender_bbox_gap = FakeStringVar("")
+        self.rerender_ignore_line_weight = FakeStringVar("")
         self.rerender_page_settings: dict[int, dict] = {}
 
     # Bind the real mixin methods so we test the production logic.
@@ -70,6 +71,11 @@ class CollectOverridesTests(unittest.TestCase):
         overrides = self.app._collect_uniform_overrides_safe()
         self.assertAlmostEqual(overrides["bbox_merge_gap_mm"], 5.0)
         self.assertAlmostEqual(overrides["bbox_merge_max_area_ratio"], 16.0)
+
+    def test_line_weight_mode_is_collected_when_enabled(self) -> None:
+        self.app.rerender_ignore_line_weight.set("on")
+        overrides = self.app._collect_uniform_overrides_safe()
+        self.assertIs(overrides["ignore_line_weight"], True)
 
     def test_invalid_strictness_is_ignored_safe(self) -> None:
         self.app.rerender_strictness.set("bogus")

@@ -76,6 +76,58 @@ class ComputeDiffTests(unittest.TestCase):
         self.assertEqual(bboxes, [])
         self.assertLess(diff_percent, 0.2)
 
+    def test_line_weight_mode_ignores_thicker_stroke_on_same_centerline(self) -> None:
+        a = _white_canvas(240, 240)
+        b = _white_canvas(240, 240)
+        cv2.line(a, (120, 30), (120, 210), (0, 0, 0), thickness=2)
+        cv2.line(b, (120, 30), (120, 210), (0, 0, 0), thickness=12)
+
+        _, _, normal_boxes, _ = compute_diff(a, b, stroke_tol_px=1, render_dpi=100)
+        _, _, filtered_boxes, filtered_percent = compute_diff(
+            a,
+            b,
+            stroke_tol_px=1,
+            render_dpi=100,
+            ignore_line_weight=True,
+        )
+
+        self.assertGreater(len(normal_boxes), 0)
+        self.assertEqual(filtered_boxes, [])
+        self.assertEqual(filtered_percent, 0.0)
+
+    def test_line_weight_mode_keeps_shifted_stroke(self) -> None:
+        a = _white_canvas(240, 240)
+        b = _white_canvas(240, 240)
+        cv2.line(a, (90, 30), (90, 210), (0, 0, 0), thickness=8)
+        cv2.line(b, (120, 30), (120, 210), (0, 0, 0), thickness=8)
+
+        _, _, bboxes, diff_percent = compute_diff(
+            a,
+            b,
+            stroke_tol_px=1,
+            render_dpi=100,
+            ignore_line_weight=True,
+        )
+
+        self.assertGreater(len(bboxes), 0)
+        self.assertGreater(diff_percent, 0.0)
+
+    def test_line_weight_mode_keeps_new_stroke(self) -> None:
+        a = _white_canvas(240, 240)
+        b = a.copy()
+        cv2.line(b, (120, 30), (120, 210), (0, 0, 0), thickness=8)
+
+        _, _, bboxes, diff_percent = compute_diff(
+            a,
+            b,
+            stroke_tol_px=1,
+            render_dpi=100,
+            ignore_line_weight=True,
+        )
+
+        self.assertGreater(len(bboxes), 0)
+        self.assertGreater(diff_percent, 0.0)
+
     def test_size_mismatch_raises_value_error(self) -> None:
         a = _white_canvas(200, 200)
         b = _white_canvas(200, 300)

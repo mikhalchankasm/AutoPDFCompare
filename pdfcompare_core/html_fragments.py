@@ -148,6 +148,11 @@ class ReportBadges:
         dpi = settings.get("high_dpi") or mixed.get("dpi") or self.high_dpi
         tol = settings.get("stroke_tol_px") if settings.get("stroke_tol_px") is not None else mixed.get("stroke_tol_px")
         strictness = settings.get("diff_strictness") or mixed.get("diff_strictness") or "-"
+        ignore_line_weight = bool(
+            settings.get("ignore_line_weight")
+            if settings.get("ignore_line_weight") is not None
+            else mixed.get("ignore_line_weight", False)
+        )
         merge_gap = settings.get("bbox_merge_gap_mm")
         if merge_gap is None:
             merge_gap = mixed.get("bbox_merge_gap_mm")
@@ -158,9 +163,11 @@ class ReportBadges:
         tol_txt = "-" if tol is None else f"{float(tol):g}px"
         merge_ru = "merge выкл." if merge_gap_num <= 0 else f"merge {merge_gap_num:g} мм"
         merge_en = "merge off" if merge_gap_num <= 0 else f"merge {merge_gap_num:g} mm"
+        line_weight_ru = "толщина игнор." if ignore_line_weight else "толщина учитыв."
+        line_weight_en = "line weight ignored" if ignore_line_weight else "line weight compared"
         return (
-            f"DPI {dpi} · {strictness} · tol {tol_txt} · {merge_ru}",
-            f"DPI {dpi} · {strictness} · tol {tol_txt} · {merge_en}",
+            f"DPI {dpi} · {strictness} · tol {tol_txt} · {merge_ru} · {line_weight_ru}",
+            f"DPI {dpi} · {strictness} · tol {tol_txt} · {merge_en} · {line_weight_en}",
         )
 
     def precision_badge_html(self, page: dict) -> str:

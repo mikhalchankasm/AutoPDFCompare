@@ -114,6 +114,7 @@ class HistoryIndexTests(unittest.TestCase):
                     "bbox_merge_gap": "5",
                     "bbox_merge_max_ratio": "16",
                     "keep_debug": "on",
+                    "ignore_line_weight": "on",
                 }
             ]
         )
@@ -125,6 +126,7 @@ class HistoryIndexTests(unittest.TestCase):
         self.assertEqual(replay["bbox_merge_gap_mm"], 0.0)  # merge off → gap 0 regardless of stored value
         self.assertEqual(replay["bbox_merge_max_area_ratio"], 16.0)
         self.assertIs(replay["keep_debug_images"], True)
+        self.assertIs(replay["ignore_line_weight"], True)
 
     def test_replay_ui_bbox_merge_on(self) -> None:
         self._write_ui(
@@ -147,6 +149,7 @@ class HistoryIndexTests(unittest.TestCase):
                     "bbox_merge_gap_mm": 3.0,
                     "bbox_merge_max_area_ratio": 12.0,
                     "keep_debug_images": True,
+                    "ignore_line_weight": True,
                 }
             ]
         )
@@ -158,6 +161,7 @@ class HistoryIndexTests(unittest.TestCase):
         self.assertEqual(replay["bbox_merge_gap_mm"], 3.0)
         self.assertEqual(replay["bbox_merge_max_area_ratio"], 12.0)
         self.assertIs(replay["keep_debug_images"], True)
+        self.assertIs(replay["ignore_line_weight"], True)
 
     def test_find_by_index_and_id(self) -> None:
         self._write_mcp(

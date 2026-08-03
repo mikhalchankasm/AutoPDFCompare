@@ -18,7 +18,8 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - suggests result folder names;
   - tells the agent to ask the user which folder name to use.
 
-- `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, diff_strictness = "normal", exclude_regions = None, bbox_merge_gap_mm = 0.0, bbox_merge_max_area_ratio = 16.0, workers = 0, lang = "ru", keep_debug_images = false)`
+- `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, diff_strictness = "normal", exclude_regions = None, bbox_merge_gap_mm = 0.0, bbox_merge_max_area_ratio = 16.0, workers = 0, lang = "ru", keep_debug_images = false, ignore_line_weight = false)`
+  - `ignore_line_weight = true` подавляет утолщение/утоньшение штрихов на прежней оси; новые и смещённые линии остаются изменениями.
   - starts the comparison in a background Python process;
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
   - `diff_strictness`: `strict`, `normal`, or `loose` (default `normal`);
@@ -35,7 +36,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - returns page counts + page delta, the precision settings with a `*_is_default` flag on each, an `exclude_regions` summary (count + one line per zone), the bbox-merge setting, and the output folder / run name / run_dir;
   - takes the same arguments as `start_pdf_comparison`, so after the user confirms, the start call is a straight copy. Call it right before `start_pdf_comparison`.
 
-- `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...])`
+- `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...], ignore_line_weight = true)`
   - re-renders selected rows of an existing report in place and rebuilds one combined report;
   - use after a full compare when a user says "recalculate sheet 4 with higher precision";
   - `exclude_regions` accepts the same text/JSON/list forms as `start_pdf_comparison`; an empty string means "inherit from the original run";

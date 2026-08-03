@@ -58,6 +58,8 @@ class CompareTabMixin:
     options_group_label: ttk.Label | None
     options_keep_debug_hint_label: ttk.Label | None
     options_keep_debug_label: ttk.Label | None
+    options_line_weight_hint_label: ttk.Label | None
+    options_line_weight_label: ttk.Label | None
     options_strictness_hint_label: ttk.Label | None
     options_strictness_label: ttk.Label | None
     out_entry: ttk.Entry | None
@@ -66,6 +68,7 @@ class CompareTabMixin:
     out_label: ttk.Label | None
     out_pick_btn: ttk.Button | None
     report_ready_label: tk.Label | None
+    ignore_line_weight_chip: ttk.Checkbutton | None
     run_btn: tk.Button | None
     status_text_label: tk.Label | None
 
@@ -293,6 +296,34 @@ class CompareTabMixin:
             background=PANEL,
         )
         self.options_keep_debug_hint_label.pack(anchor="w", pady=(8, 0))
+
+        line_weight_frame = tk.Frame(advanced_grid, bg=PANEL)
+        line_weight_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        lw_head = tk.Frame(line_weight_frame, bg=PANEL)
+        lw_head.pack(fill=tk.X)
+        self.options_line_weight_label = ttk.Label(
+            lw_head,
+            text=self._tr("opts_line_weight"),
+            style="SubHeader.TLabel",
+            background=PANEL,
+        )
+        self.options_line_weight_label.pack(side=tk.LEFT)
+        self.ignore_line_weight_chip = ttk.Checkbutton(
+            lw_head,
+            text=self._tr("opts_enable"),
+            variable=self.ignore_line_weight,
+            onvalue="on",
+            offvalue="off",
+        )
+        self.ignore_line_weight_chip.pack(side=tk.LEFT, padx=(8, 0))
+        add_tooltip(self.ignore_line_weight_chip, lambda: self._tr("tip_line_weight"))
+        self.options_line_weight_hint_label = ttk.Label(
+            line_weight_frame,
+            text=self._tr("opts_line_weight_hint"),
+            style="Hint.TLabel",
+            background=PANEL,
+        )
+        self.options_line_weight_hint_label.pack(anchor="w", pady=(6, 0))
 
 
     def _build_actions_section(self: AppProtocol) -> None:

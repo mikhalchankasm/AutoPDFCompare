@@ -173,6 +173,7 @@ def _replay_params(source: str, record: dict[str, Any]) -> dict[str, Any]:
             "bbox_merge_gap_mm": gap,
             "bbox_merge_max_area_ratio": _as_float(record.get("bbox_merge_max_ratio"), 16.0),
             "keep_debug_images": _as_bool(record.get("keep_debug")),
+            "ignore_line_weight": _as_bool(record.get("ignore_line_weight")),
         }
     return {
         "dpi": _as_int(record.get("dpi"), 250),
@@ -182,6 +183,7 @@ def _replay_params(source: str, record: dict[str, Any]) -> dict[str, Any]:
         "bbox_merge_gap_mm": _as_float(record.get("bbox_merge_gap_mm"), 0.0),
         "bbox_merge_max_area_ratio": _as_float(record.get("bbox_merge_max_area_ratio"), 16.0),
         "keep_debug_images": _as_bool(record.get("keep_debug_images")),
+        "ignore_line_weight": _as_bool(record.get("ignore_line_weight")),
     }
 
 

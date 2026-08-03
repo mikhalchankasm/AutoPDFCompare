@@ -45,6 +45,7 @@ class AppProtocol(Protocol):
     bbox_merge_gap: tk.StringVar
     bbox_merge_max_ratio: tk.StringVar
     keep_debug: tk.StringVar
+    ignore_line_weight: tk.StringVar
     status: tk.StringVar
     progress_pct: tk.StringVar
     elapsed: tk.StringVar
@@ -58,6 +59,7 @@ class AppProtocol(Protocol):
     rerender_exclude: tk.StringVar
     rerender_bbox_merge: tk.StringVar
     rerender_bbox_gap: tk.StringVar
+    rerender_ignore_line_weight: tk.StringVar
     rerender_mode: tk.StringVar
     rerender_page_settings: dict[int, dict[str, Any]]
     rerender_source_pdf: Path | None
@@ -99,6 +101,7 @@ class AppProtocol(Protocol):
     bbox_merge_gap_entry: ttk.Entry | None
     bbox_merge_max_ratio_entry: ttk.Entry | None
     keep_debug_chip: ttk.Checkbutton | None
+    ignore_line_weight_chip: ttk.Checkbutton | None
     exclude_pick_btn: ttk.Button | None
     update_badge: tk.Label | None
 
@@ -122,6 +125,8 @@ class AppProtocol(Protocol):
     options_bbox_merge_hint_label: ttk.Label | None
     options_keep_debug_label: ttk.Label | None
     options_keep_debug_hint_label: ttk.Label | None
+    options_line_weight_label: ttk.Label | None
+    options_line_weight_hint_label: ttk.Label | None
     strictness_chips: dict[str, tk.Label]
     dpi_value: tk.StringVar
     stroke_value: tk.StringVar
@@ -154,6 +159,7 @@ class AppProtocol(Protocol):
     rerender_strictness_chips: dict[str, tk.Label]
     rerender_edit_selected_btn: ttk.Button | None
     rerender_exclude_pick_btn: ttk.Button | None
+    rerender_line_weight_chip: ttk.Checkbutton | None
 
     # --- Methods that mixins call across boundaries -------------------- #
     # i18n & status

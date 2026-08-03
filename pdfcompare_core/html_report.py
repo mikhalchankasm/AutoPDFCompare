@@ -158,6 +158,7 @@ def _prepare_pages_records(
                     "diff_strictness": row.get("diff_strictness"),
                     "bbox_merge_gap_mm": row.get("bbox_merge_gap_mm"),
                     "bbox_merge_max_area_ratio": row.get("bbox_merge_max_area_ratio"),
+                    "ignore_line_weight": bool(row.get("ignore_line_weight", False)),
                     "mixed_settings": row.get("mixed_settings"),
                 },
                 "score": row.get("score"),
@@ -2215,6 +2216,9 @@ def generate_html_report(
             "dpi_thumb": PAGE_INFO_THUMB_DPI,
             "dpi_diff": high_dpi,
             "stroke_tolerance_px": stroke_tol_px,
+            "ignore_line_weight": any(
+                bool((page.get("page_settings") or {}).get("ignore_line_weight")) for page in pages_records
+            ),
             "threshold_unchanged_percent": UNCHANGED_DIFF_PERCENT,
             "bbox_detected_means_changed": True,
             "align_mode": "ECC_AFFINE",

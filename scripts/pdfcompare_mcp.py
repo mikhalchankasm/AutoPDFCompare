@@ -743,6 +743,7 @@ def preview_pdf_comparison(
     workers: int = 0,
     lang: str = "ru",
     keep_debug_images: bool = False,
+    ignore_line_weight: bool = False,
 ) -> dict[str, Any]:
     """Build the final pre-launch checklist for a comparison — WITHOUT starting it.
 
@@ -813,6 +814,7 @@ def preview_pdf_comparison(
                 "report_path": str(settings["run_dir"] / START_REPORT_FILE),
             },
             "keep_debug_images": bool(keep_debug_images),
+            "ignore_line_weight": bool(ignore_line_weight),
             "workers": int(workers),
         }
         return {
@@ -854,6 +856,7 @@ def start_pdf_comparison(
     workers: int = 0,
     lang: str = "ru",
     keep_debug_images: bool = False,
+    ignore_line_weight: bool = False,
 ) -> dict[str, Any]:
     """Start a PDF comparison in the background and return a job id for status polling.
 
@@ -913,6 +916,7 @@ def start_pdf_comparison(
             "workers": int(workers),
             "lang": lang,
             "keep_debug_images": bool(keep_debug_images),
+            "ignore_line_weight": bool(ignore_line_weight),
         }
         current_job_dir.mkdir(parents=True, exist_ok=False)
         atomic_write_json(current_job_dir / "request.json", request)
@@ -932,6 +936,7 @@ def start_pdf_comparison(
             "exclude_regions": normalized_exclusions,
             "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
             "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
+            "ignore_line_weight": bool(ignore_line_weight),
         }
         atomic_write_json(current_job_dir / "status.json", status_payload)
 
@@ -1016,6 +1021,7 @@ def rerender_pdf_comparison_pages(
     exclude_regions: str | list[dict[str, Any]] | None = None,
     bbox_merge_gap_mm: float | None = None,
     bbox_merge_max_area_ratio: float | None = None,
+    ignore_line_weight: bool | None = None,
     workers: int = 0,
     lang: str = "ru",
 ) -> dict[str, Any]:
@@ -1083,6 +1089,7 @@ def rerender_pdf_comparison_pages(
             "bbox_merge_max_area_ratio": (
                 None if bbox_merge_max_area_ratio is None else float(bbox_merge_max_area_ratio)
             ),
+            "ignore_line_weight": ignore_line_weight,
             "workers": int(workers),
             "lang": lang,
         }
@@ -1427,6 +1434,7 @@ def restore_comparison(
             bbox_merge_max_area_ratio=float(replay["bbox_merge_max_area_ratio"]),
             lang=lang,
             keep_debug_images=bool(replay["keep_debug_images"]),
+            ignore_line_weight=bool(replay["ignore_line_weight"]),
         )
     except Exception as exc:
         return error_result(exc, lang)

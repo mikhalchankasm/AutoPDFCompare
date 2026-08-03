@@ -721,6 +721,41 @@
     "state": "normal"
   },
   {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame4",
+    "class": "Frame",
+    "manager": "grid",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame4/!frame",
+    "class": "Frame",
+    "manager": "pack",
+    "width": "0"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame4/!frame/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Игнорировать различия толщины линий:",
+    "style": "SubHeader.TLabel",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame4/!frame/!checkbutton",
+    "class": "TCheckbutton",
+    "manager": "pack",
+    "text": "Включить",
+    "state": "normal"
+  },
+  {
+    "path": "/!frame/!notebook/!frame/!frame4/!frame4/!frame4/!label",
+    "class": "TLabel",
+    "manager": "pack",
+    "text": "Сравнивает оси штрихов и подавляет только утолщение/утоньшение на том же месте. Новые и сдвинутые линии остаются изменениями.",
+    "style": "Hint.TLabel",
+    "state": "normal"
+  },
+  {
     "path": "/!frame/!notebook/!frame/!frame5",
     "class": "Frame",
     "manager": "pack",
@@ -1214,6 +1249,13 @@
     "state": "normal",
     "width": "6",
     "cursor": "ibeam"
+  },
+  {
+    "path": "/!frame/!notebook/!frame3/!frame2/!frame3/!checkbutton",
+    "class": "TCheckbutton",
+    "manager": "pack",
+    "text": "Игнорировать толщину линий",
+    "state": "normal"
   },
   {
     "path": "/!frame/!notebook/!frame3/!frame2/!frame4",

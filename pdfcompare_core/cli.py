@@ -57,6 +57,11 @@ def main() -> None:
         help="Keep extra full-size debug PNGs such as b_raw.png and b_aligned.png",
     )
     parser.add_argument(
+        "--ignore-line-weight",
+        action="store_true",
+        help="Ignore thickening/thinning of strokes whose centerlines stay in place",
+    )
+    parser.add_argument(
         "--bbox-merge-gap-mm",
         type=float,
         default=0.0,
@@ -97,6 +102,7 @@ def main() -> None:
             report_lang=args.lang,
             run_name=args.run_name or None,
             keep_debug_images=args.keep_debug_images,
+            ignore_line_weight=args.ignore_line_weight,
             workers=args.workers,
             bbox_merge_gap_mm=args.bbox_merge_gap_mm,
             bbox_merge_max_area_ratio=args.bbox_merge_max_area_ratio,

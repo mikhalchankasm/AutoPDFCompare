@@ -70,6 +70,7 @@ class StatePersistenceMixin:
             "bbox_merge_gap": self.bbox_merge_gap.get().strip(),
             "bbox_merge_max_ratio": self.bbox_merge_max_ratio.get().strip(),
             "keep_debug": self.keep_debug.get().strip(),
+            "ignore_line_weight": self.ignore_line_weight.get().strip(),
             "last_run_dir": str(self.last_run_dir) if self.last_run_dir else "",
         }
 
@@ -85,6 +86,7 @@ class StatePersistenceMixin:
         self.bbox_merge_gap.set(str(data.get("bbox_merge_gap") or "5"))
         self.bbox_merge_max_ratio.set(str(data.get("bbox_merge_max_ratio") or "16"))
         self.keep_debug.set(str(data.get("keep_debug") or "off"))
+        self.ignore_line_weight.set(str(data.get("ignore_line_weight") or "off"))
         self.last_run_dir = None
         run_dir = str(data.get("last_run_dir") or "").strip()
         if run_dir:
