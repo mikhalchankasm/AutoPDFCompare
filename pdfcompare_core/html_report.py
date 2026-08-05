@@ -40,6 +40,7 @@ from .html_fragments import (
     ReportI18n,
 )
 from .html_icons import report_icon
+from .html_help import help_script, help_shell_html
 
 
 def _prepare_pages_records(
@@ -182,6 +183,7 @@ def _prepare_pages_records(
 
 
 NAV_DATA_FILE = "nav-data.js"
+HELP_DATA_FILE = "help-data.js"
 
 
 def _build_nav_data(ctx: _ReportContext) -> dict:
@@ -279,6 +281,14 @@ def _build_nav_data(ctx: _ReportContext) -> dict:
 def _write_nav_data(ctx: _ReportContext) -> None:
     payload = json.dumps(_build_nav_data(ctx), ensure_ascii=False, separators=(",", ":"))
     (ctx.bundle_dir / NAV_DATA_FILE).write_text(f"window.PDFCOMPARE_NAV={payload};\n", encoding="utf-8")
+
+
+def _write_help_data(ctx: _ReportContext) -> None:
+    """Write the one shared, language-aware help payload for the report bundle."""
+    from .html_help import build_help_data
+
+    payload = json.dumps(build_help_data(), ensure_ascii=False, separators=(",", ":"))
+    (ctx.bundle_dir / HELP_DATA_FILE).write_text(f"window.PDFCOMPARE_HELP={payload};\n", encoding="utf-8")
 
 
 @dataclass
@@ -480,6 +490,7 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
         </div>
       </div>
       <div class="top-actions">
+        <button id="helpBtn" class="btn" type="button" aria-expanded="false">{report_icon("help-circle", size=16)}{i18n_span_text("Справка", "Help")}</button>
         <div class="lang-switch" {i18n_aria("Язык", "Language")}>
           <button type="button" data-lang="ru">RU</button>
           <button type="button" data-lang="en">EN</button>
@@ -578,6 +589,8 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     <footer class="footer">{footer_text}</footer>
   </div>
 
+  {help_shell_html()}
+  <script src="{HELP_DATA_FILE}"></script>
   <script>
     const kpis = [...document.querySelectorAll('.kpi-card')];
     const rows = [...document.querySelectorAll('#mxBody tr.mx-row')];
@@ -585,6 +598,7 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     const emptyMsg = document.getElementById('emptyMsg');
     const langButtons = [...document.querySelectorAll('[data-lang]')];
     const themeBtn = document.getElementById('themeToggle');
+    const helpBtn = document.getElementById('helpBtn');
     const sunIcon = {sun_icon_js};
     const moonIcon = {moon_icon_js};
     let statusFilter = 'ALL';
@@ -618,6 +632,7 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
         el.setAttribute('aria-label', next === 'en' ? el.dataset.i18nAriaEn : el.dataset.i18nAriaRu);
       }});
       langButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.lang === next));
+      if (window.PDFCOMPARE_HELP_RENDER) window.PDFCOMPARE_HELP_RENDER(next);
       if (persist) {{
         try {{ localStorage.setItem('pdfcompare.lang', next); }} catch (e) {{}}
       }}
@@ -682,6 +697,8 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     }});
     langButtons.forEach(btn => btn.addEventListener('click', () => applyLang(btn.dataset.lang)));
     themeBtn.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+    {help_script()}
+    if (window.PDFCOMPARE_HELP_INIT) window.PDFCOMPARE_HELP_INIT(helpBtn);
     let savedTheme = 'light';
     try {{ savedTheme = localStorage.getItem('pdfcompare.theme') || (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'); }} catch (e) {{}}
     applyTheme(savedTheme);
@@ -710,10 +727,7 @@ def _write_slider_view(
     slider_file: str | None,
     old_src: str | None,
     new_src: str | None,
-    diff_txt: str,
-    fg_diff_txt: str,
     status_tag: str,
-    level_tag: str,
     bboxes_data: list[dict],
 ) -> None:
     """Write the side-by-side slider page for one sheet (cmp_NNN.html)."""
@@ -725,7 +739,6 @@ def _write_slider_view(
     title_attrs = strings.title_attrs
     title_text = strings.title_text
     status_badge_html = badges.status_badge_html
-    level_badge_html = badges.level_badge_html
     pages_records = ctx.pages_records
     views_dir = ctx.views_dir
     first_slider_file = ctx.first_slider_file
@@ -768,11 +781,22 @@ def _write_slider_view(
             else f'<span class="btn disabled">{report_icon("chevron-left", size=16)}{i18n_span_text("Первый лист", "First sheet")}</span>'
         )
         next_cmp_btn = (
-            f'<a class="btn primary" href="{html.escape(str(next_any_file), quote=True)}">'
+            f'<a class="btn" href="{html.escape(str(next_any_file), quote=True)}">'
             f'{i18n_span_text(f"Лист {next_any_ord}", f"Sheet {next_any_ord}")}{report_icon("chevron-right", size=16)}</a>'
             if next_any_file
-            else f'<span class="btn primary disabled">{i18n_span_text("Последний лист", "Last sheet")}{report_icon("chevron-right", size=16)}</span>'
+            else f'<span class="btn disabled">{i18n_span_text("Последний лист", "Last sheet")}{report_icon("chevron-right", size=16)}</span>'
         )
+        at_last = not (last_slider_file and last_slider_file != slider_file)
+        last_cmp_btn = (
+            f'<a class="btn nav-edge" href="{html.escape(str(last_slider_file), quote=True)}" '
+            f'{i18n_aria("В конец (End)", "Last sheet (End)")}>'
+            f'{report_icon("chevrons-right", size=16)}{i18n_span_text("В конец", "Last")}</a>'
+            if not at_last
+            else f'<span class="btn nav-edge disabled">{report_icon("chevrons-right", size=16)}'
+            f'{i18n_span_text("В конец", "Last")}</span>'
+        )
+        pair_a = "—" if p["a_index"] is None else f"A{p['a_index']}"
+        pair_b = "—" if p["b_index"] is None else f"B{p['b_index']}"
         slider_title_ru = f"Слайдер — лист {view_idx} / {len(pages_records)}"
         slider_title_en = f"Slider — sheet {view_idx} / {len(pages_records)}"
         slider_html = f"""<!doctype html>
@@ -804,77 +828,6 @@ def _write_slider_view(
     }} catch (e) {{}}
   </script>
   <style>
-    html, body {{ width:100%; height:100%; }}
-    body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; background:#f3f6fb; color:#1d2433; overflow:hidden; }}
-    .wrap {{ width:100vw; height:100vh; margin:0; padding:0; }}
-    .panel {{ width:100%; height:100%; background:#fff; border:0; border-radius:0; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; }}
-    .top {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }}
-    .top-actions {{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; }}
-    .btn {{ border:1px solid #d7deea; border-radius:8px; padding:6px 10px; text-decoration:none; color:#0f4fa8; background:#fff; }}
-    .btn.disabled {{ color:#7b8496; background:#f4f6fa; cursor:default; }}
-    .btn-save {{ background:#eaf8ef; border-color:#88d4a2; color:#176235; font-weight:800; }}
-    .slider-nav-search {{ width:100%; box-sizing:border-box; border:1px solid #d7deea; border-radius:8px; padding:8px; margin:0 0 8px 0; }}
-    .slider-nav-list {{ display:grid; gap:6px; }}
-    .slider-nav-item {{ display:grid; gap:4px; border:1px solid #d7deea; border-radius:8px; padding:8px; text-decoration:none; color:inherit; background:#fbfdff; }}
-    .slider-nav-item:hover {{ border-color:#0f4fa8; background:#eef5ff; }}
-    .slider-nav-item.current {{ border-color:#1fa463; background:#e8f8ee; box-shadow:inset 4px 0 0 #1fa463; font-weight:800; }}
-    .slider-nav-main {{ display:flex; justify-content:space-between; gap:8px; align-items:center; }}
-    .slider-nav-meta {{ color:#5f6b84; font-size:12px; }}
-    .s {{ font-size:11px; border-radius:999px; padding:2px 8px; color:#fff; white-space:nowrap; }}
-    .s.ok {{ background:#1f8c4f; }} .s.warn {{ background:#cc3d17; }} .s.add {{ background:#0569d0; }}
-    .stage {{ flex:1; width:100%; background:#fff; box-sizing:border-box; overflow:auto; min-height:0; position:relative; }}
-    .stage.dragging {{ cursor:ew-resize; }}
-    .stage.panning {{ cursor:grabbing; }}
-    .compare-surface {{ position:relative; display:none; background:#fff; overflow:hidden; cursor:ew-resize; transform-origin:0 0; }}
-    .layer {{ position:absolute; inset:0; width:100%; height:100%; object-fit:fill; user-select:none; -webkit-user-drag:none; }}
-    .old-layer {{ position:absolute; inset:0; overflow:hidden; clip-path:inset(0 50% 0 0); }}
-    .bbox-layer {{ position:absolute; inset:0; pointer-events:none; }}
-    .bbox {{ position:absolute; border:2px solid var(--bbox-border); background:var(--bbox-fill); box-sizing:border-box; }}
-    .divider {{ position:absolute; top:0; bottom:0; left:50%; width:2px; background:rgba(20,120,255,.95); pointer-events:none; }}
-    .load-msg {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#5f6b84; }}
-    .stage.panning .compare-surface {{ cursor:grabbing; }}
-    .slider-wrap {{ margin:10px 0 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
-    input[type=range] {{ width:100%; }}
-    .muted {{ color:#5f6b84; font-size:12px; }}
-    .small {{ width:150px; }}
-    .bbox-controls {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-left:auto; }}
-    .swatch-option {{ display:inline-flex; align-items:center; gap:5px; border:1px solid #d7deea; border-radius:8px; padding:5px 8px; background:#fff; cursor:pointer; user-select:none; }}
-    .swatch-option input {{ margin:0; }}
-    .swatch {{ width:14px; height:14px; border-radius:4px; border:2px solid currentColor; box-sizing:border-box; }}
-    .swatch-yellow {{ color:rgb(255,180,0); background:rgba(255,235,120,.45); }}
-    .swatch-pink {{ color:rgb(236,72,153); background:rgba(244,114,182,.45); }}
-    .swatch-green {{ color:rgb(22,163,74); background:rgba(134,239,172,.45); }}
-    .bbox-opacity {{ width:110px; }}
-    .zoom-rect {{ position:absolute; border:2px dashed rgba(20,120,255,.95); background:rgba(20,120,255,.12); box-sizing:border-box; pointer-events:none; z-index:5; display:none; }}
-    .annot-layer {{ position:absolute; inset:0; pointer-events:none; z-index:6; }}
-    .annot-layer.annot-hidden {{ display:none; }}
-    .annot-box {{ position:absolute; box-sizing:border-box; border:2px solid; border-radius:3px; pointer-events:none; }}
-    .annot-box.green {{ border-color:rgba(22,163,74,.95); background:rgba(22,163,74,.16); }}
-    .annot-box.yellow {{ border-color:rgba(202,138,4,.95); background:rgba(234,179,8,.18); }}
-    .annot-box.red {{ border-color:rgba(220,38,38,.95); background:rgba(239,68,68,.16); }}
-    .annot-note {{ position:absolute; left:-2px; top:0; transform:translateY(-100%); max-width:240px; background:rgba(17,24,39,.9); color:#fff; font:12px/1.3 Segoe UI,Arial,sans-serif; padding:2px 6px; border-radius:4px 4px 4px 0; white-space:pre-wrap; }}
-    .annot-note.below {{ top:100%; transform:none; border-radius:0 4px 4px 4px; }}
-    .annot-del {{ position:absolute; right:-9px; top:-9px; width:18px; height:18px; border-radius:50%; border:0; background:#dc2626; color:#fff; font-size:12px; line-height:18px; padding:0; cursor:pointer; pointer-events:auto; display:none; z-index:3; }}
-    .annot-handle {{ position:absolute; width:12px; height:12px; background:#0f4fa8; border:2px solid #fff; border-radius:50%; box-sizing:border-box; display:none; pointer-events:auto; z-index:2; }}
-    .annot-handle.nw {{ left:-7px; top:-7px; cursor:nwse-resize; }}
-    .annot-handle.ne {{ right:-7px; top:-7px; cursor:nesw-resize; }}
-    .annot-handle.sw {{ left:-7px; bottom:-7px; cursor:nesw-resize; }}
-    .annot-handle.se {{ right:-7px; bottom:-7px; cursor:nwse-resize; }}
-    .stage.annot-mode .annot-box {{ pointer-events:auto; cursor:move; }}
-    .stage.annot-mode .annot-handle {{ display:block; }}
-    .stage.annot-mode .annot-del {{ display:block; }}
-    .stage.annot-mode .compare-surface {{ cursor:crosshair; }}
-    .annot-draft {{ position:absolute; border:2px dashed; border-radius:3px; box-sizing:border-box; pointer-events:none; z-index:7; display:none; }}
-    .annot-draft.green {{ border-color:rgba(22,163,74,.95); background:rgba(22,163,74,.12); }}
-    .annot-draft.yellow {{ border-color:rgba(202,138,4,.95); background:rgba(234,179,8,.14); }}
-    .annot-draft.red {{ border-color:rgba(220,38,38,.95); background:rgba(239,68,68,.12); }}
-    .annot-tools {{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }}
-    .annot-swatch {{ width:20px; height:20px; border-radius:5px; border:2px solid rgba(0,0,0,.15); cursor:pointer; padding:0; }}
-    .annot-swatch.active {{ outline:2px solid #111827; outline-offset:1px; }}
-    .annot-swatch.green {{ background:rgba(22,163,74,.55); }}
-    .annot-swatch.yellow {{ background:rgba(234,179,8,.6); }}
-    .annot-swatch.red {{ background:rgba(239,68,68,.55); }}
-    .btn.active {{ background:#0f4fa8; color:#fff; border-color:#0f4fa8; }}
 {REPORT_CSS_TOKENS}
 {CSS_CMP}
   </style>
@@ -888,10 +841,11 @@ def _write_slider_view(
     </button>
     <div class="sheet-drawer-panel" id="sheetDrawerPanel">
       <div class="sheet-drawer-head">
+        <a class="btn home-neon icon-only" href="../index.html" {i18n_aria("В начало — к матрице изменений", "Home — to the change matrix")}>{report_icon("home", size=16)}{i18n_span_text("В начало", "Home", "sr-only")}</a>
         <strong>{i18n_span_text("Листы", "Sheets")}</strong>
-        <span class="muted">{view_idx} / {len(pages_records)}</span>
         <button class="sheet-drawer-pin" id="drawerPin" type="button" {i18n_aria("Открепить панель", "Unpin panel")}>📌</button>
       </div>
+      <a class="btn ghost sheet-back" href="{html.escape(p['view_file'], quote=True)}">{report_icon("arrow-left", size=16)}{i18n_span_text("К листу", "Back to sheet")}</a>
       <input id="sliderNavSearch" class="slider-nav-search" type="search" {i18n_placeholder_text("Поиск…", "Search…")}/>
       <div id="sliderNavList" class="slider-nav-list"></div>
       <div class="sheet-drawer-hint muted">{i18n_span_text("📌 — открепить · ←/→ — соседний лист", "📌 — unpin · ←/→ — adjacent sheet")}</div>
@@ -900,40 +854,17 @@ def _write_slider_view(
   <div class="cmp-main">
     <header class="cmp-header">
       <div class="cmp-left">
-        <a class="btn home-neon icon-only" href="../index.html" {i18n_aria("В начало — к матрице изменений", "Home — to the change matrix")}>{report_icon("home", size=16)}{i18n_span_text("В начало", "Home", "sr-only")}</a>
-        <a class="btn ghost" href="{html.escape(p['view_file'], quote=True)}">{report_icon("arrow-left", size=16)}{i18n_span_text("К листу", "Back to sheet")}</a>
-      </div>
-      <div class="cmp-title">
-        <span>{i18n_span_text(f"Лист {view_idx} / {len(pages_records)}", f"Sheet {view_idx} / {len(pages_records)}")}</span>
+        <a class="btn home-neon icon-only home-fallback" href="../index.html" {i18n_aria("В начало — к матрице изменений", "Home — to the change matrix")}>{report_icon("home", size=16)}{i18n_span_text("В начало", "Home", "sr-only")}</a>
+        <div class="cmp-title">
+        <span>{html.escape(pair_a)} → {html.escape(pair_b)}</span>
         {status_badge_html(status_tag)}
-        {level_badge_html(level_tag) if level_tag else ""}
-        <span class="muted">· {html.escape(fg_diff_txt)} FG · {html.escape(diff_txt)}</span>
+      </div>
       </div>
       <div class="cmp-right">
-        <!-- No sheet counter here: the title already says "Лист 5 / 12", and two
-             copies of it cost the header the width its controls need. -->
-        <div class="cmp-nav">
-          {first_cmp_btn}
-          {prev_cmp_btn}
-          {next_cmp_btn}
-        </div>
-        <div class="segmented" {i18n_aria("Управление слайдером", "Slider controls")}>
-          <button class="seg-btn" id="fitBtn" type="button">{report_icon("maximize-2", size=16)}{i18n_span_text("Вписать", "Fit")}</button>
-          <button class="seg-btn" id="oneBtn" type="button">{report_icon("square", size=16)}{i18n_span_text("1:1", "1:1")}</button>
-          <button class="seg-btn seg-btn-accent" id="zonesBtn" type="button" {i18n_aria("Подсветить зоны изменений", "Highlight change zones")}>{report_icon("target", size=16)}{i18n_span_text("Зоны", "Zones")}</button>
-          <button class="seg-btn" id="zoomOutBtn" type="button" {i18n_aria("Отдалить (мелкий шаг)", "Zoom out (fine step)")}>{report_icon("zoom-out", size=16)}</button>
-          <span class="seg-btn seg-btn-static">{i18n_span_text("Масштаб", "Zoom")} <span id="zoomVal">100%</span></span>
-          <button class="seg-btn" id="zoomInBtn" type="button" {i18n_aria("Приблизить (мелкий шаг)", "Zoom in (fine step)")}>{report_icon("zoom-in", size=16)}</button>
-        </div>
-        <!-- Bbox controls sit open in the header: colour and opacity are adjusted
-             while looking at the sheet, and a dropdown made every tweak a two-step trip. -->
+        <button class="btn zones-btn" id="zonesBtn" type="button" {i18n_aria("Подсветить изменения (Z)", "Flash changes (Z)")}>{report_icon("sparkles", size=16)}{i18n_span_text("Подсветка", "Highlight")}</button>
         <div class="bbox-bar" {i18n_aria("Настройки выделения", "Bbox settings")}>
-          <span class="bbox-swatch swatch-yellow" id="bboxSwatch" aria-hidden="true"></span>
-          <span class="bbox-bar-label">{i18n_span_text("Bbox", "Bbox")}</span>
-          <div class="seg-toggle" id="bboxToggle" role="group" {i18n_aria("Показывать Bbox", "Show Bbox")}>
-            <button type="button" class="seg-toggle-opt active" data-bbox="on">{i18n_span_text("ON", "ON")}</button>
-            <button type="button" class="seg-toggle-opt" data-bbox="off">{i18n_span_text("OFF", "OFF")}</button>
-          </div>
+          <span class="bbox-bar-label">{i18n_span_text("Зоны изменений", "Bbox")}</span>
+          <button type="button" class="bbox-switch" id="bboxToggle" role="switch" aria-checked="true" {i18n_aria("Показывать зоны изменений", "Show bbox")}><span class="switch-track"><span class="switch-knob"></span></span></button>
           <div class="bbox-colors">
             <button type="button" class="swatch-option active" data-color="yellow" {i18n_aria("Жёлтый", "Yellow")}><span class="swatch swatch-yellow"></span></button>
             <button type="button" class="swatch-option" data-color="pink" {i18n_aria("Розовый", "Pink")}><span class="swatch swatch-pink"></span></button>
@@ -942,8 +873,17 @@ def _write_slider_view(
           <input class="bbox-opacity" id="bboxOpacity" type="range" min="0" max="100" value="74" {i18n_aria("Прозрачность рамок", "Bbox opacity")}/>
           <span class="bbox-opacity-value" id="bboxOpacityValue">74%</span>
         </div>
+        </div>
+      <div class="cmp-zoom" {i18n_aria("Управление слайдером", "Slider controls")}>
+        <div class="segmented">
+          <button class="seg-btn" id="zoomOutBtn" type="button" {i18n_aria("Отдалить (мелкий шаг)", "Zoom out (fine step)")}>{report_icon("zoom-out", size=16)}</button>
+          <span class="seg-btn seg-btn-static">{i18n_span_text("Масштаб", "Zoom")} <span id="zoomVal">100%</span></span>
+          <button class="seg-btn" id="zoomInBtn" type="button" {i18n_aria("Приблизить (мелкий шаг)", "Zoom in (fine step)")}>{report_icon("zoom-in", size=16)}</button>
+        </div>
+        <button class="btn fit-btn" id="fitBtn" type="button">{report_icon("maximize-2", size=16)}<span>{i18n_span_text("Вписать", "Fit")}</span></button>
       </div>
     </header>
+      <div class="stage-wrap">
       <div class="stage" id="stage" tabindex="0">
         <div class="compare-surface" id="surface">
           <img id="imgNew" class="layer new-layer" alt="{html.escape(t["slider_new"])}" draggable="false"/>
@@ -955,30 +895,33 @@ def _write_slider_view(
           <div id="annotDraft" class="annot-draft"></div>
           <div id="divider" class="divider"></div>
         </div>
-        <div id="zoneCounter" class="zone-counter" role="status" aria-live="polite"></div>
-        <div id="loadMsg" class="load-msg">{html.escape(t["no_data"])}</div>
       </div>
-      <div class="slider-panel">
-        <div class="split-line">
-          {i18n_span_text("OLD", "OLD", "split-label old")}
-          <input id="split" type="range" min="0" max="100" step="0.1" value="50"/>
-          {i18n_span_text("NEW", "NEW", "split-label new")}
-        </div>
-        <input id="zoom" class="sr-only" type="range" min="1" max="500" value="100"/>
-        <div class="hint">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · СКМ-выделение - zoom · Ctrl+Wheel - zoom · Z/H - зоны", "Left click - split · Right drag - pan · Middle drag - zoom to rect · Ctrl+Wheel - zoom · Z/H - zones")}</div>
-        <div class="annot-tools" {i18n_aria("Заметки к зонам", "Zone notes")}>
+      <span class="canvas-label old">OLD</span><span class="canvas-label new">NEW</span>
+      <div id="zoneCounter" class="zone-counter" role="status" aria-live="polite"></div>
+      <div id="loadMsg" class="load-msg">{html.escape(t["no_data"])}</div>
+      <input id="split" class="sr-only" type="range" min="0" max="100" step="0.1" value="50"/>
+      <input id="zoom" class="sr-only" type="range" min="1" max="500" value="100"/>
+      <div class="corner-cluster annot-cluster" id="annotCluster" {i18n_aria("Заметки к зонам", "Zone notes")}>
+        <button class="btn icon-only annot-trigger" type="button" aria-expanded="false" {i18n_aria("Открыть заметки", "Open notes")}>{report_icon("square-dashed", size=16)}<span class="annot-badge" id="annotBadge" hidden></span></button>
+        <div class="corner-cluster-content">
           <button id="annotBtn" class="btn" type="button" {i18n_aria("Режим заметок: выделите область и впишите комментарий", "Note mode: drag a box and type a comment")}>{report_icon("square-dashed", size=16)}{i18n_span_text("Заметка", "Note")}</button>
           <button class="annot-swatch green" data-annot-color="green" type="button" {i18n_aria("Зелёный — нет изменений", "Green — no change")}></button>
           <button class="annot-swatch yellow active" data-annot-color="yellow" type="button" {i18n_aria("Жёлтый — спорное", "Yellow — unsure")}></button>
           <button class="annot-swatch red" data-annot-color="red" type="button" {i18n_aria("Красный — изменение", "Red — change")}></button>
           <button id="annotShowBtn" class="btn" type="button">{i18n_span_text("Скрыть заметки", "Hide notes")}</button>
           <span id="annotCount" class="muted"></span>
-          <span class="muted">{i18n_span_text("· в браузере · тянуть — двигать, углы — размер, дв.клик — текст", "· in the browser · drag to move, corners to resize, double-click for text")}</span>
         </div>
+      </div>
+      <nav class="sheet-pager" {i18n_aria("Навигация по листам", "Sheet navigation")}>
+        {first_cmp_btn}{prev_cmp_btn}<strong>{view_idx} / {len(pages_records)}</strong>{next_cmp_btn}{last_cmp_btn}
+      </nav>
+      <div class="corner-cluster help-cluster"><button class="btn icon-only" type="button" data-help-open aria-expanded="false" {i18n_aria("Справка", "Help")}>?</button><div class="corner-cluster-content help-tip">{i18n_span_text("ЛКМ - сплит · ПКМ-drag - pan · СКМ-выделение - zoom · Ctrl+Wheel - zoom · Z/H - зоны", "Left click - split · Right drag - pan · Middle drag - zoom to rect · Ctrl+Wheel - zoom · Z/H - zones")}</div></div>
       </div>
   </div>
   </div>
+  {help_shell_html()}
   <script src="../{NAV_DATA_FILE}"></script>
+  <script src="../{HELP_DATA_FILE}"></script>
   <script>
     const oldSrc = {json.dumps(old_src)};
     const newSrc = {json.dumps(new_src)};
@@ -991,7 +934,6 @@ def _write_slider_view(
     const zoom = document.getElementById('zoom');
     const zoomVal = document.getElementById('zoomVal');
     const fitBtn = document.getElementById('fitBtn');
-    const oneBtn = document.getElementById('oneBtn');
     const zoomInBtn = document.getElementById('zoomInBtn');
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const stage = document.getElementById('stage');
@@ -1005,7 +947,6 @@ def _write_slider_view(
     const bboxToggle = document.getElementById('bboxToggle');
     const bboxOpacity = document.getElementById('bboxOpacity');
     const bboxOpacityValue = document.getElementById('bboxOpacityValue');
-    const bboxSwatch = document.getElementById('bboxSwatch');
     const zonesBtn = document.getElementById('zonesBtn');
     const zoneLayer = document.getElementById('zoneLayer');
     const zoneCounter = document.getElementById('zoneCounter');
@@ -1071,6 +1012,7 @@ def _write_slider_view(
       document.querySelectorAll('[data-i18n-aria-ru]').forEach(el => {{
         el.setAttribute('aria-label', next === 'en' ? el.dataset.i18nAriaEn : el.dataset.i18nAriaRu);
       }});
+      if (window.PDFCOMPARE_HELP_RENDER) window.PDFCOMPARE_HELP_RENDER(next);
     }}
     try {{ applyLang(localStorage.getItem('pdfcompare.lang') || document.documentElement.lang); }} catch (e) {{}}
     function openDrawer() {{
@@ -1150,6 +1092,12 @@ def _write_slider_view(
     window.addEventListener('keydown', (e) => {{
       const tag = (e.target && e.target.tagName || '').toLowerCase();
       if (e.key === 'Escape') {{
+        const helpPanel = document.getElementById('helpPanel');
+        const helpClose = document.getElementById('helpClose');
+        if (helpPanel && helpPanel.classList.contains('open') && helpClose) {{
+          helpClose.click();
+          return;
+        }}
         closeDrawer();
         clearZones();
         if (typeof setAnnotDrawMode === 'function' && annotDrawMode) setAnnotDrawMode(false);
@@ -1208,24 +1156,22 @@ def _write_slider_view(
       surface.style.setProperty('--bbox-border', c.border.replace('A', aBorder.toFixed(2)));
       surface.style.setProperty('--bbox-fill', c.fill.replace('B', aFill.toFixed(2)));
       bboxLayer.style.display = bboxState.enabled ? '' : 'none';
-      document.querySelectorAll('#bboxToggle .seg-toggle-opt').forEach(opt => {{
-        opt.classList.toggle('active', (opt.dataset.bbox === 'on') === bboxState.enabled);
-      }});
+      if (bboxToggle) {{
+        bboxToggle.classList.toggle('active', bboxState.enabled);
+        bboxToggle.setAttribute('aria-checked', bboxState.enabled ? 'true' : 'false');
+      }}
       document.querySelectorAll('.swatch-option').forEach(opt => {{
         opt.classList.toggle('active', opt.dataset.color === bboxState.color);
       }});
       if (bboxOpacity) bboxOpacity.value = String(opacityPct);
       if (bboxOpacityValue) bboxOpacityValue.textContent = opacityPct + '%';
-      if (bboxSwatch) bboxSwatch.className = 'bbox-swatch swatch-' + (bboxColors[bboxState.color] ? bboxState.color : 'yellow') + (bboxState.enabled ? '' : ' off');
     }}
     function setBboxState(patch, persist = true) {{
       bboxState = {{ ...bboxState, ...patch }};
       applyBboxStyle();
       if (persist) saveBboxState();
     }}
-    document.querySelectorAll('#bboxToggle .seg-toggle-opt').forEach(opt => {{
-      opt.addEventListener('click', () => setBboxState({{ enabled: opt.dataset.bbox === 'on' }}));
-    }});
+    if (bboxToggle) bboxToggle.addEventListener('click', () => setBboxState({{ enabled: !bboxState.enabled }}));
     document.querySelectorAll('.swatch-option[data-color]').forEach(opt => {{
       opt.addEventListener('click', () => setBboxState({{ color: opt.dataset.color || 'yellow' }}));
     }});
@@ -1288,10 +1234,32 @@ def _write_slider_view(
         bboxLayer.appendChild(box);
       }});
     }}
-    function setZoomPercent(v) {{
+    function imagePointAt(clientX, clientY) {{
+      const rect = surface.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      return {{
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height,
+        clientX: clientX,
+        clientY: clientY,
+      }};
+    }}
+    function keepImagePoint(point) {{
+      // applyZoom() recalculates the auto margins, so read offsets only after it.
+      if (!point) return;
+      const stageRect = stage.getBoundingClientRect();
+      stage.scrollLeft = surface.offsetLeft + point.x * surface.offsetWidth - (point.clientX - stageRect.left);
+      stage.scrollTop = surface.offsetTop + point.y * surface.offsetHeight - (point.clientY - stageRect.top);
+    }}
+    function centerImagePoint() {{
+      const stageRect = stage.getBoundingClientRect();
+      return imagePointAt(stageRect.left + stage.clientWidth / 2, stageRect.top + stage.clientHeight / 2);
+    }}
+    function setZoomPercent(v, anchor = null) {{
       const clamped = Math.max(1, Math.min(500, Math.round(v)));
       zoom.value = String(clamped);
       applyZoom();
+      keepImagePoint(anchor);
     }}
     function applyZoom() {{
       if (!naturalW || !naturalH) return;
@@ -1320,7 +1288,6 @@ def _write_slider_view(
       const pct = Math.max(0, Math.min(100, Number(slider.value) || 0));
       oldLayer.style.clipPath = `inset(0 ${{100 - pct}}% 0 0)`;
       divider.style.left = pct + '%';
-      slider.style.setProperty('--split-pct', pct + '%');
     }}
     let draggingSplit = false;
     let panning = false;
@@ -1359,8 +1326,8 @@ def _write_slider_view(
       setZoomPercent(s * 100);
       // After resize, center the selected rect in the viewport.
       const z = s;
-      stage.scrollLeft = Math.max(0, imgX * z - (stage.clientWidth - imgW * z) / 2);
-      stage.scrollTop = Math.max(0, imgY * z - (stage.clientHeight - imgH * z) / 2);
+      stage.scrollLeft = Math.max(0, surface.offsetLeft + imgX * z - (stage.clientWidth - imgW * z) / 2);
+      stage.scrollTop = Math.max(0, surface.offsetTop + imgY * z - (stage.clientHeight - imgH * z) / 2);
     }}
     surface.addEventListener('mousedown', (e) => {{
       if (annotDrawMode && e.button === 0) {{
@@ -1534,19 +1501,18 @@ def _write_slider_view(
       if (!e.ctrlKey) return;
       e.preventDefault();
       const delta = e.deltaY < 0 ? 6 : -6;
-      setZoomPercent(Number(zoom.value) + delta);
+      setZoomPercent(Number(zoom.value) + delta, imagePointAt(e.clientX, e.clientY));
     }}, {{ passive: false }});
     slider.addEventListener('input', applySplit);
-    zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value)));
+    zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value), centerImagePoint()));
     fitBtn.addEventListener('click', fitToWindow);
-    oneBtn.addEventListener('click', () => setZoomPercent(100));
     function zoomByStep(dir) {{
       // A finer step than the wheel's fixed ±6: 2% of the current zoom (min 1pp),
       // so repeated clicks creep in/out for precise framing when the mouse wheel
       // is set to a coarse scroll step.
       const cur = Number(zoom.value) || 100;
       const step = Math.max(1, Math.round(cur * 0.02));
-      setZoomPercent(cur + dir * step);
+      setZoomPercent(cur + dir * step, centerImagePoint());
     }}
     if (zoomInBtn) zoomInBtn.addEventListener('click', () => zoomByStep(1));
     if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => zoomByStep(-1));
@@ -1593,6 +1559,7 @@ def _write_slider_view(
       zoneLayer.classList.remove('active');
       zoneCounter.classList.remove('show');
       zoneCounter.textContent = '';
+      if (zonesBtn) zonesBtn.classList.remove('active');
     }}
     function highlightZones() {{
       if (!naturalW || !naturalH) return;
@@ -1624,6 +1591,7 @@ def _write_slider_view(
         zoneLayer.appendChild(ring);
       }});
       zoneLayer.classList.add('active');
+      if (zonesBtn) zonesBtn.classList.add('active');
       const en = document.documentElement.lang === 'en';
       zoneCounter.textContent = (en ? 'Change zones: ' : 'Зон с изменениями: ') + zones.length;
       zoneCounter.classList.add('show');
@@ -1669,9 +1637,14 @@ def _write_slider_view(
     }}
     function annotNewId() {{ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }}
     function updateAnnotCount() {{
+      const badge = document.getElementById('annotBadge');
+      const cluster = document.getElementById('annotCluster');
       if (!annotCount) return;
       const en = document.documentElement.lang === 'en';
       annotCount.textContent = annots.length ? ((en ? 'Notes: ' : 'Заметок: ') + annots.length) : '';
+      annotCount.hidden = !annots.length;
+      if (badge) {{ badge.textContent = String(annots.length); badge.hidden = !annots.length; }}
+      if (cluster && annots.length) cluster.classList.add('open');
     }}
     function updateAnnotShowBtn() {{
       if (!annotShowBtn) return;
@@ -1764,6 +1737,12 @@ def _write_slider_view(
       renderAnnots();
     }}
     if (annotBtn) annotBtn.addEventListener('click', () => setAnnotDrawMode(!annotDrawMode));
+    const annotCluster = document.getElementById('annotCluster');
+    const annotTrigger = annotCluster ? annotCluster.querySelector('.annot-trigger') : null;
+    if (annotTrigger && annotCluster) annotTrigger.addEventListener('click', () => {{
+      const open = annotCluster.classList.toggle('open');
+      annotTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }});
     if (annotShowBtn) annotShowBtn.addEventListener('click', () => {{ annotVisible = !annotVisible; updateAnnotShowBtn(); renderAnnots(); }});
     document.querySelectorAll('[data-annot-color]').forEach(b => b.addEventListener('click', () => {{
       annotColor = b.dataset.annotColor || 'yellow';
@@ -1777,6 +1756,7 @@ def _write_slider_view(
       if (Number(zoom.value) <= 5) fitToWindow();
     }});
   </script>
+  <script>{help_script()}</script>
 </body>
 </html>"""
         (views_dir / slider_file).write_text(slider_html, encoding="utf-8")
@@ -1926,6 +1906,7 @@ def _write_page_views(
       {detail_precision_text}
     </div>
     <div class="toolbar-right">
+      <button class="btn" type="button" data-help-open aria-expanded="false">{report_icon("help-circle", size=16)}{i18n_span_text("Справка", "Help")}</button>
       {prev_top}
       {next_top}
       <span class="muted">{i18n_span_text(f"Лист {view_idx}/{len(pages_records)}", f"Sheet {view_idx}/{len(pages_records)}")}</span>
@@ -1988,7 +1969,9 @@ def _write_page_views(
     </main>
   </div>
 
+  {help_shell_html()}
   <script src="../{NAV_DATA_FILE}"></script>
+  <script src="../{HELP_DATA_FILE}"></script>
   <script>
     const current = "{html.escape(p['view_file'], quote=True)}";
     const primarySliderHref = {json.dumps(slider_file or "")};
@@ -2044,6 +2027,7 @@ def _write_page_views(
       document.querySelectorAll('[data-i18n-aria-ru]').forEach(el => {{
         el.setAttribute('aria-label', next === 'en' ? el.dataset.i18nAriaEn : el.dataset.i18nAriaRu);
       }});
+      if (window.PDFCOMPARE_HELP_RENDER) window.PDFCOMPARE_HELP_RENDER(next);
     }}
     try {{ applyLang(localStorage.getItem('pdfcompare.lang') || document.documentElement.lang); }} catch (e) {{}}
     let currentMode = 'split';
@@ -2104,6 +2088,7 @@ def _write_page_views(
       }}
     }});
   </script>
+  <script>{help_script()}</script>
 </body>
 </html>
 """
@@ -2116,10 +2101,7 @@ def _write_page_views(
         slider_file=slider_file,
         old_src=old_src,
         new_src=new_src,
-        diff_txt=diff_txt,
-        fg_diff_txt=fg_diff_txt,
         status_tag=status_tag,
-        level_tag=level_tag,
         bboxes_data=bboxes_data,
     )
 
@@ -2261,6 +2243,7 @@ def generate_html_report(
 
     # One shared sheet list for every detail page and every slider (PDF-008).
     _write_nav_data(ctx)
+    _write_help_data(ctx)
 
     total_views = max(1, len(pages_records))
     for view_idx, p in enumerate(pages_records, start=1):
