@@ -191,11 +191,11 @@ class LiveReportTests(unittest.TestCase):
             self.assertTrue((run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "001.html").exists())
             self.assertTrue((run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "cmp_001.html").exists())
             slider_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "views" / "cmp_001.html").read_text(encoding="utf-8")
-            self.assertIn("bboxPalettes", slider_html)
+            self.assertIn("PDFCOMPARE_MOUNT_SLIDER", slider_html)
             self.assertIn('name="bboxColor"', slider_html)
             self.assertIn('id="bboxOpacity"', slider_html)
             self.assertIn("bboxOpacityVal", slider_html)
-            self.assertIn("--bbox-fill:rgba(255,235,120,.13)", slider_html)
+            self.assertIn("--bbox-fill: rgba(255,235,120,.13)", slider_html)
 
             write_live_html_report(run_dir, Path("old.pdf"), Path("new.pdf"), pairs, details, report_lang="ru", in_progress=False)
             final_live_html = (run_dir / INTERNAL_REPORT_DIR / "report" / "index.html").read_text(encoding="utf-8")

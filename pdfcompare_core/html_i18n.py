@@ -109,6 +109,7 @@ HTML_REPORT_I18N: dict[str, dict[str, str]] = {
         "bbox_pink": "Розовый",
         "bbox_green": "Зелёный",
         "bbox_opacity": "Непрозрачность",
+        "slider_load_error": "Не удалось загрузить изображение",
         "slider_help": "Режим 1:1 по умолчанию. ЛКМ по чертежу — двигать разделитель, ПКМ+перетаскивание — панорамирование, Ctrl+колесо — масштаб внутри этого окна.",
     },
     "en": {
@@ -217,6 +218,7 @@ HTML_REPORT_I18N: dict[str, dict[str, str]] = {
         "bbox_pink": "Pink",
         "bbox_green": "Green",
         "bbox_opacity": "Opacity",
+        "slider_load_error": "Failed to load image",
         "slider_help": "1:1 mode by default. Left-click on drawing to move split, right-drag to pan, Ctrl+wheel to zoom inside this view.",
     },
 }

@@ -1243,3 +1243,17 @@ html[data-bbox-enabled="false"] .bbox-layer { display: none; }
 }
 @media (max-width: 900px) { .sheet-pager .btn span { display: none; } .sheet-pager .btn { width: 32px; min-width: 32px; padding: 0; } .corner-cluster-content { max-width: calc(100vw - 28px); overflow: auto; } }
 """
+
+
+# Live-only layout: it has no drawer or annotation controls.
+CSS_LIVE_CMP = """
+.live-cmp-page { width: 100vw; height: 100vh; margin: 0; padding: 0; }
+.live-cmp-panel { width: 100%; height: 100%; border: 0; padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; }
+.live-cmp-header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.live-cmp-controls { margin: 10px 0 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.live-cmp-zoom { width: 150px; }
+.live-cmp-bbox-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.live-cmp-bbox-controls .swatch-option { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 8px; background: var(--surface); cursor: pointer; user-select: none; }
+.live-cmp-bbox-controls .swatch-option input { margin: 0; }
+.live-cmp-bbox-controls .bbox-opacity { width: 110px; }
+"""

@@ -8,6 +8,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .classification import level_to_report_tags
+from .html_css import CSS_CMP, CSS_LIVE_CMP, REPORT_CSS_TOKENS
+from .html_i18n import HTML_REPORT_I18N
+from .html_slider import render_slider_runtime
 from .models import MatchPair
 from .pdf_io import atomic_write_text, find_pages_dir, report_dir, write_start_page
 
@@ -113,7 +116,6 @@ def write_live_slider_view(
 ) -> str | None:
     if not old_src or not new_src:
         return None
-    labels = live_report_labels(report_lang)
     views_dir = report_dir(run_dir) / "views"
     views_dir.mkdir(parents=True, exist_ok=True)
     seq = int(row["seq"])
@@ -124,171 +126,57 @@ def write_live_slider_view(
         bboxes_data = json.loads(bboxes_path.read_text(encoding="utf-8")) if bboxes_path.exists() else []
     except Exception:
         bboxes_data = []
+    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
+    text = HTML_REPORT_I18N[lang]
     a_page = "-" if row.get("a_page") is None else str(row.get("a_page"))
     b_page = "-" if row.get("b_page") is None else str(row.get("b_page"))
-    lang = "en" if str(report_lang).lower().startswith("en") else "ru"
-    load_error = "Failed to load image" if lang == "en" else "Не удалось загрузить изображение"
-    fit_label = "Fit to window" if lang == "en" else "Вписать в окно"
-    back_label = "Back to page" if lang == "en" else "Назад к листу"
-    summary_label = "Back to summary" if lang == "en" else "К сводке"
-    zoom_label = "Zoom" if lang == "en" else "Масштаб"
-    bbox_color_label = "Box color" if lang == "en" else "Цвет зон"
-    bbox_yellow_label = "Yellow" if lang == "en" else "Жёлтый"
-    bbox_pink_label = "Pink" if lang == "en" else "Розовый"
-    bbox_green_label = "Green" if lang == "en" else "Зелёный"
-    bbox_opacity_label = "Opacity" if lang == "en" else "Непрозрачность"
+    slider_runtime = render_slider_runtime(
+        {
+            "oldSrc": old_src,
+            "newSrc": new_src,
+            "bboxes": bboxes_data,
+            "bboxOpacity": 13,
+            "loadError": text["slider_load_error"],
+            "storagePrefix": "pdfcompare:live",
+        }
+    )
     html_text = f"""<!doctype html>
 <html lang="{lang}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>{html.escape(labels["page"])} B{html.escape(b_page)}</title>
+  <title>{html.escape(text["nav_sheet_word"])} B{html.escape(b_page)}</title>
   <style>
-    html,body {{ width:100%; height:100%; }}
-    body {{ margin:0; font-family:Segoe UI,Arial,sans-serif; background:#f3f6fb; color:#1d2433; overflow:hidden; }}
-    .wrap {{ width:100vw; height:100vh; margin:0; padding:0; }}
-    .panel {{ width:100%; height:100%; background:#fff; border:0; padding:10px; box-sizing:border-box; display:flex; flex-direction:column; }}
-    .top {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }}
-    .btn {{ border:1px solid #d7deea; border-radius:8px; padding:6px 10px; text-decoration:none; color:#0f4fa8; background:#fff; }}
-    .stage {{ flex:1; width:100%; border:1px solid #d7deea; border-radius:10px; background:#fff; padding:8px; box-sizing:border-box; overflow:auto; min-height:0; position:relative; }}
-    .stage.dragging {{ cursor:ew-resize; }}
-    .stage.panning {{ cursor:grabbing; }}
-    .compare-surface {{ --bbox-border:rgba(255,180,0,.74); --bbox-fill:rgba(255,235,120,.13); position:relative; display:none; background:#fff; overflow:hidden; cursor:ew-resize; transform-origin:0 0; }}
-    .layer {{ position:absolute; inset:0; width:100%; height:100%; object-fit:fill; user-select:none; -webkit-user-drag:none; }}
-    .old-layer {{ position:absolute; inset:0; overflow:hidden; clip-path:inset(0 50% 0 0); }}
-    .bbox-layer {{ position:absolute; inset:0; pointer-events:none; }}
-    .bbox {{ position:absolute; border:2px solid var(--bbox-border); background:var(--bbox-fill); box-sizing:border-box; }}
-    .divider {{ position:absolute; top:0; bottom:0; left:50%; width:2px; background:rgba(20,120,255,.95); pointer-events:none; }}
-    .load-msg {{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#5f6b84; }}
-    .slider-wrap {{ margin:10px 0 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }}
-    input[type=range] {{ width:100%; }}
-    .small {{ width:150px; }}
-    .bbox-controls {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-left:auto; }}
-    .swatch-option {{ display:inline-flex; align-items:center; gap:5px; border:1px solid #d7deea; border-radius:8px; padding:5px 8px; background:#fff; cursor:pointer; user-select:none; }}
-    .swatch-option input {{ margin:0; }}
-    .swatch {{ width:14px; height:14px; border-radius:4px; border:2px solid currentColor; box-sizing:border-box; }}
-    .swatch-yellow {{ color:rgb(255,180,0); background:rgba(255,235,120,.45); }}
-    .swatch-pink {{ color:rgb(236,72,153); background:rgba(244,114,182,.45); }}
-    .swatch-green {{ color:rgb(22,163,74); background:rgba(134,239,172,.45); }}
-    .bbox-opacity {{ width:110px; }}
-    .muted {{ color:#5f6b84; font-size:12px; }}
+{REPORT_CSS_TOKENS}
+{CSS_CMP}
+{CSS_LIVE_CMP}
   </style>
 </head>
 <body>
-  <div class="wrap"><div class="panel">
-    <div class="top">
-      <div><b>{html.escape(labels["page"])} A{html.escape(a_page)} - B{html.escape(b_page)}</b><div class="muted">{html.escape(file_a.name)} -> {html.escape(file_b.name)}</div></div>
-      <div><a class="btn" href="{seq:03d}.html">{html.escape(back_label)}</a><a class="btn" href="../index.html">{html.escape(summary_label)}</a><button class="btn" id="fitBtn" type="button">{html.escape(fit_label)}</button></div>
+  <div class="live-cmp-page"><div class="live-cmp-panel">
+    <div class="live-cmp-header">
+      <div><b>{html.escape(text["nav_sheet_word"])} A{html.escape(a_page)} - B{html.escape(b_page)}</b><div class="muted">{html.escape(file_a.name)} -> {html.escape(file_b.name)}</div></div>
+      <div><a class="btn" href="{seq:03d}.html">{html.escape(text["back_to_sheet"])}</a><a class="btn" href="../index.html">{html.escape(text["back_summary"])}</a><button class="btn fit-btn" id="fitBtn" type="button">{html.escape(text["fit_to_window"])}</button></div>
     </div>
     <div class="stage" id="stage" tabindex="0">
       <div class="compare-surface" id="surface">
-        <img id="imgNew" class="layer" alt="{html.escape(labels["new"])}" draggable="false"/>
-        <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(labels["old"])}" draggable="false"/></div>
+        <img id="imgNew" class="layer" alt="{html.escape(text["slider_new"])}" draggable="false"/>
+        <div id="oldLayer" class="old-layer"><img id="imgOld" class="layer" alt="{html.escape(text["slider_old"])}" draggable="false"/></div>
         <div id="bboxLayer" class="bbox-layer"></div><div id="divider" class="divider"></div>
       </div>
-      <div id="loadMsg" class="load-msg">{html.escape(labels["pending"])}</div>
+      <div id="loadMsg" class="load-msg">{html.escape(live_report_labels(lang)["pending"])}</div>
     </div>
-    <div class="slider-wrap"><span>{html.escape(labels["old"])}</span><input id="split" type="range" min="0" max="100" step="0.1" value="50"/><span>{html.escape(labels["new"])}</span><span>{html.escape(zoom_label)}</span><input id="zoom" class="small" type="range" min="1" max="500" value="100"/><span id="zoomVal">100%</span>
-      <div class="bbox-controls" aria-label="{html.escape(bbox_color_label)}">
-        <span class="muted">{html.escape(bbox_color_label)}:</span>
-        <label class="swatch-option"><input type="radio" name="bboxColor" value="yellow" checked/><span class="swatch swatch-yellow"></span>{html.escape(bbox_yellow_label)}</label>
-        <label class="swatch-option"><input type="radio" name="bboxColor" value="pink"/><span class="swatch swatch-pink"></span>{html.escape(bbox_pink_label)}</label>
-        <label class="swatch-option"><input type="radio" name="bboxColor" value="green"/><span class="swatch swatch-green"></span>{html.escape(bbox_green_label)}</label>
-        <span class="muted">{html.escape(bbox_opacity_label)}:</span><input id="bboxOpacity" class="bbox-opacity" type="range" min="5" max="35" value="13"/><span id="bboxOpacityVal">13%</span>
+    <div class="live-cmp-controls"><span>{html.escape(text["slider_old"])}</span><input id="split" type="range" min="0" max="100" step="0.1" value="50"/><span>{html.escape(text["slider_new"])}</span><span>{html.escape(text["slider_zoom"])}</span><input id="zoom" class="live-cmp-zoom" type="range" min="1" max="500" value="100"/><span id="zoomVal">100%</span>
+      <div class="live-cmp-bbox-controls" aria-label="{html.escape(text["bbox_color"])}">
+        <span class="muted">{html.escape(text["bbox_color"])}:</span>
+        <label class="swatch-option"><input type="radio" name="bboxColor" value="yellow" checked/><span class="swatch swatch-yellow"></span>{html.escape(text["bbox_yellow"])}</label>
+        <label class="swatch-option"><input type="radio" name="bboxColor" value="pink"/><span class="swatch swatch-pink"></span>{html.escape(text["bbox_pink"])}</label>
+        <label class="swatch-option"><input type="radio" name="bboxColor" value="green"/><span class="swatch swatch-green"></span>{html.escape(text["bbox_green"])}</label>
+        <span class="muted">{html.escape(text["bbox_opacity"])}:</span><input id="bboxOpacity" class="bbox-opacity" type="range" min="5" max="35" value="13"/><span id="bboxOpacityVal">13%</span>
       </div>
     </div>
   </div></div>
-  <script>
-    const oldSrc = {json.dumps(old_src)};
-    const newSrc = {json.dumps(new_src)};
-    const bboxData = {json.dumps(bboxes_data, ensure_ascii=False)};
-    const slider = document.getElementById('split');
-    const zoom = document.getElementById('zoom');
-    const zoomVal = document.getElementById('zoomVal');
-    const fitBtn = document.getElementById('fitBtn');
-    const stage = document.getElementById('stage');
-    const surface = document.getElementById('surface');
-    const oldLayer = document.getElementById('oldLayer');
-    const divider = document.getElementById('divider');
-    const bboxLayer = document.getElementById('bboxLayer');
-    const loadMsg = document.getElementById('loadMsg');
-    const oldImg = document.getElementById('imgOld');
-    const newImg = document.getElementById('imgNew');
-    const bboxOpacity = document.getElementById('bboxOpacity');
-    const bboxOpacityVal = document.getElementById('bboxOpacityVal');
-    const bboxPalettes = {{
-      yellow: {{ border:'255,180,0', fill:'255,235,120' }},
-      pink: {{ border:'236,72,153', fill:'244,114,182' }},
-      green: {{ border:'22,163,74', fill:'134,239,172' }}
-    }};
-    let activeBboxColor = 'yellow';
-    function currentBboxAlpha() {{
-      const value = Math.max(5, Math.min(35, Number(bboxOpacity.value) || 13));
-      bboxOpacity.value = String(value);
-      bboxOpacityVal.textContent = value + '%';
-      return value / 100;
-    }}
-    function setBboxColor(name) {{
-      activeBboxColor = bboxPalettes[name] ? name : 'yellow';
-      applyBboxStyle();
-      try {{ localStorage.setItem('pdfcompare:bboxColor', activeBboxColor); }} catch (e) {{}}
-    }}
-    function applyBboxStyle() {{
-      const palette = bboxPalettes[activeBboxColor] || bboxPalettes.yellow;
-      const alpha = currentBboxAlpha();
-      const borderAlpha = Math.min(0.9, 0.35 + alpha * 3);
-      surface.style.setProperty('--bbox-border', `rgba(${{palette.border}},${{borderAlpha.toFixed(2)}})`);
-      surface.style.setProperty('--bbox-fill', `rgba(${{palette.fill}},${{alpha.toFixed(2)}})`);
-      try {{ localStorage.setItem('pdfcompare:bboxOpacity', bboxOpacity.value); }} catch (e) {{}}
-    }}
-    document.querySelectorAll('input[name="bboxColor"]').forEach(input => {{
-      input.addEventListener('change', () => setBboxColor(input.value));
-    }});
-    try {{
-      const savedColor = localStorage.getItem('pdfcompare:bboxColor') || 'yellow';
-      const savedOpacity = localStorage.getItem('pdfcompare:bboxOpacity') || '13';
-      bboxOpacity.value = savedOpacity;
-      const savedInput = document.querySelector(`input[name="bboxColor"][value="${{savedColor}}"]`);
-      if (savedInput) savedInput.checked = true;
-      setBboxColor(savedColor);
-    }} catch (e) {{
-      setBboxColor('yellow');
-    }}
-    bboxOpacity.addEventListener('input', applyBboxStyle);
-    let loaded = 0, naturalW = 0, naturalH = 0;
-    function ready() {{ loaded += 1; if (loaded >= 2) initialize(); }}
-    function fail() {{ loadMsg.textContent = {json.dumps(load_error)}; }}
-    oldImg.onload = ready; newImg.onload = ready; oldImg.onerror = fail; newImg.onerror = fail;
-    oldImg.src = oldSrc; newImg.src = newSrc;
-    function initialize() {{
-      naturalW = Math.max(oldImg.naturalWidth || 1, newImg.naturalWidth || 1);
-      naturalH = Math.max(oldImg.naturalHeight || 1, newImg.naturalHeight || 1);
-      surface.style.display = 'block'; loadMsg.style.display = 'none'; buildBboxes(); applySplit(); fitToWindow();
-    }}
-    function buildBboxes() {{
-      bboxLayer.innerHTML = '';
-      bboxData.forEach(b => {{
-        const x=Number(b.x||0), y=Number(b.y||0), bw=Number(b.w||0), bh=Number(b.h||0);
-        if (bw <= 1 || bh <= 1) return;
-        const box=document.createElement('div'); box.className='bbox';
-        box.style.left=(100*x/naturalW)+'%'; box.style.top=(100*y/naturalH)+'%';
-        box.style.width=(100*bw/naturalW)+'%'; box.style.height=(100*bh/naturalH)+'%';
-        bboxLayer.appendChild(box);
-      }});
-    }}
-    function setZoomPercent(v) {{ const clamped=Math.max(1, Math.min(500, Math.round(v))); zoom.value=String(clamped); applyZoom(); }}
-    function applyZoom() {{ if (!naturalW || !naturalH) return; const z=Number(zoom.value)/100; zoomVal.textContent=Math.round(z*100)+'%'; surface.style.width=Math.max(1, Math.round(naturalW*z))+'px'; surface.style.height=Math.max(1, Math.round(naturalH*z))+'px'; }}
-    function fitToWindow() {{ if (!naturalW || !naturalH) return; const pad=16; const sx=Math.max(0.01,(stage.clientWidth-pad)/naturalW); const sy=Math.max(0.01,(stage.clientHeight-pad)/naturalH); setZoomPercent(Math.max(0.01, Math.min(sx, sy))*100); }}
-    function applySplit() {{ const pct=Math.max(0, Math.min(100, Number(slider.value)||0)); oldLayer.style.clipPath=`inset(0 ${{100-pct}}% 0 0)`; divider.style.left=pct+'%'; }}
-    function setSplitFromClientX(clientX) {{ const rect=surface.getBoundingClientRect(); if (!rect.width) return; const x=Math.max(0, Math.min(rect.width, clientX-rect.left)); slider.value=String((x/rect.width)*100); applySplit(); }}
-    let draggingSplit=false, panning=false, panStartX=0, panStartY=0, panStartScrollLeft=0, panStartScrollTop=0;
-    surface.addEventListener('mousedown', e => {{ if (e.button===2) {{ panning=true; stage.classList.add('panning'); panStartX=e.clientX; panStartY=e.clientY; panStartScrollLeft=stage.scrollLeft; panStartScrollTop=stage.scrollTop; e.preventDefault(); return; }} if (e.button!==0) return; draggingSplit=true; stage.classList.add('dragging'); setSplitFromClientX(e.clientX); }});
-    window.addEventListener('mousemove', e => {{ if (panning) {{ stage.scrollLeft=panStartScrollLeft-(e.clientX-panStartX); stage.scrollTop=panStartScrollTop-(e.clientY-panStartY); return; }} if (draggingSplit) setSplitFromClientX(e.clientX); }});
-    window.addEventListener('mouseup', () => {{ draggingSplit=false; panning=false; stage.classList.remove('dragging'); stage.classList.remove('panning'); }});
-    stage.addEventListener('contextmenu', e => e.preventDefault());
-    stage.addEventListener('wheel', e => {{ if (!e.ctrlKey) return; e.preventDefault(); setZoomPercent(Number(zoom.value)+(e.deltaY<0?6:-6)); }}, {{ passive:false }});
-    slider.addEventListener('input', applySplit); zoom.addEventListener('input', () => setZoomPercent(Number(zoom.value))); fitBtn.addEventListener('click', fitToWindow);
-  </script>
+  {slider_runtime}
 </body>
 </html>
 """
