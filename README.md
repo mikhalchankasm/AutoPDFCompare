@@ -155,6 +155,12 @@ git -C "$env:LOCALAPPDATA\PDFCompareMCP\AutoPDFCompare" pull --ff-only origin ma
 - Процесс релиза — [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)
 - Промпт для ревью репозитория — [docs/REVIEW_PROMPT.md](docs/REVIEW_PROMPT.md)
 
+## Авторы и вклад
+
+- **OpenAI Codex** — основной инженерный вклад: архитектура, реализация движка, UI и MCP, тестирование и релизная инженерия.
+- **Anthropic Claude Code** — существенный вклад в разработку и ревью отдельных итераций проекта.
+- **mikhalchankasm** — автор идеи, владелец проекта, постановка задач и приёмка результата.
+
 ## License
 
 [MIT](LICENSE). Обратите внимание: зависимость PyMuPDF распространяется под AGPL-3.0 (или коммерческой лицензией Artifex) — при использовании и распространении сборок ограничения PyMuPDF наследуются независимо от лицензии этого репозитория.
