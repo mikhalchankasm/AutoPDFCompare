@@ -21,7 +21,7 @@ import cv2
 import fitz
 import numpy as np
 
-from .alignment import align_ecc, align_pages_v1
+from .alignment import align_ecc_detailed, align_pages_v1
 from .classification import classify
 from .constants import APP_NAME, APP_VERSION, LIVE_REPORT_EVENT_PREFIX, MAX_RENDER_DPI, MIN_RENDER_DPI
 from .diff_engine import DIFF_STRICTNESS_CHOICES, compute_diff_detailed, harmonize_canvas
@@ -321,6 +321,16 @@ def process_pair_task(
         "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
         "ignore_line_weight": bool(ignore_line_weight),
         "ecc_failed": False,
+        "alignment_method": None,
+        "alignment_score": None,
+        "alignment_improvement": None,
+        "alignment_shift_x_px": None,
+        "alignment_shift_y_px": None,
+        "alignment_shift_x_mm": None,
+        "alignment_shift_y_mm": None,
+        "alignment_rotation_deg": None,
+        "alignment_scale_x": None,
+        "alignment_scale_y": None,
         "width_px": None,
         "height_px": None,
         "pixel_count": None,
@@ -367,12 +377,25 @@ def process_pair_task(
                 return finish()
 
             a_h, b_h = harmonized
-            b_aligned, ecc_ok = align_ecc(a_h, b_h)
-            entry["ecc_failed"] = not ecc_ok
-            check_cancelled()
             pixel_exclusions = exclusion_regions_to_pixel_boxes(
                 exclude_regions or [], a_h.shape[1], a_h.shape[0], dpi=effective_dpi
             )
+            alignment = align_ecc_detailed(a_h, b_h, pixel_exclusions)
+            b_aligned = alignment.image
+            entry["ecc_failed"] = not alignment.ok
+            entry["alignment_method"] = alignment.method
+            entry["alignment_score"] = (
+                None if alignment.correlation is None else round(float(alignment.correlation), 6)
+            )
+            entry["alignment_improvement"] = round(float(alignment.improvement), 6)
+            entry["alignment_shift_x_px"] = round(float(alignment.shift_x_px), 3)
+            entry["alignment_shift_y_px"] = round(float(alignment.shift_y_px), 3)
+            entry["alignment_shift_x_mm"] = round(float(alignment.shift_x_px) * 25.4 / effective_dpi, 3)
+            entry["alignment_shift_y_mm"] = round(float(alignment.shift_y_px) * 25.4 / effective_dpi, 3)
+            entry["alignment_rotation_deg"] = round(float(alignment.rotation_deg), 5)
+            entry["alignment_scale_x"] = round(float(alignment.scale_x), 7)
+            entry["alignment_scale_y"] = round(float(alignment.scale_y), 7)
+            check_cancelled()
             bbox_merge_gap_px = int(round(max(0.0, float(bbox_merge_gap_mm)) * float(effective_dpi) / 25.4))
             mask, overlay, bboxes, metrics = compute_diff_detailed(
                 a_h,

@@ -10,7 +10,9 @@ from __future__ import annotations
 import multiprocessing
 
 from pdfcompare_core.alignment import (
+    ImageAlignment,
     align_ecc,
+    align_ecc_detailed,
     align_pages_hungarian,
     align_pages_monotonic,
     align_pages_v1,

@@ -128,6 +128,11 @@ def _prepare_pages_records(
                 )
         if row.get("ecc_failed"):
             note = f"{note} {t['note_ecc_failed']}"
+        else:
+            shift_x_mm = float(row.get("alignment_shift_x_mm") or 0.0)
+            shift_y_mm = float(row.get("alignment_shift_y_mm") or 0.0)
+            if (shift_x_mm**2 + shift_y_mm**2) ** 0.5 >= 0.2:
+                note = f"{note} {t['note_alignment_shift'].format(x=shift_x_mm, y=shift_y_mm)}"
 
         a_label = "-" if a_page is None else str(a_page)
         b_label = "-" if b_page is None else str(b_page)
@@ -153,6 +158,18 @@ def _prepare_pages_records(
                 "max_region_area_mm2": row.get("max_region_area_mm2"),
                 "change_level": row.get("change_level"),
                 "bboxes_count": row.get("bboxes_count"),
+                "alignment": {
+                    "method": row.get("alignment_method"),
+                    "score": row.get("alignment_score"),
+                    "improvement": row.get("alignment_improvement"),
+                    "shift_x_px": row.get("alignment_shift_x_px"),
+                    "shift_y_px": row.get("alignment_shift_y_px"),
+                    "shift_x_mm": row.get("alignment_shift_x_mm"),
+                    "shift_y_mm": row.get("alignment_shift_y_mm"),
+                    "rotation_deg": row.get("alignment_rotation_deg"),
+                    "scale_x": row.get("alignment_scale_x"),
+                    "scale_y": row.get("alignment_scale_y"),
+                },
                 "page_settings": {
                     "high_dpi": row.get("high_dpi"),
                     "stroke_tol_px": row.get("stroke_tol_px"),
@@ -2203,7 +2220,7 @@ def generate_html_report(
             ),
             "threshold_unchanged_percent": UNCHANGED_DIFF_PERCENT,
             "bbox_detected_means_changed": True,
-            "align_mode": "ECC_AFFINE",
+            "align_mode": "ECC_PYRAMID_TRANSLATION_AFFINE",
             "report_lang": lang,
             "is_mixed_precision": bool(mixed_precision_pages),
             "mixed_precision_seqs": mixed_precision_seqs,

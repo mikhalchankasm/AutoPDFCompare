@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import unittest
 
+import cv2
 import numpy as np
 
 from compare_pdfs import (
     MatchPair,
     PageInfo,
+    align_ecc,
+    align_ecc_detailed,
     align_pages_hungarian,
     align_pages_monotonic,
     align_pages_v1,
@@ -50,6 +53,79 @@ def _matched_pairs(pairs):
 
 def _statuses(pairs) -> list[str]:
     return [p.status for p in pairs]
+
+
+def _large_drawing(width: int = 2400, height: int = 1600) -> np.ndarray:
+    image = np.full((height, width, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (40, 40), (width - 40, height - 40), (0, 0, 0), 3)
+    for x in range(180, width - 300, 260):
+        cv2.line(image, (x, 180), (x + 170, height - 320), (0, 0, 0), 2)
+        cv2.circle(image, (x + 80, 420 + (x % 300)), 55, (0, 0, 0), 3)
+    for y in range(220, height - 260, 190):
+        cv2.line(image, (130, y), (width - 180, y), (0, 0, 0), 2)
+    cv2.putText(image, "DRAWING REV 00", (180, 125), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 0), 3)
+    return image
+
+
+def _translate(image: np.ndarray, shift_x: float, shift_y: float) -> np.ndarray:
+    warp = np.array([[1.0, 0.0, shift_x], [0.0, 1.0, shift_y]], dtype=np.float32)
+    return cv2.warpAffine(
+        image,
+        warp,
+        (image.shape[1], image.shape[0]),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(255, 255, 255),
+    )
+
+
+class ImageRegistrationTests(unittest.TestCase):
+    def test_multiscale_alignment_recovers_large_raster_translation(self) -> None:
+        base = _large_drawing()
+        moving = _translate(base, 42.0, -18.0)
+        before = float(np.mean(cv2.absdiff(base, moving)))
+
+        result = align_ecc_detailed(base, moving)
+        after = float(np.mean(cv2.absdiff(base, result.image)))
+
+        self.assertTrue(result.ok)
+        self.assertIn(result.method, {"ECC_TRANSLATION_PYRAMID", "ECC_AFFINE_PYRAMID"})
+        self.assertAlmostEqual(result.shift_x_px, 42.0, delta=1.0)
+        self.assertAlmostEqual(result.shift_y_px, -18.0, delta=1.0)
+        self.assertLess(after, before * 0.12)
+        self.assertGreater(result.improvement, 0.80)
+
+    def test_excluded_fixed_stamp_does_not_anchor_moving_drawing(self) -> None:
+        base = _large_drawing()
+        stamp_box = (1850, 1250, 500, 280)
+        cv2.rectangle(base, (1850, 1250), (2350, 1530), (0, 0, 0), 5)
+        cv2.putText(base, "REV 00", (1930, 1410), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 4)
+        moving = _translate(base, 36.0, 14.0)
+        x, y, width, height = stamp_box
+        moving[y : y + height, x : x + width] = base[y : y + height, x : x + width]
+
+        result = align_ecc_detailed(base, moving, [stamp_box])
+
+        self.assertTrue(result.ok)
+        self.assertAlmostEqual(result.shift_x_px, 36.0, delta=1.0)
+        self.assertAlmostEqual(result.shift_y_px, 14.0, delta=1.0)
+
+    def test_public_wrapper_keeps_two_value_contract(self) -> None:
+        base = _large_drawing(800, 600)
+
+        aligned, ok = align_ecc(base, base.copy())
+
+        self.assertTrue(ok)
+        self.assertTrue(np.array_equal(aligned, base))
+
+    def test_shape_mismatch_fails_without_modifying_moving_image(self) -> None:
+        base = _large_drawing(800, 600)
+        moving = _large_drawing(700, 500)
+
+        result = align_ecc_detailed(base, moving)
+
+        self.assertFalse(result.ok)
+        self.assertIs(result.image, moving)
 
 
 class PairSimilaritySanityTests(unittest.TestCase):

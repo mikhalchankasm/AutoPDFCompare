@@ -20,6 +20,8 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 
 - `start_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, diff_strictness = "normal", exclude_regions = None, bbox_merge_gap_mm = 0.0, bbox_merge_max_area_ratio = 16.0, workers = 0, lang = "ru", keep_debug_images = false, ignore_line_weight = false)`
   - `ignore_line_weight = true` подавляет утолщение/утоньшение штрихов на прежней оси; новые и смещённые линии остаются изменениями.
+  - автоматическое многоступенчатое совмещение всегда включено: оно компенсирует небольшой перенос, поворот и масштаб до расчёта diff; зоны исключения не участвуют в оценке преобразования;
+  - `summary.json` сохраняет метод/качество совмещения, X/Y в пикселях и миллиметрах, поворот и масштаб для каждой сопоставленной пары;
   - starts the comparison in a background Python process;
   - returns `job_id`, `run_dir`, `report_path`, status file, event log, and worker log.
   - `diff_strictness`: `strict`, `normal`, or `loose` (default `normal`);
@@ -33,7 +35,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 
 - `preview_pdf_comparison(old_path, new_path, out_dir, run_name, dpi = 250, stroke_tol = 2.0, diff_strictness = "normal", exclude_regions = [...], bbox_merge_gap_mm = 0, ...)`
   - builds the **final pre-launch checklist without starting anything**: it validates and normalizes exactly what `start_pdf_comparison` would (paths, run-folder name, DPI, strictness, exclusion zones, output collision), so it never green-lights a run start would reject;
-  - returns page counts + page delta, the precision settings with a `*_is_default` flag on each, an `exclude_regions` summary (count + one line per zone), the bbox-merge setting, and the output folder / run name / run_dir;
+  - returns page counts + page delta, the precision settings with a `*_is_default` flag on each, automatic-alignment status, an `exclude_regions` summary (count + one line per zone), the bbox-merge setting, and the output folder / run name / run_dir;
   - takes the same arguments as `start_pdf_comparison`, so after the user confirms, the start call is a straight copy. Call it right before `start_pdf_comparison`.
 
 - `rerender_pdf_comparison_pages(run_dir, seqs = [4], dpi = 500, stroke_tol = 0, diff_strictness = "strict", exclude_regions = [...], ignore_line_weight = true)`
@@ -81,7 +83,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
    - `normal`: default;
    - `loose`: ignores more small jitter/noise.
 6. If the user did not already mention bbox merging, ask whether to enable experimental merging of nearby bbox regions. Recommend keeping it disabled unless the user explicitly wants grouped boxes. Offer the current limits: disabled by default with `bbox_merge_gap_mm=0`; a typical trial value is `5` mm; `bbox_merge_max_area_ratio=16` plus a page-area/sparse-fill guard limits over-merging.
-7. Call `preview_pdf_comparison` with the chosen settings and show the user the returned checklist — old file, new file, tolerances/strictness, excluded zones (or "none"), and the output folder + name. Ask whether to start as-is or change a specific line. Only after confirmation call `start_pdf_comparison` with the same arguments.
+7. Call `preview_pdf_comparison` with the chosen settings and show the user the returned checklist — old file, new file, tolerances/strictness, automatic alignment, excluded zones (or "none"), and the output folder + name. Ask whether to start as-is or change a specific line. Only after confirmation call `start_pdf_comparison` with the same arguments.
 8. Continue other work if needed. Poll `get_pdf_comparison_status(job_id)` when the user asks for progress or before reporting completion.
 9. When completed, give the user `report_path` and summarize counts from `summary.counts`. The HTML report shows both page-level `Diff %` and content-relative `FG %`, plus physical changed area in `mm²`.
 10. If a specific report row needs higher precision, call `rerender_pdf_comparison_pages` with the existing `run_dir` and target `seq`; the report is rebuilt in place.

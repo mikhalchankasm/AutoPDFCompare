@@ -3,11 +3,36 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from math import atan2, degrees, hypot, isfinite
 
 import cv2
 import numpy as np
 
 from .models import MatchPair, PageInfo
+
+
+ECC_ANALYSIS_MAX_DIM = 1400
+ECC_MAX_TRANSLATION_RATIO = 0.10
+ECC_MAX_ROTATION_DEG = 3.0
+ECC_MIN_SCALE = 0.95
+ECC_MAX_SCALE = 1.05
+ECC_MAX_SHEAR = 0.05
+
+
+@dataclass(frozen=True)
+class ImageAlignment:
+    image: np.ndarray
+    ok: bool
+    method: str
+    correlation: float | None
+    analysis_scale: float
+    improvement: float
+    shift_x_px: float
+    shift_y_px: float
+    rotation_deg: float
+    scale_x: float
+    scale_y: float
 
 
 def visual_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -382,22 +407,224 @@ def align_pages_v1(pages_a: Sequence[PageInfo], pages_b: Sequence[PageInfo]) -> 
     return global_map
 
 
-def align_ecc(base_bgr: np.ndarray, moving_bgr: np.ndarray) -> tuple[np.ndarray, bool]:
-    """ECC sub-pixel image registration before pixel-level diff."""
+def _ecc_analysis_images(
+    base_bgr: np.ndarray,
+    moving_bgr: np.ndarray,
+    exclude_boxes: Sequence[tuple[int, int, int, int]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float]:
+    height, width = base_bgr.shape[:2]
+    scale = min(1.0, ECC_ANALYSIS_MAX_DIM / float(max(height, width)))
+    analysis_size = (
+        max(1, int(round(width * scale))),
+        max(1, int(round(height * scale))),
+    )
     base_gray = cv2.cvtColor(base_bgr, cv2.COLOR_BGR2GRAY)
     moving_gray = cv2.cvtColor(moving_bgr, cv2.COLOR_BGR2GRAY)
-    warp = np.eye(2, 3, dtype=np.float32)
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 80, 1e-6)
-    try:
-        # OpenCV's default inputMask=None and gaussFiltSize=5 matches the previous explicit call.
-        cv2.findTransformECC(base_gray, moving_gray, warp, cv2.MOTION_AFFINE, criteria)
-        aligned = cv2.warpAffine(
+    if scale < 1.0:
+        base_gray = cv2.resize(base_gray, analysis_size, interpolation=cv2.INTER_AREA)
+        moving_gray = cv2.resize(moving_gray, analysis_size, interpolation=cv2.INTER_AREA)
+
+    mask: np.ndarray | None = None
+    if exclude_boxes:
+        full_mask: np.ndarray = np.full((height, width), 255, dtype=np.uint8)
+        for x, y, box_w, box_h in exclude_boxes:
+            x0 = max(0, min(width, int(x)))
+            y0 = max(0, min(height, int(y)))
+            x1 = max(x0, min(width, int(x + box_w)))
+            y1 = max(y0, min(height, int(y + box_h)))
+            full_mask[y0:y1, x0:x1] = 0
+        if scale < 1.0:
+            full_mask = cv2.resize(full_mask, analysis_size, interpolation=cv2.INTER_NEAREST)
+        # ECC becomes unstable when almost the entire page is excluded. In that
+        # case it is safer to align the whole sheet and apply exclusions only to
+        # the diff than to accept a transform estimated from a few stray pixels.
+        if cv2.countNonZero(full_mask) >= int(full_mask.size * 0.10):
+            mask = full_mask
+    return base_gray, moving_gray, mask, scale
+
+
+def _alignment_error(base_gray: np.ndarray, moving_gray: np.ndarray, mask: np.ndarray | None) -> float:
+    delta = cv2.absdiff(base_gray, moving_gray)
+    if mask is None:
+        return float(np.mean(delta))
+    return float(cv2.mean(delta, mask=mask)[0])
+
+
+def _warp_parameters(warp: np.ndarray) -> tuple[float, float, float, float, float, float]:
+    m00, m01, shift_x = (float(value) for value in warp[0])
+    m10, m11, shift_y = (float(value) for value in warp[1])
+    scale_x = hypot(m00, m10)
+    scale_y = hypot(m01, m11)
+    rotation = degrees(atan2(m10, m00))
+    shear = abs((m00 * m01 + m10 * m11) / max(1e-9, scale_x * scale_y))
+    return shift_x, shift_y, rotation, scale_x, scale_y, shear
+
+
+def _plausible_warp(warp: np.ndarray, width: int, height: int) -> bool:
+    shift_x, shift_y, rotation, scale_x, scale_y, shear = _warp_parameters(warp)
+    return (
+        abs(shift_x) <= width * ECC_MAX_TRANSLATION_RATIO
+        and abs(shift_y) <= height * ECC_MAX_TRANSLATION_RATIO
+        and abs(rotation) <= ECC_MAX_ROTATION_DEG
+        and ECC_MIN_SCALE <= scale_x <= ECC_MAX_SCALE
+        and ECC_MIN_SCALE <= scale_y <= ECC_MAX_SCALE
+        and shear <= ECC_MAX_SHEAR
+    )
+
+
+def align_ecc_detailed(
+    base_bgr: np.ndarray,
+    moving_bgr: np.ndarray,
+    exclude_boxes: Sequence[tuple[int, int, int, int]] = (),
+) -> ImageAlignment:
+    """Register a page on a bounded analysis raster, then apply it at full size.
+
+    Running ECC directly on a 40 MP A0 raster can converge to a nearby repeated
+    line instead of the true drawing displacement. Estimating the transform on
+    a reduced page makes the same physical shift only a few pixels wide and
+    gives ECC a much wider basin of convergence. A translation pass supplies a
+    stable initial guess; affine refinement is accepted only when its transform
+    remains physically plausible and improves the reduced-image residual.
+    """
+    if base_bgr.shape != moving_bgr.shape or base_bgr.ndim != 3:
+        return ImageAlignment(
             moving_bgr,
-            warp,
-            (base_bgr.shape[1], base_bgr.shape[0]),
+            False,
+            "ECC_FAILED",
+            None,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+        )
+
+    base_gray, moving_gray, mask, scale = _ecc_analysis_images(base_bgr, moving_bgr, exclude_boxes)
+    baseline_error = _alignment_error(base_gray, moving_gray, mask)
+    if baseline_error <= 1e-6:
+        return ImageAlignment(
+            moving_bgr.copy(),
+            True,
+            "IDENTITY",
+            1.0,
+            scale,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+        )
+
+    criteria_translation = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 60, 1e-6)
+    criteria_affine = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 60, 1e-6)
+    candidates: list[tuple[float, str, float, np.ndarray]] = []
+    translation_warp = np.eye(2, 3, dtype=np.float32)
+    phase_base = base_gray.astype(np.float32)
+    phase_moving = moving_gray.astype(np.float32)
+    if mask is not None:
+        excluded = mask == 0
+        phase_base[excluded] = 255.0
+        phase_moving[excluded] = 255.0
+    try:
+        (phase_x, phase_y), _phase_response = cv2.phaseCorrelate(phase_base, phase_moving)
+        if isfinite(phase_x) and isfinite(phase_y):
+            translation_warp[0, 2] = float(phase_x)
+            translation_warp[1, 2] = float(phase_y)
+    except cv2.error:
+        pass
+    try:
+        translation_cc, found_translation_warp = cv2.findTransformECC(
+            base_gray,
+            moving_gray,
+            translation_warp,
+            cv2.MOTION_TRANSLATION,
+            criteria_translation,
+            mask,  # type: ignore[arg-type]
+            5,
+        )
+        translation_warp = np.asarray(found_translation_warp, dtype=np.float32)
+        candidates.append((float(translation_cc), "ECC_TRANSLATION_PYRAMID", scale, translation_warp.copy()))
+    except cv2.error:
+        pass
+
+    affine_warp = translation_warp.copy()
+    try:
+        affine_cc, found_affine_warp = cv2.findTransformECC(
+            base_gray,
+            moving_gray,
+            affine_warp,
+            cv2.MOTION_AFFINE,
+            criteria_affine,
+            mask,  # type: ignore[arg-type]
+            5,
+        )
+        affine_warp = np.asarray(found_affine_warp, dtype=np.float32)
+        candidates.append((float(affine_cc), "ECC_AFFINE_PYRAMID", scale, affine_warp.copy()))
+    except cv2.error:
+        pass
+
+    height, width = base_bgr.shape[:2]
+    best: tuple[float, str, float, np.ndarray, float] | None = None
+    for correlation, method, candidate_scale, analysis_warp in candidates:
+        full_warp = analysis_warp.copy()
+        full_warp[:, 2] /= candidate_scale
+        if not _plausible_warp(full_warp, width, height):
+            continue
+        candidate = cv2.warpAffine(
+            moving_gray,
+            analysis_warp,
+            (base_gray.shape[1], base_gray.shape[0]),
             flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
             borderMode=cv2.BORDER_REPLICATE,
         )
-        return aligned, True
-    except cv2.error:
-        return moving_bgr, False
+        error = _alignment_error(base_gray, candidate, mask)
+        if best is None or error < best[0]:
+            best = (error, method, correlation, full_warp, candidate_scale)
+
+    if best is None or best[0] >= baseline_error:
+        return ImageAlignment(
+            moving_bgr,
+            False,
+            "ECC_FAILED",
+            None,
+            scale,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+        )
+
+    error, method, correlation, full_warp, candidate_scale = best
+    aligned = cv2.warpAffine(
+        moving_bgr,
+        full_warp,
+        (width, height),
+        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    shift_x, shift_y, rotation, scale_x, scale_y, _shear = _warp_parameters(full_warp)
+    improvement = max(0.0, (baseline_error - error) / baseline_error)
+    return ImageAlignment(
+        aligned,
+        True,
+        method,
+        correlation,
+        candidate_scale,
+        improvement,
+        shift_x,
+        shift_y,
+        rotation,
+        scale_x,
+        scale_y,
+    )
+
+
+def align_ecc(base_bgr: np.ndarray, moving_bgr: np.ndarray) -> tuple[np.ndarray, bool]:
+    """Backward-compatible image-only wrapper for the public engine API."""
+    result = align_ecc_detailed(base_bgr, moving_bgr)
+    return result.image, result.ok

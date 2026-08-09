@@ -807,6 +807,14 @@ def preview_pdf_comparison(
                 "enabled": gap > 0,
                 "max_area_ratio": settings["bbox_merge_max_area_ratio"],
             },
+            "alignment": {
+                "enabled": True,
+                "mode": "automatic_multiscale",
+                "description": (
+                    "Автоматически компенсирует небольшой сдвиг/поворот чертежа перед поиском изменений; "
+                    "зоны исключения удаляются из области, по которой оценивается смещение."
+                ),
+            },
             "output": {
                 "out_dir": str(settings["output_dir"]),
                 "run_name": settings["safe_run_name"],
@@ -831,6 +839,7 @@ def preview_pdf_comparison(
                 "• Старый файл — имя и число листов;\n"
                 "• Новый файл — имя и число листов;\n"
                 "• Точность — DPI, stroke_tol, строгость (пометь, если по умолчанию);\n"
+                "• Автовыравнивание — включено;\n"
                 "• Исключаемые зоны — сколько и какие, либо «нет»;\n"
                 "• Результат — папка и имя.\n"
                 "Затем спроси: всё запускаем или что-то изменить?"
@@ -917,6 +926,7 @@ def start_pdf_comparison(
             "lang": lang,
             "keep_debug_images": bool(keep_debug_images),
             "ignore_line_weight": bool(ignore_line_weight),
+            "alignment_mode": "automatic_multiscale",
         }
         current_job_dir.mkdir(parents=True, exist_ok=False)
         atomic_write_json(current_job_dir / "request.json", request)
@@ -937,6 +947,7 @@ def start_pdf_comparison(
             "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
             "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
             "ignore_line_weight": bool(ignore_line_weight),
+            "alignment_mode": "automatic_multiscale",
         }
         atomic_write_json(current_job_dir / "status.json", status_payload)
 
@@ -1001,6 +1012,7 @@ def start_pdf_comparison(
             "exclude_regions": normalized_exclusions,
             "bbox_merge_gap_mm": float(bbox_merge_gap_mm),
             "bbox_merge_max_area_ratio": float(bbox_merge_max_area_ratio),
+            "alignment_mode": "automatic_multiscale",
             "status_path": str(current_job_dir / "status.json"),
             "events_path": str(current_job_dir / "events.jsonl"),
             "worker_log": str(current_job_dir / "worker.log"),

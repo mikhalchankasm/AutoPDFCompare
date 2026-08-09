@@ -210,6 +210,7 @@ def main() -> int:
         "updated_at": now_iso(),
         "report_path": str(expected_run_dir / START_REPORT_FILE),
         "run_dir": str(expected_run_dir),
+        "alignment_mode": str(request.get("alignment_mode") or "automatic_multiscale"),
         "completed_pages": 0,
         "total_pages": None,
     }
