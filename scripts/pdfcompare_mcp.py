@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -36,6 +37,24 @@ from compare_pdfs import (
 )
 from pdfcompare_core import history_index
 from pdfcompare_core.run_names import suggest_folder_names
+from pdfcompare_core.vision_analysis import (
+    DEFAULT_DEEPSEEK_VISION_MODEL,
+    DEFAULT_QWEN_VISION_MODEL,
+    DeepSeekVisionClient,
+    QwenVisionClient,
+    VisionAnalysisCache,
+    VisionAnalysisError,
+    build_vision_evidence,
+    create_vision_report,
+    select_vision_rows,
+    validate_qwen_base_url,
+    vision_report_paths,
+)
+from pdfcompare_core.vision_pricing import (
+    OPENROUTER_CREDIT_FEE_RATE,
+    OPENROUTER_MINIMUM_CREDIT_PURCHASE_FEE_USD,
+    estimate_deepseek_vision_cost,
+)
 from scripts.process_identity import pid_exists, process_create_time, same_process
 
 TRANSPORTS: tuple[Literal["stdio", "sse", "streamable-http"], ...] = ("stdio", "sse", "streamable-http")
@@ -66,6 +85,16 @@ def env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError as exc:
         raise ValueError(f"{name} must be an integer, got: {raw}") from exc
+
+
+def env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number, got: {raw}") from exc
 
 
 mcp = FastMCP(
@@ -1189,6 +1218,478 @@ def rerender_pdf_comparison_pages(
         }
     except Exception as exc:
         return error_result(exc, lang)
+
+
+@dataclass(frozen=True)
+class VisionProviderConfig:
+    key: str
+    display_name: str
+    api_key_env: str
+    api_key: str
+    base_url_env: str | None
+    base_url: str
+    model: str
+    timeout_env: str
+    timeout_sec: float
+    max_tokens_env: str
+    max_tokens: int
+
+
+def _vision_provider(provider: str) -> str:
+    value = str(provider or os.getenv("PDFCOMPARE_VISION_PROVIDER") or "deepseek").strip().lower()
+    aliases = {"deepseek": "deepseek", "qwen": "qwen", "alibaba": "qwen", "modelstudio": "qwen"}
+    if value not in aliases:
+        raise ValueError("provider must be deepseek or qwen")
+    return aliases[value]
+
+
+def _vision_config(provider: str, model: str) -> VisionProviderConfig:
+    key = _vision_provider(provider)
+    if key == "qwen":
+        return VisionProviderConfig(
+            key=key,
+            display_name="Qwen",
+            api_key_env="QWEN_API_KEY",
+            api_key=os.getenv("QWEN_API_KEY", "").strip(),
+            base_url_env="QWEN_BASE_URL",
+            base_url=os.getenv("QWEN_BASE_URL", "").strip().rstrip("/"),
+            model=str(model or os.getenv("QWEN_MODEL") or DEFAULT_QWEN_VISION_MODEL).strip(),
+            timeout_env="PDFCOMPARE_QWEN_TIMEOUT_SEC",
+            timeout_sec=env_float("PDFCOMPARE_QWEN_TIMEOUT_SEC", 300.0),
+            max_tokens_env="PDFCOMPARE_QWEN_MAX_TOKENS",
+            max_tokens=env_int("PDFCOMPARE_QWEN_MAX_TOKENS", 3000),
+        )
+    return VisionProviderConfig(
+        key=key,
+        display_name="DeepSeek",
+        api_key_env="DEEPSEEK_API_KEY",
+        api_key=os.getenv("DEEPSEEK_API_KEY", "").strip(),
+        base_url_env=None,
+        base_url="https://api.deepseek.com",
+        model=str(
+            model or os.getenv("PDFCOMPARE_DEEPSEEK_VISION_MODEL") or DEFAULT_DEEPSEEK_VISION_MODEL
+        ).strip(),
+        timeout_env="PDFCOMPARE_DEEPSEEK_TIMEOUT_SEC",
+        timeout_sec=env_float("PDFCOMPARE_DEEPSEEK_TIMEOUT_SEC", 120.0),
+        max_tokens_env="PDFCOMPARE_DEEPSEEK_MAX_TOKENS",
+        max_tokens=env_int("PDFCOMPARE_DEEPSEEK_MAX_TOKENS", 1200),
+    )
+
+
+def _vision_key_setup(config: VisionProviderConfig, lang: str) -> dict[str, Any]:
+    is_en = str(lang).lower().startswith("en")
+    variables = [config.api_key_env]
+    if config.base_url_env:
+        variables.append(config.base_url_env)
+    if is_en:
+        message = (
+            f"To use {config.display_name} model {config.model}, configure {', '.join(variables)} in the MCP "
+            "process environment and restart the MCP client. Never paste an API key into chat or a tool argument."
+        )
+    else:
+        message = (
+            f"Для AI-проверки через {config.display_name}, модель {config.model}, задайте "
+            f"{', '.join(variables)} в окружении MCP-процесса и перезапустите MCP-клиент. "
+            "Не отправляйте API-ключ в чат и не передавайте его аргументом инструмента."
+        )
+    powershell = [f'$env:{config.api_key_env} = "<your key>"']
+    if config.base_url_env:
+        powershell.append(f'$env:{config.base_url_env} = "<Alibaba compatible-mode endpoint>"')
+    return {
+        "message": message,
+        "required_environment_variables": variables,
+        "powershell_current_session_examples": powershell,
+        "restart_mcp_required": True,
+        "security_note": (
+            "Never paste the key into chat or tool arguments."
+            if is_en
+            else "Никогда не вставляйте ключ в чат или аргументы MCP-инструмента."
+        ),
+    }
+
+
+def _vision_configuration_error_result(
+    exc: VisionAnalysisError,
+    provider: str,
+    model: str,
+    lang: str,
+) -> dict[str, Any]:
+    payload = _vision_error_result(exc, lang)
+    if exc.key in {"api_key_missing", "qwen_base_url_missing", "qwen_base_url_invalid"}:
+        config = _vision_config(provider, model)
+        payload.update(
+            {
+                "provider": config.key,
+                "provider_name": config.display_name,
+                "model": config.model,
+                "required_environment_variable": config.api_key_env,
+                "key_setup": _vision_key_setup(config, lang),
+            }
+        )
+    return payload
+
+
+def _vision_error_result(exc: VisionAnalysisError, lang: str) -> dict[str, Any]:
+    message = exc.localized(lang)
+    payload: dict[str, Any] = {"ok": False, "error": message, "error_key": f"vision_{exc.key}"}
+    detail = str(exc)
+    if detail != message:
+        payload["error_detail"] = detail
+    return payload
+
+
+def _vision_preview(
+    run_dir: str,
+    *,
+    excluded_seqs: list[int] | None,
+    max_sheets: int,
+    model: str,
+    provider: str,
+    lang: str,
+) -> tuple[dict[str, Any], Path, list[dict[str, Any]]]:
+    report_dir = resolve_path(run_dir, must_exist=True)
+    summary_path = find_summary_json_path(report_dir)
+    if not summary_path.exists():
+        raise RunFailed("summary_not_found", run_dir=report_dir)
+    summary = load_json(summary_path)
+    pairs = summary.get("pairs") or []
+    if not isinstance(pairs, list):
+        pairs = []
+    selection = select_vision_rows(pairs, excluded_seqs or [])
+    selected = selection.eligible[:max_sheets]
+    config = _vision_config(provider, model)
+    cache = VisionAnalysisCache(report_dir, config.model, lang=lang, provider=config.key)
+    cached = set(cache.cached_sequences())
+    artifacts = vision_report_paths(report_dir, config.model, lang=lang, provider=config.key)
+    is_en = str(lang).lower().startswith("en")
+    warning = (
+        "After explicit confirmation, JPEG montages containing OLD, NEW, DIFF, and numbered change crops for the "
+        f"listed sheets will be sent to the external {config.display_name} API. Source PDFs, added sheets, removed "
+        "sheets, and one-sided rows will not be sent."
+        if is_en
+        else f"После явного подтверждения во внешний {config.display_name} API будут отправлены JPEG-монтажи "
+        "OLD, NEW, DIFF и нумерованных зон только для перечисленных листов. Исходные PDF, добавленные, "
+        "удалённые и односторонние листы отправляться не будут."
+    )
+    base_url_ready = not config.base_url_env
+    base_url_error: str | None = None
+    if config.base_url_env:
+        try:
+            validate_qwen_base_url(config.base_url)
+            base_url_ready = True
+        except VisionAnalysisError as exc:
+            base_url_error = exc.localized(lang)
+    configuration_ready = bool(config.api_key) and base_url_ready
+    preview = {
+        "ok": True,
+        "run_dir": str(report_dir),
+        "summary_path": str(summary_path),
+        "provider": config.key,
+        "provider_name": config.display_name,
+        "model": config.model,
+        "api_key_environment_variable": config.api_key_env,
+        "api_key_configured": bool(config.api_key),
+        "base_url_environment_variable": config.base_url_env,
+        "base_url_configured": base_url_ready,
+        "base_url_error": base_url_error,
+        "configuration_ready": configuration_ready,
+        "setup_required": not configuration_ready,
+        "key_setup": _vision_key_setup(config, lang),
+        "eligible_count": len(selection.eligible),
+        "selected_count": len(selected),
+        "max_sheets": max_sheets,
+        "eligible_sheets": [
+            {
+                "seq": int(row["seq"]),
+                "change_level": row.get("change_level"),
+                "diff_percent": row.get("diff_percent"),
+                "diff_foreground_percent": row.get("diff_foreground_percent"),
+                "diff_area_mm2": row.get("diff_area_mm2"),
+                "bboxes_count": row.get("bboxes_count"),
+                "cached": int(row["seq"]) in cached,
+            }
+            for row in selected
+        ],
+        "skipped": {reason: {"count": len(seqs), "seqs": seqs} for reason, seqs in selection.skipped.items()},
+        "cached_sequences": sorted(cached),
+        "report_html_path": str(artifacts.html_path) if artifacts.html_path.is_file() else None,
+        "report_markdown_path": str(artifacts.markdown_path) if artifacts.markdown_path.is_file() else None,
+        "report_zip_path": str(artifacts.zip_path) if artifacts.zip_path.is_file() else None,
+        "external_upload_warning": warning,
+        "requires_external_upload_confirmation": bool(selected),
+        "next_step": (
+            "Show this exact sheet list and warning to the user. Call analyze_pdf_comparison_with_ai with "
+            f"provider={config.key} and confirm_external_upload=true only after the user explicitly agrees."
+            if is_en
+            else "Покажи пользователю точный список листов и предупреждение. Вызывай "
+            f"analyze_pdf_comparison_with_ai с provider={config.key} и confirm_external_upload=true только после "
+            "явного согласия."
+        ),
+    }
+    return preview, report_dir, selection.eligible
+
+
+@mcp.tool()
+def preview_pdf_vision_analysis(
+    run_dir: str,
+    excluded_seqs: list[int] | None = None,
+    max_sheets: int = 12,
+    model: str = "",
+    provider: str = "",
+    lang: str = "ru",
+) -> dict[str, Any]:
+    """Preview exactly which comparison sheets may be sent to DeepSeek or Qwen; never calls the network.
+
+    Eligibility is deliberately strict: status must be ``matched``, both OLD and NEW pages must exist, the row must
+    not be ``unchanged``, and machine diff metrics must be non-zero. Added, removed, one-sided, size-mismatch, and
+    explicitly excluded rows are listed under ``skipped`` and are never uploaded or included in the AI report.
+
+    The response includes the external-transfer warning, cache/report state, and the exact selected sheet numbers.
+    An agent must show those details to the user before a confirmed analysis call.
+    """
+    try:
+        limit = int(max_sheets)
+        if not 1 <= limit <= 50:
+            raise ValueError("max_sheets must be between 1 and 50")
+        preview, _, _ = _vision_preview(
+            run_dir,
+            excluded_seqs=excluded_seqs,
+            max_sheets=limit,
+            model=model,
+            provider=provider,
+            lang=lang,
+        )
+        return preview
+    except VisionAnalysisError as exc:
+        return _vision_configuration_error_result(exc, provider, model, lang)
+    except Exception as exc:
+        return error_result(exc, lang)
+
+
+def _analyze_pdf_comparison_with_ai(
+    run_dir: str,
+    *,
+    provider: str,
+    confirm_external_upload: bool = False,
+    excluded_seqs: list[int] | None = None,
+    seqs: list[int] | None = None,
+    max_sheets: int = 12,
+    max_zones: int = 8,
+    model: str = "",
+    lang: str = "ru",
+) -> dict[str, Any]:
+    try:
+        sheet_limit = int(max_sheets)
+        zone_limit = int(max_zones)
+        if not 1 <= sheet_limit <= 50:
+            raise ValueError("max_sheets must be between 1 and 50")
+        if not 1 <= zone_limit <= 20:
+            raise ValueError("max_zones must be between 1 and 20")
+        preview, report_dir, all_eligible = _vision_preview(
+            run_dir,
+            excluded_seqs=excluded_seqs,
+            max_sheets=sheet_limit,
+            model=model,
+            provider=provider,
+            lang=lang,
+        )
+        if not confirm_external_upload:
+            preview["analysis_started"] = False
+            return preview
+        if not all_eligible:
+            raise VisionAnalysisError("no_eligible")
+
+        requested = {int(seq) for seq in (seqs or [])}
+        candidates = [row for row in all_eligible if not requested or int(row["seq"]) in requested]
+        selected = candidates[:sheet_limit]
+        if not selected:
+            raise VisionAnalysisError("no_eligible")
+
+        config = _vision_config(provider, model)
+        if not 5 <= config.timeout_sec <= 600:
+            raise ValueError(f"{config.timeout_env} must be between 5 and 600")
+        if not 100 <= config.max_tokens <= 8000:
+            raise ValueError(f"{config.max_tokens_env} must be between 100 and 8000")
+
+        cache = VisionAnalysisCache(report_dir, config.model, lang=lang, provider=config.key)
+        needs_network = any(cache.get(int(row["seq"])) is None for row in selected)
+        if needs_network and not config.api_key:
+            raise VisionAnalysisError(
+                "api_key_missing",
+                provider=config.display_name,
+                env_var=config.api_key_env,
+            )
+        client: DeepSeekVisionClient | QwenVisionClient | None = None
+        if needs_network and config.key == "qwen":
+            client = QwenVisionClient(
+                api_key=config.api_key,
+                base_url=validate_qwen_base_url(config.base_url),
+                model=config.model,
+                timeout_sec=config.timeout_sec,
+                max_tokens=config.max_tokens,
+            )
+        elif needs_network:
+            client = DeepSeekVisionClient(
+                api_key=config.api_key,
+                model=config.model,
+                timeout_sec=config.timeout_sec,
+                max_tokens=config.max_tokens,
+            )
+        results: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        prompt_tokens = 0
+        completion_tokens = 0
+        cached_prompt_tokens = 0
+        for row in selected:
+            seq = int(row["seq"])
+            try:
+                evidence = build_vision_evidence(report_dir, row, max_zones=zone_limit)
+                analysis = cache.get(seq)
+                if analysis is None:
+                    assert client is not None
+                    analysis = client.analyze(evidence, row, lang=lang)
+                    cache.put(seq, analysis)
+                    prompt_tokens += analysis.prompt_tokens
+                    completion_tokens += analysis.completion_tokens
+                    cached_prompt_tokens += analysis.cached_prompt_tokens
+                results.append(
+                    {
+                        "seq": seq,
+                        "description": analysis.text,
+                        "cached": analysis.cached,
+                        "evidence_path": str(evidence.path),
+                    }
+                )
+            except VisionAnalysisError as exc:
+                failures.append({"seq": seq, "error": exc.localized(lang), "error_key": f"vision_{exc.key}"})
+
+        if not results and not cache.cached_sequences():
+            return {
+                "ok": False,
+                "error": failures[0]["error"] if failures else VisionAnalysisError("no_analysis").localized(lang),
+                "failures": failures,
+            }
+        artifacts = create_vision_report(
+            report_dir,
+            config.model,
+            all_eligible,
+            lang=lang,
+            max_zones=zone_limit,
+            provider=config.key,
+        )
+        payload: dict[str, Any] = {
+            "ok": True,
+            "run_dir": str(report_dir),
+            "provider": config.key,
+            "provider_name": config.display_name,
+            "model": config.model,
+            "processed_count": len(results),
+            "cached_count": sum(1 for item in results if item["cached"]),
+            "failed_count": len(failures),
+            "results": results,
+            "failures": failures,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "cached_prompt_tokens": cached_prompt_tokens,
+            "report_sheet_count": artifacts.sheet_count,
+            "report_html_path": str(artifacts.html_path),
+            "report_markdown_path": str(artifacts.markdown_path),
+            "report_json_path": str(artifacts.json_path),
+            "report_zip_path": str(artifacts.zip_path),
+            "external_upload_confirmed": True,
+        }
+        if config.key == "deepseek":
+            cost = estimate_deepseek_vision_cost(
+                prompt_tokens,
+                completion_tokens,
+                cached_prompt_tokens=cached_prompt_tokens,
+            )
+            payload["cost_estimate"] = {
+                "currency": "USD",
+                "period": cost.period,
+                "direct_deepseek_usd": cost.direct_deepseek_usd,
+                "openrouter_inference_usd": cost.openrouter_inference_usd,
+                "openrouter_effective_usd_with_proportional_credit_fee": cost.openrouter_effective_usd,
+                "openrouter_credit_purchase_fee_rate": OPENROUTER_CREDIT_FEE_RATE,
+                "openrouter_minimum_credit_purchase_fee_usd": OPENROUTER_MINIMUM_CREDIT_PURCHASE_FEE_USD,
+                "off_peak_direct_usd": cost.off_peak_direct_usd,
+                "peak_direct_usd": cost.peak_direct_usd,
+                "pricing_last_verified": cost.pricing_last_verified,
+            }
+        else:
+            payload["cost_estimate"] = None
+            payload["cost_note"] = (
+                "Qwen token usage is returned, but pricing is not estimated because regional Alibaba Model Studio "
+                "tariffs are not embedded in PDFCompare."
+                if str(lang).lower().startswith("en")
+                else "Токены Qwen указаны, но стоимость не рассчитывается: региональные тарифы Alibaba Model "
+                "Studio не зашиты в PDFCompare."
+            )
+        return payload
+    except VisionAnalysisError as exc:
+        return _vision_configuration_error_result(exc, provider, model, lang)
+    except Exception as exc:
+        return error_result(exc, lang)
+
+
+@mcp.tool()
+def analyze_pdf_comparison_with_ai(
+    run_dir: str,
+    provider: str = "",
+    confirm_external_upload: bool = False,
+    excluded_seqs: list[int] | None = None,
+    seqs: list[int] | None = None,
+    max_sheets: int = 12,
+    max_zones: int = 8,
+    model: str = "",
+    lang: str = "ru",
+) -> dict[str, Any]:
+    """Describe two-sided PDF diffs through a user-configured DeepSeek or Qwen provider.
+
+    The provider defaults to ``PDFCOMPARE_VISION_PROVIDER`` (or ``deepseek``). Credentials are read only from the
+    MCP process environment: ``DEEPSEEK_API_KEY`` for DeepSeek, or ``QWEN_API_KEY`` plus the official Alibaba Model
+    Studio ``QWEN_BASE_URL`` for Qwen. Never pass a key in a prompt or tool argument. Without explicit external-upload
+    confirmation this returns a no-network preview, including safe setup guidance when configuration is missing.
+
+    Only matched, changed OLD + NEW pairs are eligible. Successful results are cached separately by provider, model,
+    language, and prompt version, and generate local interactive HTML, Markdown, JSON, and ZIP reports.
+    """
+    return _analyze_pdf_comparison_with_ai(
+        run_dir,
+        provider=provider,
+        confirm_external_upload=confirm_external_upload,
+        excluded_seqs=excluded_seqs,
+        seqs=seqs,
+        max_sheets=max_sheets,
+        max_zones=max_zones,
+        model=model,
+        lang=lang,
+    )
+
+
+@mcp.tool()
+def analyze_pdf_comparison_with_deepseek(
+    run_dir: str,
+    confirm_external_upload: bool = False,
+    excluded_seqs: list[int] | None = None,
+    seqs: list[int] | None = None,
+    max_sheets: int = 12,
+    max_zones: int = 8,
+    model: str = "",
+    lang: str = "ru",
+) -> dict[str, Any]:
+    """Backward-compatible DeepSeek-only alias for ``analyze_pdf_comparison_with_ai``."""
+    return _analyze_pdf_comparison_with_ai(
+        run_dir,
+        provider="deepseek",
+        confirm_external_upload=confirm_external_upload,
+        excluded_seqs=excluded_seqs,
+        seqs=seqs,
+        max_sheets=max_sheets,
+        max_zones=max_zones,
+        model=model,
+        lang=lang,
+    )
 
 
 @mcp.tool()

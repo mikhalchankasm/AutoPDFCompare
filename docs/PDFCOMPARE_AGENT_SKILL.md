@@ -23,6 +23,19 @@ Compare two local PDF files through the PDFCompare MCP server. Always prepare fi
 7. Tell the user the `job_id`, `run_dir`, and `report_path`.
 8. Use `get_pdf_comparison_status(job_id)` for progress and final counts.
 
+## Optional Visual Description
+
+Use this only when the user asks for an external AI interpretation of the completed diff:
+
+1. Ask which configured provider to use (`deepseek` or `qwen`).
+2. Call `preview_pdf_vision_analysis(run_dir, provider="...")`; it performs no network calls.
+3. Show the exact `eligible_sheets` list and `external_upload_warning` to the user. If `setup_required=true`, also show `key_setup.message`; never ask the user to paste a key into chat or pass it as a tool argument.
+4. Ask for explicit approval to send those JPEG evidence montages to the selected provider. A configured key or approval to run the local comparison is not approval for external transfer.
+5. After approval, call `analyze_pdf_comparison_with_ai(run_dir, provider="...", confirm_external_upload=true)`.
+6. Return `report_html_path`, `report_markdown_path`, and `report_zip_path`. The ZIP contains lossless whole-sheet OLD/NEW PNGs, detail crops, and the interactive report. State that AI descriptions are advisory.
+
+Never submit added, removed, one-sided, non-matched, unchanged, or explicitly excluded rows. The MCP tools enforce this filter, but the agent must still present the preview before confirmation.
+
 ## Response Style
 
 Keep responses short and operational:
