@@ -30,6 +30,7 @@ Features:
 from __future__ import annotations
 
 import json
+import logging
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -42,6 +43,8 @@ from pdfcompare_core.exclusions import exclusion_regions_to_mm_rects
 from .i18n import I18N
 from .styles import BG_WINDOW
 from .utils import screen_work_area
+
+logger = logging.getLogger("pdfcompare.ui.exclusion_picker")
 
 PT_PER_MM = 72.0 / 25.4
 
@@ -1045,6 +1048,7 @@ def pick_exclude_regions(
     try:
         doc = fitz.open(pdf)
     except Exception:
+        logger.warning("Could not open PDF for the exclusion-region picker: %s", pdf, exc_info=True)
         return None
     picker: _RegionPicker | None = None
     try:

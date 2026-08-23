@@ -6,6 +6,7 @@ import concurrent.futures
 import csv
 import gc
 import json
+import logging
 import multiprocessing
 import os
 import re
@@ -44,6 +45,8 @@ from .pdf_io import (
     report_pages_dir,
     summary_json_path,
 )
+
+logger = logging.getLogger("pdfcompare.core.runner")
 
 INVALID_RUN_NAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 
@@ -293,8 +296,8 @@ def process_pair_task(
     if limit_cv_threads:
         try:
             cv2.setNumThreads(1)
-        except Exception:
-            pass
+        except cv2.error:
+            logger.info("OpenCV did not accept the per-worker thread limit", exc_info=True)
 
     a_page = None if a_idx is None else a_idx + 1
     b_page = None if b_idx is None else b_idx + 1

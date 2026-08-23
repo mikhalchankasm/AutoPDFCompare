@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,8 @@ from pdfcompare_core.constants import (
 
 from .i18n import I18N
 from .contracts import AppProtocol
+
+logger = logging.getLogger("pdfcompare.ui.state")
 
 
 class StatePersistenceMixin:
@@ -118,6 +121,7 @@ class StatePersistenceMixin:
                     base.update(uc)
                     self.update_check_state = base
         except Exception:
+            logger.exception("Could not load GUI state from %s", self.state_path)
             self.last_inputs = {}
             self.history_records = []
 
@@ -135,7 +139,7 @@ class StatePersistenceMixin:
             tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             os.replace(tmp_path, self.state_path)
         except Exception:
-            pass
+            logger.exception("Could not save GUI state to %s", self.state_path)
 
     def _restore_last_inputs(self: AppProtocol, startup: bool = False) -> None:
         if not self.last_inputs:

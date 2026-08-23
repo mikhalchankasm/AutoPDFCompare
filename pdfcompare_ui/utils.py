@@ -6,6 +6,7 @@ widget state and can be tested in isolation.
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 import tkinter as tk
@@ -14,6 +15,7 @@ from pathlib import Path
 import fitz
 
 REVISION_RE = re.compile(r"r[Cc](\d{2,3})")
+logger = logging.getLogger("pdfcompare.ui.utils")
 
 
 def resource_path(*parts: str) -> Path:
@@ -54,7 +56,7 @@ def screen_work_area(widget: tk.Misc) -> tuple[int, int]:
             if width > 200 and height > 200:
                 return width, height
     except Exception:
-        pass
+        logger.info("Could not query the Windows work area; using Tk dimensions", exc_info=True)
     return widget.winfo_screenwidth(), widget.winfo_screenheight() - 80
 
 
@@ -83,12 +85,12 @@ def count_pdf_pages_pair(old_pdf: Path, new_pdf: Path) -> str:
         with fitz.open(old_pdf) as doc:
             old_count = len(doc)
     except Exception:
-        pass
+        logger.info("Could not read page count from %s", old_pdf, exc_info=True)
     try:
         with fitz.open(new_pdf) as doc:
             new_count = len(doc)
     except Exception:
-        pass
+        logger.info("Could not read page count from %s", new_pdf, exc_info=True)
     return f"{old_count}/{new_count}"
 
 

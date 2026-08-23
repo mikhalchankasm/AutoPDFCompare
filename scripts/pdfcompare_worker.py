@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.process_identity import self_identity
+
+logger = logging.getLogger("pdfcompare.worker")
 
 
 def now_iso() -> str:
@@ -163,7 +166,7 @@ def record_mcp_history(
             }
         )
     except Exception:
-        pass
+        logger.exception("Could not append the completed run to the history index")
 
 
 def main() -> int:

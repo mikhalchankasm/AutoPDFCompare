@@ -14,7 +14,9 @@ from datetime import UTC, datetime, timedelta
 from unittest import mock
 
 from pdfcompare_ui.update_check import (
+    create_installer_temp_file,
     fetch_latest_release,
+    file_matches_sha256,
     is_newer,
     latest_release_url,
     parse_sha256sums,
@@ -210,6 +212,33 @@ class Sha256ManifestTests(unittest.TestCase):
             payload = b"pdfcompare" * 1000
             target.write_bytes(payload)
             self.assertEqual(sha256_of_file(target), hashlib.sha256(payload).hexdigest())
+
+    def test_file_matches_sha256_rejects_invalid_or_changed_content(self) -> None:
+        import hashlib
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "installer.exe"
+            target.write_bytes(b"verified payload")
+            expected = hashlib.sha256(target.read_bytes()).hexdigest()
+            self.assertTrue(file_matches_sha256(target, expected.upper()))
+            target.write_bytes(b"changed payload")
+            self.assertFalse(file_matches_sha256(target, expected))
+            self.assertFalse(file_matches_sha256(target, "not-a-hash"))
+
+    def test_installer_temp_file_is_unique_and_sanitizes_version(self) -> None:
+        first = create_installer_temp_file("v0.1.31/unsafe")
+        second = create_installer_temp_file("v0.1.31/unsafe")
+        try:
+            self.assertNotEqual(first, second)
+            self.assertTrue(first.is_file())
+            self.assertTrue(second.is_file())
+            self.assertNotIn("unsafe", first.parent.name)
+            self.assertNotIn("/", first.name)
+        finally:
+            first.unlink(missing_ok=True)
+            second.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

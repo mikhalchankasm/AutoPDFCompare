@@ -10,7 +10,9 @@ __pycache__/
 *.pyd
 
 .coverage
+.mypy_cache/
 .pytest_cache/
+.ruff_cache/
 htmlcov/
 
 build/

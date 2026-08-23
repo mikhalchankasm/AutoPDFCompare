@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from .html_i18n import HTML_REPORT_I18N
 from .html_slider import render_slider_runtime
 from .models import MatchPair
 from .pdf_io import atomic_write_text, find_pages_dir, report_dir, write_start_page
+
+logger = logging.getLogger("pdfcompare.core.live_report")
 
 
 def live_report_labels(lang: str) -> dict[str, str]:
@@ -124,7 +127,8 @@ def write_live_slider_view(
     bboxes_path = find_pages_dir(run_dir) / pair_name / "bboxes.json"
     try:
         bboxes_data = json.loads(bboxes_path.read_text(encoding="utf-8")) if bboxes_path.exists() else []
-    except Exception:
+    except (OSError, json.JSONDecodeError, TypeError, UnicodeError):
+        logger.warning("Ignoring invalid live-report bounding boxes in %s", bboxes_path, exc_info=True)
         bboxes_data = []
     lang = "en" if str(report_lang).lower().startswith("en") else "ru"
     text = HTML_REPORT_I18N[lang]

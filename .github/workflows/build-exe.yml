@@ -30,6 +30,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: windows-latest
@@ -55,23 +59,23 @@ jobs:
       - name: Test
         run: .\scripts\test.ps1
 
-      # Reports known CVEs in the locked dependency set. Deliberately advisory:
-      # a transitive advisory with no fixed version yet would otherwise block
-      # every release, and the honest response to one is to bump the lock — not
-      # to be unable to ship. Read it in the job summary.
+      # A release must not be produced from a dependency set with a known CVE.
+      # The lock is updated before release when the audit reports a fixable issue.
       - name: Audit dependencies
-        continue-on-error: true
         shell: pwsh
         run: |
           $out = python -m pip_audit --progress-spinner off 2>&1 | Out-String
+          $auditExitCode = $LASTEXITCODE
           Write-Output $out
           "## Dependency audit`n`n``````$out```````n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($auditExitCode -ne 0) { throw "Dependency audit failed with exit code $auditExitCode" }
 
   build:
     runs-on: windows-latest
     needs: test
-    # PRs only need the test gate; builds run on master pushes and tags.
-    if: github.event_name != 'pull_request'
+    # Master pushes run the quality gate; distributables are built for releases
+    # and explicit manual requests only.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
 

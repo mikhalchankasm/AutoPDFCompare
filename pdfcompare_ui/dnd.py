@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -17,6 +18,8 @@ except ImportError:
     DND_FILES = None
 
 from .contracts import AppProtocol
+
+logger = logging.getLogger("pdfcompare.ui.dnd")
 
 
 class DragDropMixin:
@@ -48,14 +51,16 @@ class DragDropMixin:
                 # Fallback: drag & drop not available
                 self._set_status("status_drag_unavailable", error="tkinterdnd2 not installed")
         except Exception as exc:
+            logger.exception("Could not install drag-and-drop hooks")
             self._set_status("status_drag_unavailable", error=str(exc))
 
     def _on_tkdnd_drop(self: AppProtocol, event) -> None:
         """Main canvas: route into the general dropped-files handler."""
         try:
             self._handle_dropped_files(parse_dnd_filelist(self.root, event.data))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Could not process files dropped on the main target")
+            self._set_status("status_error", error=str(exc))
         return event.action
 
     def _on_tkdnd_drop_old(self: AppProtocol, event) -> None:
@@ -64,8 +69,9 @@ class DragDropMixin:
             if paths and paths[0].suffix.lower() == ".pdf":
                 self.old_pdf.set(str(paths[0]))
                 self._save_state()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Could not process the file dropped on the old-revision target")
+            self._set_status("status_error", error=str(exc))
         return event.action
 
     def _on_tkdnd_drop_new(self: AppProtocol, event) -> None:
@@ -74,8 +80,9 @@ class DragDropMixin:
             if paths and paths[0].suffix.lower() == ".pdf":
                 self.new_pdf.set(str(paths[0]))
                 self._save_state()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Could not process the file dropped on the new-revision target")
+            self._set_status("status_error", error=str(exc))
         return event.action
 
     def _on_tkdnd_drop_out(self: AppProtocol, event) -> None:
@@ -86,8 +93,9 @@ class DragDropMixin:
                 path = paths[0]
                 self.out_dir.set(str(path if path.is_dir() else path.parent))
                 self._save_state()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Could not process the path dropped on the output target")
+            self._set_status("status_error", error=str(exc))
         return event.action
 
     def _handle_dropped_files(self: AppProtocol, paths: Iterable[Path]) -> None:

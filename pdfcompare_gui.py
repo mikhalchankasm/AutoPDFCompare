@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import logging
 import os
 import queue
 import subprocess
@@ -32,6 +33,7 @@ from compare_pdfs import (
 from pdfcompare_core.errors import localize_error
 from pdfcompare_core.run_names import available_folder_name, suggest_run_folder_name
 from pdfcompare_ui.compare_tab import CompareTabMixin
+from pdfcompare_ui.diagnostics import close_file_logging, configure_file_logging
 from pdfcompare_ui.dnd import DragDropMixin
 from pdfcompare_ui.exclusion_picker import format_regions_for_field, pick_exclude_regions
 from pdfcompare_ui.history_tab import HistoryTabMixin
@@ -40,11 +42,12 @@ from pdfcompare_ui.rerender_tab import RerenderTabMixin
 from pdfcompare_ui.state_persistence import StatePersistenceMixin
 from pdfcompare_ui.update_check import (
     SETUP_ASSET_NAME,
+    create_installer_temp_file,
     fetch_latest_release,
     fetch_text,
+    file_matches_sha256,
     is_newer,
     parse_sha256sums,
-    sha256_of_file,
 )
 from pdfcompare_ui.utils import (
     count_pdf_pages_pair,
@@ -74,6 +77,8 @@ from pdfcompare_ui.styles import (
     TEXT_TERTIARY,
     configure_ttk_styles,
 )
+
+logger = logging.getLogger("pdfcompare.gui")
 
 # Try to import tkinterdnd2 for drag & drop support
 try:
@@ -248,6 +253,8 @@ class PDFCompareApp(
 
         self.state_dir = Path.home() / ".pdfcompare_local"
         self.state_path = self.state_dir / "state.json"
+        configure_file_logging(self.state_dir)
+        self.root.bind("<Destroy>", self._on_root_destroy, add="+")
         self.last_inputs: dict[str, Any] = {}
         self.history_records: list[dict[str, Any]] = []
         self.update_check_state: dict[str, Any] = self._default_update_check_state()
@@ -1462,7 +1469,8 @@ class PDFCompareApp(
                     self._show_update_badge(version, url)
                     self._show_update_dialog(version, url, name, setup_url, sums_url)
                 elif kind == "update_downloaded":
-                    self._launch_update_installer(Path(str(event[1])))
+                    expected_hash = str(event[2]) if len(event) > 2 else ""
+                    self._launch_update_installer(Path(str(event[1])), expected_hash)
                 elif kind == "update_download_failed":
                     url = str(event[2]) if len(event) > 2 else ""
                     self._set_status("status_update_download_failed")
@@ -1557,11 +1565,11 @@ class PDFCompareApp(
         self._set_status("status_update_downloading", version=version)
 
         def worker() -> None:
-            import tempfile
             import urllib.request
 
-            target = Path(tempfile.gettempdir()) / f"PDFCompareLocal-setup-{version}.exe"
+            target: Path | None = None
             try:
+                target = create_installer_temp_file(version)
                 expected = parse_sha256sums(fetch_text(sums_url)).get(SETUP_ASSET_NAME, "")
                 if not expected:
                     raise RuntimeError(f"В манифесте релиза нет хеша для {SETUP_ASSET_NAME}")
@@ -1575,24 +1583,29 @@ class PDFCompareApp(
                         if not chunk:
                             break
                         fh.write(chunk)
-                actual = sha256_of_file(target)
-                if actual != expected:
-                    raise RuntimeError(f"SHA-256 инсталлятора не совпал: {actual} != {expected}")
-                self.worker_events.put(("update_downloaded", str(target)))
+                if not file_matches_sha256(target, expected):
+                    raise RuntimeError("SHA-256 инсталлятора не совпал с манифестом релиза")
+                self.worker_events.put(("update_downloaded", str(target), expected))
             except Exception as exc:
                 # Never launch an unverified download.
                 try:
-                    target.unlink(missing_ok=True)
+                    if target is not None:
+                        target.unlink(missing_ok=True)
                 except OSError:
                     pass
                 self.worker_events.put(("update_download_failed", str(exc), page_url))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _launch_update_installer(self, setup_path: Path) -> None:
+    def _launch_update_installer(self, setup_path: Path, expected_hash: str) -> None:
         """Run the downloaded installer silently and close the app so files can be replaced."""
-        if not setup_path.exists():
+        if not setup_path.is_file() or not file_matches_sha256(setup_path, expected_hash):
+            try:
+                setup_path.unlink(missing_ok=True)
+            except OSError:
+                pass
             self._set_status("status_update_download_failed")
+            messagebox.showwarning(self._tr("dlg_update_title"), self._tr("dlg_update_download_failed"))
             return
         try:
             subprocess.Popen([str(setup_path), "/SILENT", "/NORESTART"], close_fds=True)
@@ -1678,8 +1691,12 @@ class PDFCompareApp(
             try:
                 self._drop_hook.close()
             except Exception:
-                pass
+                logger.exception("Could not close the drag-and-drop hook")
         self.root.destroy()
+
+    def _on_root_destroy(self, event: tk.Event) -> None:
+        if event.widget is self.root:
+            close_file_logging()
 
 
 def main() -> None:

@@ -9,7 +9,11 @@ badge/dialog; this module only answers "what is the latest release?" and
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import logging
+import os
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -18,6 +22,7 @@ from pdfcompare_core.constants import APP_VERSION, GITHUB_REPO
 
 SETUP_ASSET_NAME = "PDFCompareLocal-setup.exe"
 SUMS_ASSET_NAME = "SHA256SUMS.txt"
+logger = logging.getLogger("pdfcompare.ui.update_check")
 
 
 def parse_version(s: str) -> tuple[int, ...]:
@@ -81,6 +86,7 @@ def fetch_latest_release(timeout: float = 8.0) -> dict[str, Any] | None:
                 return None
             data = json.loads(resp.read().decode("utf-8"))
     except Exception:
+        logger.info("Could not fetch the latest GitHub release", exc_info=True)
         return None
 
     try:
@@ -141,6 +147,27 @@ def sha256_of_file(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def create_installer_temp_file(version: str) -> Path:
+    """Reserve a unique installer path so concurrent updates cannot collide."""
+    safe_version = "".join(ch for ch in version if ch.isalnum() or ch in ".-_") or "update"
+    fd, raw_path = tempfile.mkstemp(prefix=f"PDFCompareLocal-setup-{safe_version}-", suffix=".exe")
+    os.close(fd)
+    return Path(raw_path)
+
+
+def file_matches_sha256(path: Path, expected: str) -> bool:
+    """Verify a file against a normalized SHA-256 value."""
+    normalized = expected.strip().lower()
+    if len(normalized) != 64 or any(ch not in "0123456789abcdef" for ch in normalized):
+        return False
+    try:
+        actual = sha256_of_file(path)
+    except OSError:
+        logger.warning("Could not read update installer for verification: %s", path, exc_info=True)
+        return False
+    return hmac.compare_digest(actual, normalized)
 
 
 def fetch_text(url: str, timeout: float = 30.0) -> str:
