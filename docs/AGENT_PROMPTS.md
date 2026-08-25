@@ -80,17 +80,17 @@ Use get_pdf_comparison_status(job_id). If completed, return report_path and summ
 ## 6. Describe Changed Sheets with External Vision AI
 
 ```text
-Prepare an optional DeepSeek or Qwen visual description for this completed PDFCompare run:
+Prepare an optional external vision description for this completed PDFCompare run. Use economical Gemini by default; use Qwen for maximum detail on all or selected sheets:
 
 run_dir: <completed run folder>
 
 Required two-step flow:
-1. Call preview_pdf_vision_analysis(run_dir, provider="deepseek|qwen"). This step must not access the network.
+1. Call preview_pdf_vision_analysis(run_dir, provider="gemini|deepseek|qwen"). This step must not access the network.
 2. Show me the exact eligible_sheets list, all skipped counts, and external_upload_warning.
 3. If setup_required=true, show key_setup.message. Never request or accept an API key in chat or a tool argument.
 4. Ask whether I explicitly approve sending the listed JPEG evidence montages to the selected external API.
 5. Do not treat a configured API key or my approval of the local comparison as consent.
-6. Only after I approve, call analyze_pdf_comparison_with_ai(run_dir, provider="...", confirm_external_upload=true).
+6. Only after I approve, call analyze_pdf_comparison_with_ai(run_dir, provider="...", confirm_external_upload=true). For maximum-detail Qwen on selected sheets pass seqs=[...]; omit seqs for all eligible sheets.
 7. Return report_html_path, report_markdown_path, and report_zip_path. Mention that each sheet has lossless whole-sheet OLD/NEW PNGs and detail crops suitable for close review. Treat model descriptions as advisory; preserve engine metrics as facts.
 
 Never send added, removed, one-sided, non-matched, unchanged, or explicitly excluded rows.

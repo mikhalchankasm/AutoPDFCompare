@@ -7,7 +7,7 @@ import re
 import shutil
 import zipfile
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
@@ -26,8 +26,10 @@ from .vision_report_ui import vision_index_html, vision_sheet_html
 
 DEFAULT_DEEPSEEK_VISION_MODEL = "deepseek-v4-flash-vision-exp"
 DEFAULT_QWEN_VISION_MODEL = "qwen3.8-max"
+DEFAULT_GEMINI_VISION_MODEL = "google/gemini-3.7-flash"
 DEEPSEEK_API_BASE_URL = "https://api.deepseek.com"
-PROMPT_VERSION = 1
+OPENROUTER_API_BASE_URL = "https://openrouter.ai/api/v1"
+PROMPT_VERSION = 2
 
 
 _ERRORS = {
@@ -36,6 +38,10 @@ _ERRORS = {
         "api_unavailable": "{provider} API временно недоступен или вернул некорректный ответ.",
         "api_no_choices": "{provider} API не вернул вариант ответа.",
         "api_empty": "{provider} не сформировал текстовое описание.",
+        "api_incomplete_coverage": (
+            "{provider} не подтвердил все показанные зоны: пропущены {missing}; "
+            "повторы {duplicates}; неизвестные зоны {unknown}."
+        ),
         "qwen_base_url_missing": "Не задан QWEN_BASE_URL для Qwen в окружении MCP-сервера.",
         "qwen_base_url_invalid": (
             "QWEN_BASE_URL должен быть официальным HTTPS endpoint Alibaba Model Studio "
@@ -51,6 +57,10 @@ _ERRORS = {
         "api_unavailable": "The {provider} API is temporarily unavailable or returned an invalid response.",
         "api_no_choices": "The {provider} API did not return a response choice.",
         "api_empty": "{provider} did not produce a textual description.",
+        "api_incomplete_coverage": (
+            "{provider} did not cover every shown zone: missing {missing}; "
+            "duplicates {duplicates}; unknown zones {unknown}."
+        ),
         "qwen_base_url_missing": "QWEN_BASE_URL is not configured for Qwen in the MCP environment.",
         "qwen_base_url_invalid": (
             "QWEN_BASE_URL must be an official Alibaba Model Studio HTTPS endpoint ending in /compatible-mode/v1."
@@ -97,6 +107,8 @@ class VisionAnalysis:
     completion_tokens: int
     cached: bool = False
     cached_prompt_tokens: int = 0
+    reasoning_tokens: int = 0
+    charged_cost_usd: float = 0.0
     billed_at: str = ""
 
 
@@ -184,7 +196,7 @@ class OpenAICompatibleVisionClient:
         image = base64.b64encode(evidence.path.read_bytes()).decode("ascii")
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": _messages(row, evidence, image, language),
+            "messages": _messages(row, evidence, image, language, self.provider_name),
             "max_tokens": self.max_tokens,
             "stream": False,
         }
@@ -225,6 +237,8 @@ class OpenAICompatibleVisionClient:
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             cached_prompt_tokens=_cached_prompt_tokens(usage),
+            reasoning_tokens=_reasoning_tokens(usage),
+            charged_cost_usd=float(usage.get("cost") or 0.0),
             billed_at=datetime.now(UTC).isoformat(timespec="seconds"),
         )
 
@@ -283,6 +297,50 @@ class QwenVisionClient(OpenAICompatibleVisionClient):
         payload["stream_options"] = {"include_usage": True}
 
 
+class GeminiVisionClient(OpenAICompatibleVisionClient):
+    provider_name = "Gemini"
+    api_key_env = "OPENROUTER_API_KEY"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = DEFAULT_GEMINI_VISION_MODEL,
+        timeout_sec: float = 180.0,
+        max_tokens: int = 6000,
+    ):
+        super().__init__(
+            api_key=api_key,
+            base_url=OPENROUTER_API_BASE_URL,
+            model=str(model).strip() or DEFAULT_GEMINI_VISION_MODEL,
+            timeout_sec=timeout_sec,
+            max_tokens=max_tokens,
+        )
+
+    def _configure_payload(self, payload: dict[str, Any]) -> None:
+        payload["reasoning"] = {"effort": "medium"}
+        payload["temperature"] = 0.1
+
+    def analyze(self, evidence: VisionEvidence, row: dict[str, Any], *, lang: str = "ru") -> VisionAnalysis:
+        analysis = super().analyze(evidence, row, lang=lang)
+        coverage = vision_zone_coverage(analysis.text, evidence.zones_shown)
+        if not coverage["complete"]:
+            raise VisionAnalysisError(
+                "api_incomplete_coverage",
+                provider=self.provider_name,
+                missing=coverage["missing"] or "none",
+                duplicates=coverage["duplicates"] or "none",
+                unknown=coverage["unknown"] or "none",
+            )
+        cleaned = re.sub(
+            r"\s*<zone_coverage_json>.*?</zone_coverage_json>\s*",
+            "\n",
+            analysis.text,
+            flags=re.DOTALL,
+        ).strip()
+        return replace(analysis, text=cleaned)
+
+
 def validate_qwen_base_url(base_url: str) -> str:
     value = str(base_url).strip().rstrip("/")
     if not value:
@@ -329,6 +387,8 @@ class VisionAnalysisCache:
             completion_tokens=int(item.get("completion_tokens") or 0),
             cached=True,
             cached_prompt_tokens=int(item.get("cached_prompt_tokens") or 0),
+            reasoning_tokens=int(item.get("reasoning_tokens") or 0),
+            charged_cost_usd=float(item.get("charged_cost_usd") or 0.0),
             billed_at=str(item.get("billed_at") or ""),
         )
 
@@ -354,6 +414,8 @@ class VisionAnalysisCache:
             "prompt_tokens": analysis.prompt_tokens,
             "completion_tokens": analysis.completion_tokens,
             "cached_prompt_tokens": analysis.cached_prompt_tokens,
+            "reasoning_tokens": analysis.reasoning_tokens,
+            "charged_cost_usd": analysis.charged_cost_usd,
             "billed_at": analysis.billed_at,
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -447,7 +509,7 @@ def create_vision_report(
 ) -> VisionReportArtifacts:
     language = normalize_lang(lang)
     provider_key = str(provider).strip().lower() or "deepseek"
-    provider_name = "Qwen" if provider_key == "qwen" else "DeepSeek"
+    provider_name = {"qwen": "Qwen", "gemini": "Gemini"}.get(provider_key, "DeepSeek")
     cache = VisionAnalysisCache(run_dir, model, lang=language, provider=provider_key)
     paths = vision_report_paths(run_dir, model, lang=language, provider=provider_key)
     report_root = paths.html_path.parent
@@ -562,6 +624,8 @@ def create_vision_report(
                 "prompt_tokens": analysis.prompt_tokens,
                 "completion_tokens": analysis.completion_tokens,
                 "cached_prompt_tokens": analysis.cached_prompt_tokens,
+                "reasoning_tokens": analysis.reasoning_tokens,
+                "charged_cost_usd": analysis.charged_cost_usd,
                 "billed_at": analysis.billed_at,
                 "images": report_image_names,
             }
@@ -695,7 +759,13 @@ def _write_zone_crop_png(
     return _write_png(target, image[top:bottom, left:right])
 
 
-def _messages(row: dict[str, Any], evidence: VisionEvidence, image: str, lang: str) -> list[dict[str, Any]]:
+def _messages(
+    row: dict[str, Any],
+    evidence: VisionEvidence,
+    image: str,
+    lang: str,
+    provider_name: str,
+) -> list[dict[str, Any]]:
     context = _sheet_context(row, evidence)
     if lang == "en":
         system = (
@@ -723,6 +793,21 @@ def _messages(row: dict[str, Any], evidence: VisionEvidence, image: str, lang: s
             "Формат: Лист <номер> — <одно предложение>; Изменения: нумерованный список по зонам; Уверенность: "
             "высокая/средняя/низкая с короткой причиной. Если содержательное изменение определить нельзя, напиши это."
         )
+    if provider_name == "Gemini" and evidence.zones_shown > 0:
+        if lang == "en":
+            user += (
+                f"\n\nClassify every shown zone from 1 through {evidence.zones_shown} exactly once. End with this "
+                "machine-readable block without a Markdown fence: "
+                '<zone_coverage_json>{"zones":[{"zone_id":1,"classification":"real_change|noise|uncertain"}]}'
+                "</zone_coverage_json>. The union of zone_id values must exactly equal all shown zones, with no duplicates."
+            )
+        else:
+            user += (
+                f"\n\nКлассифицируй каждую показанную зону от 1 до {evidence.zones_shown} ровно один раз. В конце "
+                "добавь машиночитаемый блок без Markdown-ограждения: "
+                '<zone_coverage_json>{"zones":[{"zone_id":1,"classification":"real_change|noise|uncertain"}]}'
+                "</zone_coverage_json>. Объединение zone_id должно точно совпадать со всеми показанными зонами без повторов."
+            )
     return [
         {"role": "system", "content": system},
         {
@@ -733,6 +818,42 @@ def _messages(row: dict[str, Any], evidence: VisionEvidence, image: str, lang: s
             ],
         },
     ]
+
+
+def vision_zone_coverage(text: str, zones_shown: int) -> dict[str, Any]:
+    expected = set(range(1, max(0, int(zones_shown)) + 1))
+    match = re.search(
+        r"<zone_coverage_json>\s*(\{.*?\})\s*</zone_coverage_json>",
+        str(text),
+        flags=re.DOTALL,
+    )
+    seen: list[int] = []
+    if match:
+        try:
+            payload = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            payload = {}
+        zones = payload.get("zones") if isinstance(payload, dict) else None
+        if isinstance(zones, list):
+            for item in zones:
+                if not isinstance(item, dict):
+                    continue
+                zone_id = item.get("zone_id")
+                if zone_id is None:
+                    continue
+                try:
+                    seen.append(int(zone_id))
+                except (TypeError, ValueError):
+                    continue
+    duplicates = sorted(value for value in set(seen) if seen.count(value) > 1)
+    unknown = sorted(set(seen) - expected)
+    missing = sorted(expected - set(seen))
+    return {
+        "complete": not missing and not duplicates and not unknown,
+        "missing": missing,
+        "duplicates": duplicates,
+        "unknown": unknown,
+    }
 
 
 def _sheet_context(row: dict[str, Any], evidence: VisionEvidence) -> dict[str, Any]:
@@ -1115,3 +1236,8 @@ def _cached_prompt_tokens(usage: dict[str, Any]) -> int:
         return max(0, int(direct or 0))
     details = usage.get("prompt_tokens_details") or {}
     return max(0, int(details.get("cached_tokens") or 0)) if isinstance(details, dict) else 0
+
+
+def _reasoning_tokens(usage: dict[str, Any]) -> int:
+    details = usage.get("completion_tokens_details") or {}
+    return max(0, int(details.get("reasoning_tokens") or 0)) if isinstance(details, dict) else 0

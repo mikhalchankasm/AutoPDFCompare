@@ -18,6 +18,7 @@ from pdfcompare_core.vision_analysis import (
     create_vision_report,
     select_vision_rows,
     validate_qwen_base_url,
+    vision_zone_coverage,
 )
 
 
@@ -284,3 +285,70 @@ def test_mcp_qwen_requires_environment_and_keeps_provider_cache_separate(
     for path in (run_dir / "_pdfcompare" / "vision_analysis").rglob("*"):
         if path.is_file() and path.suffix != ".jpg":
             assert secret not in path.read_text(encoding="utf-8", errors="ignore")
+
+
+def test_mcp_gemini_is_default_and_reports_openrouter_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("mcp")
+    mcp_module = importlib.import_module("scripts.pdfcompare_mcp")
+    row = changed_row(1)
+    run_dir = build_run(tmp_path, [row])
+    secret = "openrouter-secret-never-persisted"
+    monkeypatch.delenv("PDFCOMPARE_VISION_PROVIDER", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", secret)
+
+    preview = mcp_module.preview_pdf_vision_analysis(str(run_dir), lang="ru")
+
+    class FakeGeminiClient:
+        def __init__(self, **kwargs: object):
+            assert kwargs["api_key"] == secret
+            assert kwargs["model"] == "google/gemini-3.7-flash"
+
+        def analyze(self, evidence: object, current_row: object, *, lang: str) -> VisionAnalysis:
+            del evidence, current_row, lang
+            return VisionAnalysis(
+                "Добавлена строка спецификации.",
+                "google/gemini-3.7-flash",
+                120,
+                30,
+                reasoning_tokens=12,
+                charged_cost_usd=0.0125,
+            )
+
+    monkeypatch.setattr(mcp_module, "GeminiVisionClient", FakeGeminiClient)
+    result = mcp_module.analyze_pdf_comparison_with_ai(
+        str(run_dir),
+        confirm_external_upload=True,
+        lang="ru",
+    )
+
+    assert preview["provider"] == "gemini"
+    assert preview["api_key_environment_variable"] == "OPENROUTER_API_KEY"
+    assert result["ok"] is True
+    assert result["provider"] == "gemini"
+    assert result["reasoning_tokens"] == 12
+    assert result["cost_estimate"]["charged_by_openrouter_usd"] == 0.0125
+    assert "provider=qwen" in result["quality_note"]
+    for path in (run_dir / "_pdfcompare" / "vision_analysis").rglob("*"):
+        if path.is_file() and path.suffix != ".jpg":
+            assert secret not in path.read_text(encoding="utf-8", errors="ignore")
+
+
+def test_gemini_zone_coverage_requires_every_zone_exactly_once() -> None:
+    complete = vision_zone_coverage(
+        '<zone_coverage_json>{"zones":[{"zone_id":1},{"zone_id":2},{"zone_id":3}]}</zone_coverage_json>',
+        3,
+    )
+    incomplete = vision_zone_coverage(
+        '<zone_coverage_json>{"zones":[{"zone_id":1},{"zone_id":1},{"zone_id":4}]}</zone_coverage_json>',
+        3,
+    )
+
+    assert complete == {"complete": True, "missing": [], "duplicates": [], "unknown": []}
+    assert incomplete == {
+        "complete": False,
+        "missing": [2, 3],
+        "duplicates": [1],
+        "unknown": [4],
+    }

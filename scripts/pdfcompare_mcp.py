@@ -39,8 +39,10 @@ from pdfcompare_core import history_index
 from pdfcompare_core.run_names import suggest_folder_names
 from pdfcompare_core.vision_analysis import (
     DEFAULT_DEEPSEEK_VISION_MODEL,
+    DEFAULT_GEMINI_VISION_MODEL,
     DEFAULT_QWEN_VISION_MODEL,
     DeepSeekVisionClient,
+    GeminiVisionClient,
     QwenVisionClient,
     VisionAnalysisCache,
     VisionAnalysisError,
@@ -1236,15 +1238,39 @@ class VisionProviderConfig:
 
 
 def _vision_provider(provider: str) -> str:
-    value = str(provider or os.getenv("PDFCOMPARE_VISION_PROVIDER") or "deepseek").strip().lower()
-    aliases = {"deepseek": "deepseek", "qwen": "qwen", "alibaba": "qwen", "modelstudio": "qwen"}
+    value = str(provider or os.getenv("PDFCOMPARE_VISION_PROVIDER") or "gemini").strip().lower()
+    aliases = {
+        "gemini": "gemini",
+        "openrouter": "gemini",
+        "google": "gemini",
+        "deepseek": "deepseek",
+        "qwen": "qwen",
+        "alibaba": "qwen",
+        "modelstudio": "qwen",
+    }
     if value not in aliases:
-        raise ValueError("provider must be deepseek or qwen")
+        raise ValueError("provider must be gemini, deepseek, or qwen")
     return aliases[value]
 
 
 def _vision_config(provider: str, model: str) -> VisionProviderConfig:
     key = _vision_provider(provider)
+    if key == "gemini":
+        return VisionProviderConfig(
+            key=key,
+            display_name="Gemini",
+            api_key_env="OPENROUTER_API_KEY",
+            api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
+            base_url_env=None,
+            base_url="https://openrouter.ai/api/v1",
+            model=str(
+                model or os.getenv("PDFCOMPARE_GEMINI_VISION_MODEL") or DEFAULT_GEMINI_VISION_MODEL
+            ).strip(),
+            timeout_env="PDFCOMPARE_GEMINI_TIMEOUT_SEC",
+            timeout_sec=env_float("PDFCOMPARE_GEMINI_TIMEOUT_SEC", 180.0),
+            max_tokens_env="PDFCOMPARE_GEMINI_MAX_TOKENS",
+            max_tokens=env_int("PDFCOMPARE_GEMINI_MAX_TOKENS", 6000),
+        )
     if key == "qwen":
         return VisionProviderConfig(
             key=key,
@@ -1433,12 +1459,12 @@ def _vision_preview(
 def preview_pdf_vision_analysis(
     run_dir: str,
     excluded_seqs: list[int] | None = None,
-    max_sheets: int = 12,
+    max_sheets: int = 500,
     model: str = "",
     provider: str = "",
     lang: str = "ru",
 ) -> dict[str, Any]:
-    """Preview exactly which comparison sheets may be sent to DeepSeek or Qwen; never calls the network.
+    """Preview exactly which comparison sheets may be sent to Gemini, DeepSeek, or Qwen; never calls the network.
 
     Eligibility is deliberately strict: status must be ``matched``, both OLD and NEW pages must exist, the row must
     not be ``unchanged``, and machine diff metrics must be non-zero. Added, removed, one-sided, size-mismatch, and
@@ -1449,8 +1475,8 @@ def preview_pdf_vision_analysis(
     """
     try:
         limit = int(max_sheets)
-        if not 1 <= limit <= 50:
-            raise ValueError("max_sheets must be between 1 and 50")
+        if not 1 <= limit <= 500:
+            raise ValueError("max_sheets must be between 1 and 500")
         preview, _, _ = _vision_preview(
             run_dir,
             excluded_seqs=excluded_seqs,
@@ -1473,7 +1499,7 @@ def _analyze_pdf_comparison_with_ai(
     confirm_external_upload: bool = False,
     excluded_seqs: list[int] | None = None,
     seqs: list[int] | None = None,
-    max_sheets: int = 12,
+    max_sheets: int = 500,
     max_zones: int = 8,
     model: str = "",
     lang: str = "ru",
@@ -1481,8 +1507,8 @@ def _analyze_pdf_comparison_with_ai(
     try:
         sheet_limit = int(max_sheets)
         zone_limit = int(max_zones)
-        if not 1 <= sheet_limit <= 50:
-            raise ValueError("max_sheets must be between 1 and 50")
+        if not 1 <= sheet_limit <= 500:
+            raise ValueError("max_sheets must be between 1 and 500")
         if not 1 <= zone_limit <= 20:
             raise ValueError("max_zones must be between 1 and 20")
         preview, report_dir, all_eligible = _vision_preview(
@@ -1519,11 +1545,18 @@ def _analyze_pdf_comparison_with_ai(
                 provider=config.display_name,
                 env_var=config.api_key_env,
             )
-        client: DeepSeekVisionClient | QwenVisionClient | None = None
+        client: DeepSeekVisionClient | GeminiVisionClient | QwenVisionClient | None = None
         if needs_network and config.key == "qwen":
             client = QwenVisionClient(
                 api_key=config.api_key,
                 base_url=validate_qwen_base_url(config.base_url),
+                model=config.model,
+                timeout_sec=config.timeout_sec,
+                max_tokens=config.max_tokens,
+            )
+        elif needs_network and config.key == "gemini":
+            client = GeminiVisionClient(
+                api_key=config.api_key,
                 model=config.model,
                 timeout_sec=config.timeout_sec,
                 max_tokens=config.max_tokens,
@@ -1540,6 +1573,8 @@ def _analyze_pdf_comparison_with_ai(
         prompt_tokens = 0
         completion_tokens = 0
         cached_prompt_tokens = 0
+        reasoning_tokens = 0
+        charged_cost_usd = 0.0
         for row in selected:
             seq = int(row["seq"])
             try:
@@ -1552,6 +1587,8 @@ def _analyze_pdf_comparison_with_ai(
                     prompt_tokens += analysis.prompt_tokens
                     completion_tokens += analysis.completion_tokens
                     cached_prompt_tokens += analysis.cached_prompt_tokens
+                    reasoning_tokens += analysis.reasoning_tokens
+                    charged_cost_usd += analysis.charged_cost_usd
                 results.append(
                     {
                         "seq": seq,
@@ -1591,6 +1628,7 @@ def _analyze_pdf_comparison_with_ai(
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "cached_prompt_tokens": cached_prompt_tokens,
+            "reasoning_tokens": reasoning_tokens,
             "report_sheet_count": artifacts.sheet_count,
             "report_html_path": str(artifacts.html_path),
             "report_markdown_path": str(artifacts.markdown_path),
@@ -1598,7 +1636,21 @@ def _analyze_pdf_comparison_with_ai(
             "report_zip_path": str(artifacts.zip_path),
             "external_upload_confirmed": True,
         }
-        if config.key == "deepseek":
+        if config.key == "gemini":
+            payload["cost_estimate"] = {
+                "currency": "USD",
+                "charged_by_openrouter_usd": charged_cost_usd,
+                "source": "OpenRouter usage.cost",
+            }
+            payload["quality_note"] = (
+                "Gemini is the economical default and may omit small changes on dense sheets. Use provider=qwen "
+                "with seqs=[...] for selected sheets, or omit seqs for all eligible sheets, when maximum detail is required."
+                if str(lang).lower().startswith("en")
+                else "Gemini — экономичный режим по умолчанию и может пропускать мелкие изменения на плотных листах. "
+                "Для максимальной детализации вызовите provider=qwen с seqs=[...] для выбранных листов либо без seqs "
+                "для всех допустимых листов."
+            )
+        elif config.key == "deepseek":
             cost = estimate_deepseek_vision_cost(
                 prompt_tokens,
                 completion_tokens,
@@ -1639,17 +1691,18 @@ def analyze_pdf_comparison_with_ai(
     confirm_external_upload: bool = False,
     excluded_seqs: list[int] | None = None,
     seqs: list[int] | None = None,
-    max_sheets: int = 12,
+    max_sheets: int = 500,
     max_zones: int = 8,
     model: str = "",
     lang: str = "ru",
 ) -> dict[str, Any]:
-    """Describe two-sided PDF diffs through a user-configured DeepSeek or Qwen provider.
+    """Describe two-sided PDF diffs through Gemini, DeepSeek, or Qwen.
 
-    The provider defaults to ``PDFCOMPARE_VISION_PROVIDER`` (or ``deepseek``). Credentials are read only from the
-    MCP process environment: ``DEEPSEEK_API_KEY`` for DeepSeek, or ``QWEN_API_KEY`` plus the official Alibaba Model
-    Studio ``QWEN_BASE_URL`` for Qwen. Never pass a key in a prompt or tool argument. Without explicit external-upload
-    confirmation this returns a no-network preview, including safe setup guidance when configuration is missing.
+    The provider defaults to ``PDFCOMPARE_VISION_PROVIDER`` (or economical ``gemini`` through OpenRouter). Credentials
+    are read only from the MCP process environment: ``OPENROUTER_API_KEY`` for Gemini, ``DEEPSEEK_API_KEY`` for
+    DeepSeek, or ``QWEN_API_KEY`` plus the official Alibaba Model Studio ``QWEN_BASE_URL`` for Qwen. Use ``seqs`` to
+    run the maximum-detail Qwen mode only for selected sheets; omit it to analyze every eligible sheet. Never pass a
+    key in a prompt or tool argument. Without explicit external-upload confirmation this returns a no-network preview.
 
     Only matched, changed OLD + NEW pairs are eligible. Successful results are cached separately by provider, model,
     language, and prompt version, and generate local interactive HTML, Markdown, JSON, and ZIP reports.

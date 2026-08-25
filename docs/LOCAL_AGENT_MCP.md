@@ -54,13 +54,13 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
   - with the default `confirm_external_upload=false`, behaves as a no-network preview and returns `analysis_started=false`;
   - only after the user explicitly agrees, call it with `confirm_external_upload=true`; the MCP server then sends generated JPEG montages (OLD, NEW, DIFF, numbered boxes and OLD/NEW crops) to the selected external API;
   - never sends source PDF files, added/removed sheets, one-sided rows, or any row rejected by the preview filter;
-  - `provider` accepts `deepseek` or `qwen`; when omitted, `PDFCOMPARE_VISION_PROVIDER` is used, then `deepseek` as the compatible default;
-  - reads the engineer's key only from the MCP environment. DeepSeek uses `DEEPSEEK_API_KEY`; Qwen uses `QWEN_API_KEY`, `QWEN_BASE_URL`, and optionally `QWEN_MODEL`. No API-key tool argument exists;
+  - `provider` accepts `gemini`, `deepseek`, or `qwen`; when omitted, `PDFCOMPARE_VISION_PROVIDER` is used, then economical Gemini 3.7 Flash through OpenRouter;
+  - reads the engineer's key only from the MCP environment. Gemini uses `OPENROUTER_API_KEY`; DeepSeek uses `DEEPSEEK_API_KEY`; Qwen uses `QWEN_API_KEY`, `QWEN_BASE_URL`, and optionally `QWEN_MODEL`. No API-key tool argument exists;
   - validates Qwen URLs as official Alibaba Model Studio HTTPS `compatible-mode/v1` endpoints before attaching the key, preventing an accidental upload to an arbitrary host;
   - caches successful descriptions separately by provider, model, language, and prompt version, then writes an interactive HTML report, Markdown `report.md`, machine-readable JSON, and a downloadable ZIP under `<run_dir>/_pdfcompare/vision_analysis/`;
   - the report root is a sheet matrix; every analyzed sheet has a separate page with a full-resolution PNG OLD/NEW slider, AI zones, lossless detail crops, zoom, pan, bottom sheet navigation, and Markdown copy. Noise zones are visible by default and use a distinct blue outline;
-  - DeepSeek returns a USD estimate from actual token usage: direct API, the same inference through OpenRouter, OpenRouter's proportional credit-purchase fee, and the peak-rate comparison. Qwen returns token usage without a built-in price estimate because Alibaba tariffs depend on region/account. Locally cached sheets count as zero new spend;
-  - `seqs` can narrow a confirmed batch, `max_sheets` is 1..50, and `max_zones` is 1..20. The call is synchronous and can take several minutes when many sheets are not cached.
+  - Gemini returns the actual USD charge reported by OpenRouter. DeepSeek returns its direct/OpenRouter estimates. Qwen returns token usage without a built-in price estimate because Alibaba tariffs depend on region/account. Locally cached sheets count as zero new spend;
+  - `seqs` can narrow a confirmed batch. This is the intended way to request maximum-detail Qwen only for selected sheets; omit `seqs` to run Qwen on every eligible sheet. `max_sheets` is 1..500 (default 500, so the ordinary action is «all») and `max_zones` is 1..20.
 
 - `analyze_pdf_comparison_with_deepseek(...)`
   - backward-compatible DeepSeek-only alias; new integrations should use `analyze_pdf_comparison_with_ai`.
@@ -109,7 +109,7 @@ For one-click setup buttons, see the repository `README.md`. For copy-paste setu
 9. When completed, give the user `report_path` and summarize counts from `summary.counts`. The HTML report shows both page-level `Diff %` and content-relative `FG %`, plus physical changed area in `mm²`.
 10. If a specific report row needs higher precision, call `rerender_pdf_comparison_pages` with the existing `run_dir` and target `seq`; the report is rebuilt in place.
 11. If the user asks for a semantic AI description, call `preview_pdf_vision_analysis` first and show the exact eligible list plus `external_upload_warning`. Do not infer consent from the configured API key or from an earlier PDF comparison.
-12. Only after explicit consent call `analyze_pdf_comparison_with_ai(..., provider="deepseek|qwen", confirm_external_upload=true)`. Return `report_html_path` for browser/mobile viewing, `report_markdown_path` for Markdown, and `report_zip_path` for transfer/download. Treat the model text as advisory and keep the engine metrics as the source of truth.
+12. Only after explicit consent call `analyze_pdf_comparison_with_ai(..., provider="gemini|deepseek|qwen", confirm_external_upload=true)`. Return `report_html_path` for browser/mobile viewing, `report_markdown_path` for Markdown, and `report_zip_path` for transfer/download. Treat the model text as advisory and keep the engine metrics as the source of truth.
 
 Do not run `compare_pdfs.py` directly from an agent unless MCP is unavailable. The MCP server preserves background job state in `.pdfcompare_mcp/jobs/`.
 
@@ -140,6 +140,14 @@ The bootstrap wrapper logs to `.pdfcompare_mcp/bootstrap.log`, installs missing 
 
 For optional visual analysis, configure a personal provider key in the environment of the MCP process. Enter secrets locally — never in a chat, prompt, or tool argument.
 
+Gemini through OpenRouter — economical default:
+
+```powershell
+$env:OPENROUTER_API_KEY = "<your key>"
+$env:PDFCOMPARE_VISION_PROVIDER = "gemini"
+./scripts/run_mcp.ps1
+```
+
 DeepSeek for the current PowerShell session:
 
 ```powershell
@@ -158,7 +166,7 @@ $env:PDFCOMPARE_VISION_PROVIDER = "qwen"
 ./scripts/run_mcp.ps1
 ```
 
-To keep a key between restarts, add the same variables to the Windows user environment or to the MCP client's local environment configuration, then fully restart the MCP client. Do not commit the values to this repository. Optional tuning variables are `PDFCOMPARE_DEEPSEEK_VISION_MODEL`, `PDFCOMPARE_DEEPSEEK_TIMEOUT_SEC`, `PDFCOMPARE_DEEPSEEK_MAX_TOKENS`, `PDFCOMPARE_QWEN_TIMEOUT_SEC`, and `PDFCOMPARE_QWEN_MAX_TOKENS`. Ordinary PDF comparison remains fully local and does not require any AI key.
+To keep a key between restarts, add the same variables to the Windows user environment or to the MCP client's local environment configuration, then fully restart the MCP client. Do not commit the values to this repository. Optional tuning variables include `PDFCOMPARE_GEMINI_VISION_MODEL`, `PDFCOMPARE_GEMINI_TIMEOUT_SEC`, `PDFCOMPARE_GEMINI_MAX_TOKENS`, the corresponding DeepSeek variables, and `PDFCOMPARE_QWEN_TIMEOUT_SEC` / `PDFCOMPARE_QWEN_MAX_TOKENS`. Ordinary PDF comparison remains fully local and does not require any AI key.
 
 **Auto-update is on by default.** On every server start the wrapper pulls `origin/master` and re-runs `setup.ps1 -WithMcp` if the requirements or HEAD changed — so restarting the MCP client is all it takes to update. The MCP checkout is independent of the installed GUI: the installer and the app's auto-update replace `PDFCompareLocal.exe` only and never touch it.
 
