@@ -7,6 +7,8 @@ $python = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 Push-Location $repo
 try {
+    & $python scripts/verify_environment.py
+    if ($LASTEXITCODE -ne 0) { throw "Environment differs from runtime lock; run setup.ps1" }
     $compileFiles = @(
         "compare_pdfs.py",
         "pdfcompare_gui.py"
@@ -35,8 +37,15 @@ try {
         pdfcompare_ui `
         scripts/pdfcompare_mcp.py `
         scripts/pdfcompare_worker.py `
-        scripts/process_identity.py
+        scripts/process_identity.py `
+        scripts/verify_environment.py
     if ($env:LINT_ALLOW_MYPY_FAIL -ne "1" -and $LASTEXITCODE -ne 0) { throw "mypy failed" }
+    if (Test-Path "pdfcompare_bot") {
+        & $python -m ruff check pdfcompare_bot
+        if ($LASTEXITCODE -ne 0) { throw "Private service ruff failed" }
+        & $python -m mypy pdfcompare_bot
+        if ($LASTEXITCODE -ne 0) { throw "Private service mypy failed" }
+    }
 }
 finally {
     Pop-Location

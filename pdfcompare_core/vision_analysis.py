@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .vision_cache import input_fingerprint, read_cache, write_cache
+
 import base64
 import json
 import os
@@ -363,6 +365,7 @@ def validate_qwen_base_url(base_url: str) -> str:
 
 class VisionAnalysisCache:
     def __init__(self, run_dir: Path, model: str, *, lang: str = "ru", provider: str = "deepseek"):
+        self.run_dir = run_dir
         self.model = str(model)
         self.lang = normalize_lang(lang)
         self.provider = _safe_name(provider.lower()) or "ai"
@@ -378,7 +381,8 @@ class VisionAnalysisCache:
         ):
             return None
         item = (payload.get("sheets") or {}).get(str(seq))
-        if not isinstance(item, dict) or not str(item.get("text") or "").strip():
+        if (not isinstance(item, dict) or not str(item.get("text") or "").strip()
+                or item.get("input_fingerprint") != input_fingerprint(self.run_dir, seq, version=str(PROMPT_VERSION))):
             return None
         return VisionAnalysis(
             text=str(item["text"]),
@@ -409,6 +413,7 @@ class VisionAnalysisCache:
             }
         sheets = payload.setdefault("sheets", {})
         sheets[str(seq)] = {
+            "input_fingerprint": input_fingerprint(self.run_dir, seq, version=str(PROMPT_VERSION)),
             "text": analysis.text,
             "model": analysis.model,
             "prompt_tokens": analysis.prompt_tokens,
@@ -418,8 +423,7 @@ class VisionAnalysisCache:
             "charged_cost_usd": analysis.charged_cost_usd,
             "billed_at": analysis.billed_at,
         }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write_text(self.path, json.dumps(payload, ensure_ascii=False, indent=2))
+        write_cache(self.path, payload)
 
     def cached_sequences(self) -> list[int]:
         payload = self._load()
@@ -433,14 +437,11 @@ class VisionAnalysisCache:
         sheets = payload.get("sheets") or {}
         if not isinstance(sheets, dict):
             return []
-        return sorted(int(seq) for seq, item in sheets.items() if str(seq).isdigit() and isinstance(item, dict))
+        return sorted(int(seq) for seq, item in sheets.items() if str(seq).isdigit() and isinstance(item, dict)
+                      and item.get("input_fingerprint") == input_fingerprint(self.run_dir, int(seq), version=str(PROMPT_VERSION)))
 
     def _load(self) -> dict[str, Any]:
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
+        return read_cache(self.path)
 
 
 def vision_root(run_dir: Path) -> Path:

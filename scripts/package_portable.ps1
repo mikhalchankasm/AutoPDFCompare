@@ -9,6 +9,11 @@ $repo = Split-Path -Parent $PSScriptRoot
 $outRoot = Join-Path $repo $OutputDir
 $stage = Join-Path $outRoot "PDFCompareLocal-portable"
 $zip = Join-Path $outRoot "PDFCompareLocal-portable.zip"
+$resolvedOutRoot = [IO.Path]::GetFullPath($outRoot)
+$resolvedRepo = [IO.Path]::GetFullPath($repo).TrimEnd('\', '/')
+if (-not $resolvedOutRoot.StartsWith($resolvedRepo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "OutputDir must stay inside the repository"
+}
 
 Push-Location $repo
 try {
@@ -31,7 +36,11 @@ try {
         Copy-Item -LiteralPath (Join-Path $repo $dir) -Destination $stage -Recurse
     }
 
-    Copy-Item -LiteralPath (Join-Path $repo "requirements") -Destination $stage -Recurse
+    $requirementsStage = Join-Path $stage "requirements"
+    New-Item -ItemType Directory -Force -Path $requirementsStage | Out-Null
+    foreach ($requirement in @("base.txt", "dev.txt", "mcp.txt", "lock.txt", "lock-runtime.txt", "lock.in", "lock-runtime.in")) {
+        Copy-Item -LiteralPath (Join-Path $repo "requirements/$requirement") -Destination $requirementsStage
+    }
     Copy-Item -LiteralPath (Join-Path $repo "scripts/run_gui.bat") -Destination (Join-Path $stage "run_gui.bat")
     Copy-Item -LiteralPath (Join-Path $repo "scripts/run_gui_silent.vbs") -Destination (Join-Path $stage "run_gui_silent.vbs")
 
@@ -48,7 +57,9 @@ try {
         "run_mcp.ps1",
         "run_mcp_bootstrap.ps1",
         "pdfcompare_mcp.py",
-        "pdfcompare_worker.py"
+        "pdfcompare_worker.py",
+        "process_identity.py",
+        "verify_environment.py"
     )) {
         Copy-Item -LiteralPath (Join-Path $repo "scripts/$script") -Destination (Join-Path $stage "scripts")
     }

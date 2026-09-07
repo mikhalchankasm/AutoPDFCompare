@@ -657,22 +657,32 @@ class _RunUpdateTransaction:
         deleting it would turn a recoverable failure into permanent data loss.
         """
         unrestored: list[Path] = []
-        for dst in reversed(self.installed):
+        for dst in reversed(self.installed.copy()):
             shutil.rmtree(dst, ignore_errors=True)
-        for dst, backup in reversed(self.swapped):
-            if backup.exists() and not dst.exists():
+            if dst.exists():
+                unrestored.append(dst)
+            else:
+                self.installed.remove(dst)
+        for dst, backup in reversed(self.swapped.copy()):
+            if not dst.exists() and backup.exists():
                 try:
                     backup.rename(dst)
                 except OSError:
                     unrestored.append(dst)
-        for original, backup in reversed(self.preserved):
+                else:
+                    self.swapped.remove((dst, backup))
+            else:
+                unrestored.append(dst)
+        for original, backup in reversed(self.preserved.copy()):
             try:
                 shutil.copy2(backup, original)
             except OSError:
                 unrestored.append(original)
+            else:
+                self.preserved.remove((original, backup))
 
+        self.unrestored = list(dict.fromkeys(unrestored))
         if unrestored:
-            self.unrestored = unrestored
             return  # keep staging: it is the last copy of these files
         shutil.rmtree(self.staging_root, ignore_errors=True)
 

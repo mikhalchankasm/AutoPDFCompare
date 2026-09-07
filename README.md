@@ -2,7 +2,7 @@
 
 > Локальное сравнение двух ревизий PDF (чертежи, схемы, спецификации) с наглядным HTML-отчётом. Windows. Основной движок работает без облака; внешняя AI-интерпретация включается отдельно и только после подтверждения.
 
-Current release: `v0.1.31`
+Current release: `v0.1.32`
 
 [![Download Installer][download-setup-badge]][download-setup]
 [![Download Windows EXE][download-exe-badge]][download-exe]

@@ -111,6 +111,10 @@ def pages_compatible(a: PageInfo, b: PageInfo) -> bool:
 def pair_similarity(a: PageInfo, b: PageInfo) -> float:
     if not pages_compatible(a, b):
         return 0.0
+    return _compatible_pair_similarity(a, b)
+
+
+def _compatible_pair_similarity(a: PageInfo, b: PageInfo) -> float:
     v = visual_similarity(a.thumb, b.thumb)
     t = text_similarity(a.text_tokens, b.text_tokens)
     base = 0.72 * v + 0.28 * t if (a.text_tokens or b.text_tokens) else v
@@ -137,7 +141,7 @@ def build_similarity_matrices(
             ok = pages_compatible(pages_a[i], pages_b[j])
             compatible[i, j] = ok
             if ok:
-                sims[i, j] = pair_similarity(pages_a[i], pages_b[j])
+                sims[i, j] = _compatible_pair_similarity(pages_a[i], pages_b[j])
     return sims, compatible
 
 
@@ -145,6 +149,8 @@ def linear_sum_assignment(cost: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     c = np.asarray(cost, dtype=np.float64)
     if c.ndim != 2:
         raise ValueError("Матрица стоимости должна быть двумерной")
+    if not np.isfinite(c).all():
+        raise ValueError("Матрица стоимости должна содержать конечные числа")
     n_rows, n_cols = c.shape
     transposed = False
     if n_rows > n_cols:
@@ -163,24 +169,17 @@ def linear_sum_assignment(cost: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         while True:
             used[j0] = True
             i0 = p[j0]
-            delta = np.inf
-            j1 = 0
-            for j in range(1, n_cols + 1):
-                if used[j]:
-                    continue
-                cur = c[i0 - 1, j - 1] - u[i0] - v[j]
-                if cur < minv[j]:
-                    minv[j] = cur
-                    way[j] = j0
-                if minv[j] < delta:
-                    delta = minv[j]
-                    j1 = j
-            for j in range(0, n_cols + 1):
-                if used[j]:
-                    u[p[j]] += delta
-                    v[j] -= delta
-                else:
-                    minv[j] -= delta
+            available = np.flatnonzero(~used[1:]) + 1
+            cur = c[i0 - 1, available - 1] - u[i0] - v[available]
+            improved = available[cur < minv[available]]
+            minv[improved] = cur[cur < minv[available]]
+            way[improved] = j0
+            j1 = int(available[np.argmin(minv[available])])
+            delta = minv[j1]
+            # argmin keeps the first column on ties, matching the scalar algorithm.
+            u[p[used]] += delta
+            v[used] -= delta
+            minv[~used] -= delta
             j0 = j1
             if p[j0] == 0:
                 break

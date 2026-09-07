@@ -21,7 +21,7 @@
 ## Как запускать проверки
 
 ```powershell
-.\scripts\lint.ps1     # ruff + strict mypy (hard gate)
+.\scripts\lint.ps1     # ruff + mypy (hard gate; не strict)
 .\scripts\test.ps1     # pytest + coverage gate (>= 82% для pdfcompare_core)
 ```
 

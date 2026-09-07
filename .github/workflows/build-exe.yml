@@ -59,6 +59,19 @@ jobs:
       - name: Test
         run: .\scripts\test.ps1
 
+      - name: Verify clean runtime installation
+        shell: pwsh
+        run: |
+          python -m venv tmp/runtime-check
+          if ($LASTEXITCODE -ne 0) { throw "Runtime venv creation failed" }
+          $runtimePython = "tmp/runtime-check/Scripts/python.exe"
+          & $runtimePython -m pip install --require-hashes -r requirements/lock-runtime.txt
+          if ($LASTEXITCODE -ne 0) { throw "Runtime dependency installation failed" }
+          & $runtimePython scripts/verify_environment.py
+          if ($LASTEXITCODE -ne 0) { throw "Runtime dependency verification failed" }
+          & $runtimePython -c "import scripts.pdfcompare_mcp; import scripts.pdfcompare_worker"
+          if ($LASTEXITCODE -ne 0) { throw "Runtime entry point imports failed" }
+
       # A release must not be produced from a dependency set with a known CVE.
       # The lock is updated before release when the audit reports a fixable issue.
       - name: Audit dependencies

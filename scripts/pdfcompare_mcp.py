@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import functools
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 import os
 import re
 import signal
@@ -13,6 +18,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Literal
+from collections.abc import Callable
 from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +119,96 @@ JOB_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ACTIVE_JOB_STATES = {"queued", "running"}
 LAST_CLEANUP_AT = 0.0
 CANCEL_POLL_SEC = 0.2
+
+_TOOL_PROCESS_POOL = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
+_CONTROL_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mcp-control")
+_STATUS_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mcp-status")
+_TOOL_SLOTS: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Semaphore] = {}
+
+
+def _execute_tool(name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    return globals()[name](*args, **kwargs)
+
+
+def background_tool(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Keep control requests responsive; native PDF work lives in one process."""
+    control = fn.__name__ in {"cancel_pdf_comparison", "get_pdf_comparison_status"}
+
+    @functools.wraps(fn)
+    async def invoke(*args: Any, **kwargs: Any) -> Any:
+        global _TOOL_PROCESS_POOL
+        loop = asyncio.get_running_loop()
+        for key in list(_TOOL_SLOTS):
+            if key[0].is_closed():
+                _TOOL_SLOTS.pop(key)
+        slots = _TOOL_SLOTS.setdefault((loop, fn.__name__ if control else "work"), asyncio.Semaphore(4))
+        async with slots:
+            if control:
+                executor = _STATUS_POOL if fn.__name__ == "get_pdf_comparison_status" else _CONTROL_POOL
+                return await loop.run_in_executor(executor, functools.partial(fn, *args, **kwargs))
+            try:
+                return await loop.run_in_executor(_TOOL_PROCESS_POOL, _execute_tool, fn.__name__, args, kwargs)
+            except BrokenProcessPool:
+                _TOOL_PROCESS_POOL.shutdown(wait=False, cancel_futures=True)
+                _TOOL_PROCESS_POOL = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn"))
+                raise
+
+    mcp.tool()(invoke)
+    return fn
+
+
+def terminate_worker_tree(pid: int, job_id: str) -> bool:
+    """Return only after a verified worker tree has stopped, or leave it pending."""
+    if not process_matches_worker_job(pid, job_id):
+        return False
+    if os.name == "nt":
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True, timeout=15
+        )
+        if result.returncode:
+            return False
+        deadline = time.monotonic() + 10
+        while worker_process_alive(pid, job_id) and time.monotonic() < deadline:
+            time.sleep(CANCEL_POLL_SEC)
+        return not worker_process_alive(pid, job_id)
+    # start_new_session=True makes this worker the leader of its private group.
+    posix_os: Any = os
+    posix_signal: Any = signal
+    if posix_os.getpgid(pid) != pid or posix_os.getsid(pid) != pid:
+        return False
+    posix_os.killpg(pid, signal.SIGTERM)
+    for sig, wait_sec in ((None, 5), (posix_signal.SIGKILL, 5)):
+        if sig is not None:
+            try:
+                posix_os.killpg(pid, sig)
+            except ProcessLookupError:
+                return True
+        deadline = time.monotonic() + wait_sec
+        while time.monotonic() < deadline:
+            if sys.platform.startswith("linux") and not linux_group_running(pid):
+                return True
+            try:
+                posix_os.killpg(pid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(CANCEL_POLL_SEC)
+    return False
+
+
+def linux_group_running(group_id: int) -> bool:
+    """Exited zombie children cannot write files and must not block cancellation."""
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            if int(fields[2]) == group_id and fields[0] != "Z":
+                return True
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, IndexError):
+            return True
+    return False
 
 
 def now_iso() -> str:
@@ -496,16 +592,13 @@ def cancel_acknowledged(job_id: str) -> bool:
 
 def active_job_statuses() -> list[dict[str, Any]]:
     active: list[dict[str, Any]] = []
-    running_stale_sec = max(60, env_int("PDFCOMPARE_MCP_RUNNING_STALE_SEC", 21600))
     for status in list_statuses():
         job_id = str(status.get("job_id") or "")
         state = str(status.get("state") or "")
         pid = int(status.get("pid") or 0)
-        status_path = job_dir(job_id) / "status.json" if JOB_ID_RE.match(job_id) else None
-        status_age_sec = max(0.0, time.time() - status_path.stat().st_mtime) if status_path and status_path.exists() else 0.0
         if state == "queued" and job_id and not pid:
             active.append(status)
-        elif state in ACTIVE_JOB_STATES and job_id and pid_exists(pid) and status_age_sec < running_stale_sec:
+        elif state in ACTIVE_JOB_STATES and job_id and worker_process_alive(worker_pid_for_job(job_id, status), job_id):
             active.append(status)
     return active
 
@@ -524,7 +617,6 @@ def cleanup_stale_job_artifacts() -> None:
     retention_days = max(1, env_int("PDFCOMPARE_MCP_JOBS_RETENTION_DAYS", 30))
     cutoff = time.time() - retention_days * 24 * 60 * 60
     max_retained_jobs = max(1, env_int("PDFCOMPARE_MCP_MAX_RETAINED_JOBS", 50))
-    running_stale_sec = max(60, env_int("PDFCOMPARE_MCP_RUNNING_STALE_SEC", 21600))
     inactive_job_dirs: list[Path] = []
     for child in JOBS_ROOT.iterdir():
         if not child.is_dir():
@@ -538,12 +630,12 @@ def cleanup_stale_job_artifacts() -> None:
             if not JOB_ID_RE.match(job_id):
                 continue
             state = str(status.get("state") or "")
-            pid = int(status.get("pid") or 0)
+            pid = worker_pid_for_job(job_id, status)
             status_age_sec = max(0.0, time.time() - status_path.stat().st_mtime)
             if state == "queued" and not pid:
                 is_active = status_age_sec < 60
             else:
-                is_active = state in ACTIVE_JOB_STATES and pid_exists(pid) and status_age_sec < running_stale_sec
+                is_active = state in ACTIVE_JOB_STATES and worker_process_alive(pid, job_id)
 
             out_dir = status.get("out_dir")
             if not is_active and out_dir:
@@ -590,7 +682,7 @@ def git_text(*args: str, timeout: float = 20.0) -> str | None:
     return proc.stdout.strip()
 
 
-@mcp.tool()
+@background_tool
 def check_pdfcompare_update(fetch: bool = True) -> dict[str, Any]:
     """Check whether this PDFCompare checkout is behind the repository's master branch.
 
@@ -657,7 +749,7 @@ def check_pdfcompare_update(fetch: bool = True) -> dict[str, Any]:
     return result
 
 
-@mcp.tool()
+@background_tool
 def prepare_pdf_comparison(old_path: str, new_path: str, out_dir: str = "runs", lang: str = "ru") -> dict[str, Any]:
     """Validate two PDFs, count pages, find similar previous runs, and suggest result folder names."""
     try:
@@ -759,7 +851,7 @@ def _exclusion_summary(regions: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-@mcp.tool()
+@background_tool
 def preview_pdf_comparison(
     old_path: str,
     new_path: str,
@@ -881,7 +973,7 @@ def preview_pdf_comparison(
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def start_pdf_comparison(
     old_path: str,
     new_path: str,
@@ -1053,7 +1145,7 @@ def start_pdf_comparison(
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def rerender_pdf_comparison_pages(
     run_dir: str,
     seqs: list[int] | None = None,
@@ -1455,7 +1547,7 @@ def _vision_preview(
     return preview, report_dir, selection.eligible
 
 
-@mcp.tool()
+@background_tool
 def preview_pdf_vision_analysis(
     run_dir: str,
     excluded_seqs: list[int] | None = None,
@@ -1684,7 +1776,7 @@ def _analyze_pdf_comparison_with_ai(
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def analyze_pdf_comparison_with_ai(
     run_dir: str,
     provider: str = "",
@@ -1720,7 +1812,7 @@ def analyze_pdf_comparison_with_ai(
     )
 
 
-@mcp.tool()
+@background_tool
 def analyze_pdf_comparison_with_deepseek(
     run_dir: str,
     confirm_external_upload: bool = False,
@@ -1745,7 +1837,7 @@ def analyze_pdf_comparison_with_deepseek(
     )
 
 
-@mcp.tool()
+@background_tool
 def pick_pdf_exclude_region(
     pdf_path: str,
     page_number: int = 1,
@@ -1821,7 +1913,7 @@ def pick_pdf_exclude_region(
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def get_pdf_comparison_status(job_id: str = "", lang: str = "ru") -> dict[str, Any]:
     """Return one comparison job status, or recent background jobs when job_id is omitted."""
     try:
@@ -1833,7 +1925,7 @@ def get_pdf_comparison_status(job_id: str = "", lang: str = "ru") -> dict[str, A
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def list_pdf_comparisons(
     out_dir: str = "runs", old_path: str = "", new_path: str = "", limit: int = 20, lang: str = "ru"
 ) -> dict[str, Any]:
@@ -1885,7 +1977,7 @@ def _unique_restore_run_name(output_dir: Path, base: str) -> str:
         counter += 1
 
 
-@mcp.tool()
+@background_tool
 def list_comparison_history(limit: int = 50, source: str = "", lang: str = "ru") -> dict[str, Any]:
     """List past comparisons from both the GUI and this MCP server as one numbered, dated log.
 
@@ -1919,7 +2011,7 @@ def list_comparison_history(limit: int = 50, source: str = "", lang: str = "ru")
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def restore_comparison(
     ref: str,
     out_dir: str = "",
@@ -2006,7 +2098,7 @@ def restore_comparison(
         return error_result(exc, lang)
 
 
-@mcp.tool()
+@background_tool
 def cancel_pdf_comparison(
     job_id: str, grace_sec: float = 20.0, max_wait_sec: float = 300.0, lang: str = "ru"
 ) -> dict[str, Any]:
@@ -2066,22 +2158,26 @@ def cancel_pdf_comparison(
         # The worker may have exited during the last sleep and had its PID handed to
         # something else. Never signal a process we have not just re-confirmed.
         pid_reused = False
-        if reason in {"max_wait", "unresponsive"}:
+        if reason == "max_wait" and worker_process_alive(pid, job_id):
+            return {
+                "ok": True, "pending": True, "forced": False,
+                "cancel_acknowledged": acknowledged, "cancel_reason": reason,
+                "waited_sec": round(time.time() - started, 2), "job": load_status(job_id),
+            }
+        if reason == "unresponsive":
             if process_matches_worker_job(pid, job_id):
-                if os.name == "nt":
-                    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True)
-                else:
-                    os.kill(pid, signal.SIGTERM)
                 forced = True
+                if not terminate_worker_tree(pid, job_id):
+                    return {
+                        "ok": True, "pending": True, "forced": True,
+                        "cancel_acknowledged": acknowledged, "cancel_reason": "termination_pending",
+                        "waited_sec": round(time.time() - started, 2), "job": load_status(job_id),
+                    }
             else:
                 pid_reused = pid_exists(pid)
                 reason = "exited"
         else:
             pid_reused = pid_exists(pid)
-
-        out_dir = status.get("out_dir")
-        if out_dir:
-            shutil.rmtree(Path(str(out_dir)) / f".pdfcompare_mcp_{job_id}", ignore_errors=True)
 
         waited_sec = round(time.time() - started, 2)
         # The worker writes its own "cancelled" status when it unwinds cleanly; only

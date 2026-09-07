@@ -165,6 +165,7 @@ class CancelTests(unittest.TestCase):
     def cancel(self, worker: FakeWorker, **kwargs: float) -> dict[str, Any]:
         def fake_run(command: list[str], **_: object) -> object:
             self.killed.append(list(command))
+            worker.exit_after = 0.0
             return mock.Mock(returncode=0)
 
         identity = importlib.import_module("scripts.process_identity")
@@ -219,6 +220,14 @@ class CancelTests(unittest.TestCase):
         self.assertIn("/F", self.killed[0])
         self.assertIn("промежуточном состоянии", result["job"]["message"])
         self.assertTrue(result["job"]["forced"])
+
+    def test_wait_timeout_keeps_live_rollback_pending(self) -> None:
+        worker = FakeWorker(self.job, exit_after=None, heartbeat=True, ack_after=0.0)
+        result = self.cancel(worker, grace_sec=1.0, max_wait_sec=0.2)
+        self.assertTrue(result["pending"])
+        self.assertFalse(result["forced"])
+        self.assertEqual(self.killed, [])
+        self.assertEqual(result["job"]["state"], "running")
 
     def test_a_reused_pid_is_not_killed(self) -> None:
         # The worker exits and Windows immediately hands its number to something

@@ -54,6 +54,43 @@ def _fingerprint(run_dir: Path) -> dict[str, str]:
 
 
 class RerenderTransactionTests(unittest.TestCase):
+    def test_failure_of_first_report_backup_does_not_delete_live_report(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = self._build_run(Path(tmp))
+            before = _fingerprint(run_dir)
+            rename = Path.rename
+
+            def fail_backup(path: Path, target: Path) -> Path:
+                if path == report_dir(run_dir):
+                    raise PermissionError("locked report")
+                return rename(path, target)
+
+            with mock.patch.object(Path, "rename", fail_backup):
+                with self.assertRaises(PermissionError):
+                    runner.regenerate_report_pages(run_dir, [1], high_dpi=100, report_lang="ru")
+            self._assert_unchanged(run_dir, before)
+
+    def test_failed_removal_keeps_backup_and_rollback_is_retryable(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            live = root / "live"
+            backup = root / "staging" / "backup"
+            live.mkdir()
+            backup.mkdir(parents=True)
+            (live / "value").write_text("new")
+            (backup / "value").write_text("old")
+            txn = runner._RunUpdateTransaction(backup.parent)
+            txn.installed.append(live)
+            txn.swapped.append((live, backup))
+            with mock.patch.object(runner.shutil, "rmtree"):
+                txn.rollback()
+            self.assertEqual(txn.unrestored, [live])
+            self.assertEqual((backup / "value").read_text(), "old")
+            txn.rollback()
+            txn.rollback()
+            self.assertEqual((live / "value").read_text(), "old")
+            self.assertEqual(txn.unrestored, [])
+
     def _build_run(self, tmp: Path) -> Path:
         _make_pdf(tmp / "a.pdf", extra=False)
         _make_pdf(tmp / "b.pdf", extra=True)

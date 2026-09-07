@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ def process_create_time(pid: int) -> int | None:
     if pid <= 0:
         return None
 
-    if os.name == "nt":
+    if sys.platform == "win32":
         process_query_limited_information = 0x1000
         kernel32 = ctypes.windll.kernel32
         handle = kernel32.OpenProcess(process_query_limited_information, False, int(pid))
@@ -68,7 +69,7 @@ def pid_exists(pid: int) -> bool:
     if pid <= 0:
         return False
 
-    if os.name == "nt":
+    if sys.platform == "win32":
         process_query_limited_information = 0x1000
         handle = ctypes.windll.kernel32.OpenProcess(process_query_limited_information, False, int(pid))
         if handle:

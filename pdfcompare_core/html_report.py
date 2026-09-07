@@ -2276,24 +2276,40 @@ def generate_html_report(
     backup_start_path = internal_dir(run_dir) / f".start_backup_{uuid4().hex}.html"
     had_bundle = final_bundle_dir.exists()
     had_start = start_path.exists()
+    bundle_backed_up = False
+    start_backed_up = False
+    bundle_installed = False
+    start_attempted = False
     try:
         if had_bundle:
             final_bundle_dir.rename(backup_bundle_dir)
+            bundle_backed_up = True
         if had_start:
             os.replace(start_path, backup_start_path)
+            start_backed_up = True
         bundle_dir.rename(final_bundle_dir)
+        bundle_installed = True
+        start_attempted = True
         write_start_page(run_dir, report_lang)
-    except Exception:
+    except BaseException as error:
         # Put the previous report back. If it cannot be restored, the backup is
         # deliberately left on disk: it is the only remaining copy.
-        if final_bundle_dir.exists():
+        if bundle_installed and final_bundle_dir.exists():
             shutil.rmtree(final_bundle_dir, ignore_errors=True)
-        if had_bundle and backup_bundle_dir.exists() and not final_bundle_dir.exists():
-            backup_bundle_dir.rename(final_bundle_dir)
-        if had_start and backup_start_path.exists():
-            os.replace(backup_start_path, start_path)
-        elif not had_start and start_path.exists():
-            start_path.unlink()
+        if bundle_backed_up:
+            try:
+                if final_bundle_dir.exists():
+                    raise OSError(f"Cannot restore report; backup retained at {backup_bundle_dir}")
+                backup_bundle_dir.rename(final_bundle_dir)
+            except OSError as restore_error:
+                error.add_note(str(restore_error))
+        try:
+            if start_backed_up:
+                os.replace(backup_start_path, start_path)
+            elif not had_start and start_attempted:
+                start_path.unlink(missing_ok=True)
+        except OSError as restore_error:
+            error.add_note(f"Entry point backup retained at {backup_start_path}: {restore_error}")
         if bundle_dir.exists():
             shutil.rmtree(bundle_dir, ignore_errors=True)
         raise
