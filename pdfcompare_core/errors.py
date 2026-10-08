@@ -30,6 +30,7 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "dpi_out_of_range": "DPI должен быть в диапазоне {min}–{max}, получено: {value}",
         "dpi_not_positive": "DPI должен быть положительным: {value!r}",
         "strictness_invalid": "Некорректная строгость сравнения: {value!r}. Допустимо: {allowed}",
+        "single_pair_requires_one_page": "Для явно выбранной пары каждый PDF должен содержать ровно одну страницу.",
         # --- input files / run folder ---
         "input_pdf_count": "Ожидалось ровно 2 PDF-файла в {folder}, найдено {count}",
         "run_dir_exists": "Папка результата уже существует: {path}",
@@ -89,6 +90,7 @@ ERROR_MESSAGES: dict[str, dict[str, str]] = {
         "dpi_out_of_range": "DPI must be between {min} and {max}, got: {value}",
         "dpi_not_positive": "DPI must be positive: {value!r}",
         "strictness_invalid": "Invalid diff strictness: {value!r}. Allowed: {allowed}",
+        "single_pair_requires_one_page": "Explicit pairing requires exactly one page in each PDF.",
         "input_pdf_count": "Expected exactly 2 PDF files in {folder}, found {count}",
         "run_dir_exists": "The result folder already exists: {path}",
         "run_dir_create_failed": "Could not create the result folder: {path}",

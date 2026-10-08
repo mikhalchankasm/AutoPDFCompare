@@ -867,6 +867,7 @@ def preview_pdf_comparison(
     lang: str = "ru",
     keep_debug_images: bool = False,
     ignore_line_weight: bool = False,
+    force_single_pair: bool = False,
 ) -> dict[str, Any]:
     """Build the final pre-launch checklist for a comparison — WITHOUT starting it.
 
@@ -905,6 +906,8 @@ def preview_pdf_comparison(
         new_pdf = settings["new_pdf"]
         old_pages = count_pdf_pages(old_pdf)
         new_pages = count_pdf_pages(new_pdf)
+        if force_single_pair and (old_pages != 1 or new_pages != 1):
+            raise InvalidInput("single_pair_requires_one_page")
         regions = settings["exclude_regions"]
         strictness = settings["diff_strictness"]
         gap = settings["bbox_merge_gap_mm"]
@@ -947,6 +950,7 @@ def preview_pdf_comparison(
             "keep_debug_images": bool(keep_debug_images),
             "ignore_line_weight": bool(ignore_line_weight),
             "workers": int(workers),
+            "force_single_pair": bool(force_single_pair),
         }
         return {
             "ok": True,
@@ -989,6 +993,7 @@ def start_pdf_comparison(
     lang: str = "ru",
     keep_debug_images: bool = False,
     ignore_line_weight: bool = False,
+    force_single_pair: bool = False,
 ) -> dict[str, Any]:
     """Start a PDF comparison in the background and return a job id for status polling.
 
@@ -1023,6 +1028,8 @@ def start_pdf_comparison(
         )
         old_pdf = settings["old_pdf"]
         new_pdf = settings["new_pdf"]
+        if force_single_pair and (count_pdf_pages(old_pdf) != 1 or count_pdf_pages(new_pdf) != 1):
+            raise InvalidInput("single_pair_requires_one_page")
         output_dir = settings["output_dir"]
         safe_run_name = settings["safe_run_name"]
         dpi = settings["dpi"]
@@ -1050,6 +1057,7 @@ def start_pdf_comparison(
             "keep_debug_images": bool(keep_debug_images),
             "ignore_line_weight": bool(ignore_line_weight),
             "alignment_mode": "automatic_multiscale",
+            "force_single_pair": bool(force_single_pair),
         }
         current_job_dir.mkdir(parents=True, exist_ok=False)
         atomic_write_json(current_job_dir / "request.json", request)

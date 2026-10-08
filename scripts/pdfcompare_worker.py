@@ -321,6 +321,7 @@ def main() -> int:
                 bbox_merge_max_area_ratio=float(request.get("bbox_merge_max_area_ratio", 16.0)),
                 progress_cb=update_progress,
                 cancel_cb=is_cancelled,
+                force_single_pair=bool(request.get("force_single_pair", False)),
             )
             expected_run_dir.parent.mkdir(parents=True, exist_ok=True)
             try:

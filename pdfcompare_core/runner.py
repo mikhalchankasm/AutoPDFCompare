@@ -1162,6 +1162,7 @@ def compare_pdfs(
     ignore_line_weight: bool = False,
     progress_cb: Callable[[float, str], None] | None = None,
     cancel_cb: Callable[[], bool] | None = None,
+    force_single_pair: bool = False,
 ) -> Path:
     def emit(pct: float, msg: str) -> None:
         # Every stage is cancellable, not just the page tasks: a caller that
@@ -1201,7 +1202,12 @@ def compare_pdfs(
             label="новый",
         )
         emit(36, "Сопоставление листов (v1: глобальное + проверка последовательности)")
-        pairs = align_pages_v1(pages_a, pages_b)
+        if force_single_pair:
+            if len(pages_a) != 1 or len(pages_b) != 1:
+                raise InvalidInput("single_pair_requires_one_page")
+            pairs = [MatchPair(0, 0, "matched", 1.0)]
+        else:
+            pairs = align_pages_v1(pages_a, pages_b)
         del pages_a, pages_b
 
         details: list[dict] = []
