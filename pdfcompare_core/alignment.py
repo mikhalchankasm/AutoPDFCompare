@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import atan2, degrees, hypot, isfinite
@@ -136,12 +137,21 @@ def build_similarity_matrices(
     n, m = len(pages_a), len(pages_b)
     sims = np.zeros((n, m), dtype=np.float64)
     compatible = np.zeros((n, m), dtype=bool)
+    ids_a = Counter(page.drawing_id for page in pages_a if page.drawing_id)
+    ids_b = Counter(page.drawing_id for page in pages_b if page.drawing_id)
     for i in range(n):
         for j in range(m):
+            a, b = pages_a[i], pages_b[j]
+            same_drawing = bool(
+                a.drawing_id and a.drawing_id == b.drawing_id
+                and ids_a[a.drawing_id] == ids_b[a.drawing_id] == 1
+                and len(a.text_tokens & b.text_tokens) >= 20
+            )
             ok = pages_compatible(pages_a[i], pages_b[j])
+            ok = ok or same_drawing
             compatible[i, j] = ok
             if ok:
-                sims[i, j] = _compatible_pair_similarity(pages_a[i], pages_b[j])
+                sims[i, j] = max(0.95 if same_drawing else 0.0, _compatible_pair_similarity(a, b))
     return sims, compatible
 
 

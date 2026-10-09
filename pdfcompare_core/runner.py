@@ -36,6 +36,7 @@ from .pdf_io import (
     atomic_write_text,
     build_page_info,
     capped_render_dpi,
+    extract_drawing_id,
     find_pages_dir,
     find_summary_json_path,
     imwrite_compat,
@@ -375,6 +376,9 @@ def process_pair_task(
             if harmonized is None:
                 entry["status"] = "size_mismatch"
                 entry["change_level"] = "size_mismatch"
+                drawing_id = extract_drawing_id(doc_a[a_idx])
+                if drawing_id and drawing_id == extract_drawing_id(doc_b[b_idx]):
+                    entry["drawing_id"] = drawing_id
                 imwrite_compat(pair_dir / "a.png", a_img)
                 imwrite_compat(pair_dir / "b.png", b_img)
                 return finish()

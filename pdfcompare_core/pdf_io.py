@@ -269,8 +269,25 @@ def build_page_info(
                     width_pt=float(rect.width),
                     height_pt=float(rect.height),
                     sheet_mark=extract_sheet_mark(text),
+                    drawing_id=extract_drawing_id(doc[i]),
                 )
             )
             if progress_cb is not None:
                 progress_cb(i + 1, total, label)
     return infos
+
+
+def extract_drawing_id(page: fitz.Page) -> str | None:
+    """Use only an unambiguous drawing code in the physical title-block corner."""
+    rect = page.rect
+    points_per_mm = 72 / 25.4
+    corner = fitz.Rect(
+        max(rect.x0, rect.x1 - 220 * points_per_mm),
+        max(rect.y0, rect.y1 - 90 * points_per_mm), rect.x1, rect.y1,
+    )
+    pattern = re.compile(r'[A-Z0-9]+(?:-[A-Z0-9]+){4,}-DWG-\d{4,}')
+    candidates = {
+        word[4].upper() for word in page.get_text('words', clip=corner)
+        if pattern.fullmatch(word[4].upper())
+    }
+    return next(iter(candidates)) if len(candidates) == 1 else None

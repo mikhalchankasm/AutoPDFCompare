@@ -15,6 +15,7 @@ class PageInfo:
     width_pt: float
     height_pt: float
     sheet_mark: str | None
+    drawing_id: str | None = None
 
 
 @dataclass
