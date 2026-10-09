@@ -19,6 +19,8 @@ that keeps its heartbeat going is left alone.
 from __future__ import annotations
 
 import importlib
+import runpy
+import sys
 import json
 import time
 import unittest
@@ -162,6 +164,35 @@ class CancelTests(unittest.TestCase):
 
         self.killed: list[list[str]] = []
 
+    def test_cleanup_preserves_terminal_status_committed_during_process_check(self) -> None:
+        path = self.job/'status.json'
+        def exited(pid: int, job_id: str) -> bool:
+            status = json.loads(path.read_text(encoding='utf-8'))
+            status.update(state='completed',progress=100)
+            self.mcp.atomic_write_json(path,status)
+            return False
+        with mock.patch.object(self.mcp,'LAST_CLEANUP_AT',0),mock.patch.object(self.mcp,'worker_process_alive',side_effect=exited):
+            self.mcp.cleanup_stale_job_artifacts()
+        status = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(status['state'],'completed')
+        self.assertNotIn('error',status)
+
+    def test_spawn_import_cannot_replace_coordinator_identity(self) -> None:
+        identity = self.job/'worker.json'
+        before = identity.read_bytes()
+        worker = Path(__file__).resolve().parents[1]/'scripts/pdfcompare_worker.py'
+        with mock.patch.object(sys,'argv',[str(worker),'--identity',str(identity)]):
+            runpy.run_path(str(worker),run_name='__mp_main__')
+        self.assertEqual(identity.read_bytes(),before)
+
+    def test_main_worker_publishes_identity_before_argument_validation(self) -> None:
+        identity = self.job/'main-worker.json'
+        worker = Path(__file__).resolve().parents[1]/'scripts/pdfcompare_worker.py'
+        with mock.patch.object(sys,'argv',[str(worker),'--identity',str(identity)]):
+            with self.assertRaises(SystemExit):
+                runpy.run_path(str(worker),run_name='__main__')
+        self.assertGreater(json.loads(identity.read_text(encoding='utf-8'))['pid'],0)
+
     def cancel(self, worker: FakeWorker, **kwargs: float) -> dict[str, Any]:
         def fake_run(command: list[str], **_: object) -> object:
             self.killed.append(list(command))
@@ -169,6 +200,12 @@ class CancelTests(unittest.TestCase):
             return mock.Mock(returncode=0)
 
         identity = importlib.import_module("scripts.process_identity")
+        def fake_killpg(pid: int, sig: int) -> None:
+            if sig:
+                self.killed.append(['killpg',str(pid),str(sig)])
+                worker.exit_after = 0.0
+            elif not worker.pid_exists(pid):
+                raise ProcessLookupError
         with (
             # The server calls these directly...
             mock.patch.object(self.mcp, "pid_exists", worker.pid_exists),
@@ -179,6 +216,9 @@ class CancelTests(unittest.TestCase):
             mock.patch.object(identity, "process_create_time", worker.create_time),
             mock.patch.object(self.mcp.subprocess, "run", fake_run),
             mock.patch.object(self.mcp.os, "kill", lambda pid, sig: self.killed.append(["kill", str(pid)])),
+            mock.patch.object(self.mcp.os,'getpgid',lambda pid:pid,create=True),
+            mock.patch.object(self.mcp.os,'getsid',lambda pid:pid,create=True),
+            mock.patch.object(self.mcp.os,'killpg',fake_killpg,create=True),
         ):
             return self.mcp.cancel_pdf_comparison(self.job_id, **kwargs)  # type: ignore[arg-type]
 
@@ -217,7 +257,10 @@ class CancelTests(unittest.TestCase):
         self.assertEqual(result["cancel_reason"], "unresponsive")
         self.assertEqual(len(self.killed), 1)
         self.assertIn(str(WORKER_PID), self.killed[0])
-        self.assertIn("/F", self.killed[0])
+        if sys.platform == 'win32':
+            self.assertIn("/F", self.killed[0])
+        else:
+            self.assertEqual(self.killed[0][0],'killpg')
         self.assertIn("промежуточном состоянии", result["job"]["message"])
         self.assertTrue(result["job"]["forced"])
 

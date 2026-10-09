@@ -637,6 +637,15 @@ def cleanup_stale_job_artifacts() -> None:
             else:
                 is_active = state in ACTIVE_JOB_STATES and worker_process_alive(pid, job_id)
 
+            if not is_active:
+                # The worker may commit its terminal status between the first read and its process exiting.
+                status = load_json(status_path)
+                state = str(status.get('state') or '')
+                pid = worker_pid_for_job(job_id, status)
+                status_age_sec = max(0.0, time.time() - status_path.stat().st_mtime)
+                is_active = (status_age_sec < 60 if state == 'queued' and not pid
+                             else state in ACTIVE_JOB_STATES and worker_process_alive(pid, job_id))
+
             out_dir = status.get("out_dir")
             if not is_active and out_dir:
                 shutil.rmtree(Path(str(out_dir)) / f".pdfcompare_mcp_{job_id}", ignore_errors=True)

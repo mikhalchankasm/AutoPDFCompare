@@ -50,7 +50,9 @@ def publish_identity() -> None:
     atomic_write_json(Path(sys.argv[index]), {**self_identity(), "recorded_at": now_iso()})
 
 
-publish_identity()
+if __name__ == '__main__':
+    # Spawn imports this module as __mp_main__ in every pool child; only the coordinator owns the identity file.
+    publish_identity()
 
 from compare_pdfs import (  # noqa: E402  (deliberate: the identity must land first)
     LIVE_REPORT_EVENT_PREFIX,
