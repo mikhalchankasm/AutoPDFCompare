@@ -597,6 +597,7 @@ def create_vision_report(
         metrics_text = " · ".join(f"{key}: {value}" for key, value in metrics.items())
         sheet_payload = {
             "seq": seq,
+            "review_source": input_fingerprint(run_dir,seq,str(row['pair_dir']),version='manual-review-v1'),
             "model": analysis.model,
             "metrics": metrics,
             "counts": counts,

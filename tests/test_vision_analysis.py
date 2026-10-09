@@ -133,7 +133,7 @@ def test_evidence_cache_and_downloadable_report_are_local(tmp_path: Path) -> Non
     html = artifacts.html_path.read_text(encoding="utf-8")
     assert "Матрица AI-сравнения" in html
     assert "Скрыть шум" in sheet_html
-    assert "showNoise=true" in sheet_html
+    assert "showNoise=report.report_schema!=='semantic-v1'" in sheet_html
     assert "changes.hidden=s.facts.length<2" in sheet_html
     assert "Ctrl+колесо" in sheet_html
 

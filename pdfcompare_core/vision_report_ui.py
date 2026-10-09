@@ -5,13 +5,15 @@ from collections.abc import Sequence
 from html import escape
 from typing import Any
 
+from .vision_review_ui import REVIEW_SCRIPT, INDEX_REVIEW_SCRIPT
+
 
 _BASE_CSS = """
 :root {
   --bg:#f8fafc;--surface:#fff;--surface2:#f1f5f9;--border:#e2e8f0;
   --border-strong:#cbd5e1;--text:#0f172a;--muted:#475569;--brand:#2563eb;
   --real:#dc2626;--real-soft:#fef2f2;--noise:#0284c7;--noise-soft:#e0f2fe;
-  --uncertain:#7c3aed;--uncertain-soft:#f3e8ff;--shadow:0 8px 24px #0f172a1a;
+  --uncertain:#ea580c;--uncertain-soft:#fff7ed;--shadow:0 8px 24px #0f172a1a;
   --split:50%;
 }
 *{box-sizing:border-box}*[hidden]{display:none!important}html,body{height:100%;margin:0}
@@ -24,7 +26,7 @@ border-color:var(--brand)}.btn.noise-toggle{color:#fff;background:var(--noise);b
 .btn.noise-toggle:not(.active){color:#075985;background:#f0f9ff;border-color:#7dd3fc}.btn:disabled{opacity:.38;cursor:not-allowed}
 .chip{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:5px 9px;
 background:var(--surface2);font-size:12px;font-weight:800}.chip.real{color:#991b1b;background:#fee2e2}
-.chip.noise{color:#075985;background:var(--noise-soft)}.chip.uncertain{color:#5b21b6;background:var(--uncertain-soft)}
+.chip.noise{color:#075985;background:var(--noise-soft)}.chip.uncertain{color:#9a3412;background:var(--uncertain-soft)}
 """
 
 
@@ -93,11 +95,12 @@ border:2px solid;border-radius:3px;opacity:.6}.zone-box.real{border-color:#ef444
 .zone-box.uncertain{border-color:var(--uncertain);border-style:dotted}.zone-box.selected{opacity:1;border-width:4px;box-shadow:0 0 0 2px #fff,
 0 0 0 5px #0f172ac7}.zone-tag{position:absolute;left:-2px;top:-25px;min-width:24px;height:22px;display:grid;place-items:center;
 border-radius:6px 6px 6px 0;background:#111827;color:#fff;font-size:11px;font-weight:900}.zone-box.near-top .zone-tag{top:0;left:0}
+.shape-layer{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.object-shape{fill:#ef44441c;stroke:var(--real);stroke-width:2}.object-shape polygon{vector-effect:non-scaling-stroke}.object-shape.noise{stroke:var(--noise);fill:#0284c70a;stroke-dasharray:6 4}.object-shape.uncertain{stroke:var(--uncertain);fill:#ea580c15;stroke-dasharray:5 3}.object-shape.selected{stroke-width:4;fill:#ef444430}.object-shape.selected.uncertain{fill:#ea580c25}.zone-box.has-shape,.zone-box.has-shape.selected{border:0;box-shadow:none}.zone-box.object-bound:not(.has-shape){border-radius:24px;border-style:dashed}
 .inspector{display:flex;flex-direction:column;overflow:hidden}.zone-header{flex:0 0 auto;padding:12px 15px;border-bottom:1px solid var(--border)}
 .zone-heading{display:flex;align-items:center;gap:9px}.big-no{display:grid;place-items:center;width:34px;height:34px;border-radius:8px;
 color:#fff;font-weight:900}.zone-header h2{margin:0;font-size:16px}.class-badge{display:inline-flex;border-radius:999px;padding:4px 8px;
 font-size:10px;font-weight:900;text-transform:uppercase}.class-badge.real{color:#991b1b;background:#fee2e2}.class-badge.noise{color:#075985;
-background:var(--noise-soft)}.class-badge.uncertain{color:#5b21b6;background:var(--uncertain-soft)}.structured{flex:1 1 auto;min-height:150px;
+background:var(--noise-soft)}.class-badge.uncertain{color:#9a3412;background:var(--uncertain-soft)}.structured{flex:1 1 auto;min-height:150px;
 overflow:auto;padding:14px 15px;border-bottom:1px solid var(--border);font-size:13px;line-height:1.55}.structured h3{margin:0 0 7px;font-size:13px}
 .structured .lead{margin:0 0 13px;font-weight:750}.structured ul{margin:0 0 14px;padding-left:19px}.structured li{margin:0 0 6px}
 .structured strong{color:#0f172a;background:#fef3c7;border-radius:3px;padding:0 2px}.facts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
@@ -124,7 +127,9 @@ _SHEET_SCRIPT = r"""
 const report=JSON.parse(document.getElementById('reportData').textContent),W=report.size_px[0],H=report.size_px[1];
 const stage=document.getElementById('stage'),surface=document.getElementById('surface'),zoneList=document.getElementById('zoneList');
 const zonesLayer=document.getElementById('zonesLayer'),splitKnob=document.getElementById('splitKnob');
-let scale=.1,selectedIndex=0,activeFilter='all',showNoise=true,spaceDown=false,panning=false,splitDragging=false,panStart=null;
+""" + REVIEW_SCRIPT + r"""
+applyReviews(report);updateReviewCounts([report]);
+let scale=.1,selectedIndex=0,activeFilter=reviewState.onlyChanges?'real_change':'all',showNoise=report.report_schema!=='semantic-v1'&&!reviewState.onlyChanges,spaceDown=false,panning=false,splitDragging=false,panStart=null;
 const kind=z=>z.classification==='real_change'?'real':z.classification==='uncertain'?'uncertain':'noise';
 const kindLabel=z=>kind(z)==='real'?'Реальное изменение':kind(z)==='uncertain'?'Требует проверки':'Шум / локальный сдвиг';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -139,34 +144,41 @@ function renderList(){ensureSelection();zoneList.innerHTML='';visibleZones().for
 b.className=`zone-row ${kind(z)} ${i===selectedIndex?'active':''}`;b.innerHTML=`<span class="zone-no">${z.id}</span><span class="zone-label">
 <b>Зона ${z.id}</b><span>${esc(z.description.slice(0,88))}${z.description.length>88?'…':''}</span></span><span class="confidence">${z.confidence}%</span>`;
 b.onclick=()=>selectZone(i,true);zoneList.appendChild(b)});if(!zoneList.children.length)zoneList.innerHTML='<div class="detail-empty">В этом фильтре зон нет.</div>'}
-function renderBoxes(){zonesLayer.innerHTML='';report.zones.forEach((z,i)=>{if(!z.rect||(!showNoise&&kind(z)==='noise'))return;const r=z.rect,b=document.createElement('div');
-b.className=`zone-box ${kind(z)} ${i===selectedIndex?'selected':''} ${r.y<120?'near-top':''}`;b.style.cssText=`left:${r.x/W*100}%;top:${r.y/H*100}%;
+function renderBoxes(){zonesLayer.innerHTML='';const visible=new Set(visibleZones().map(v=>v.i));const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('class','shape-layer');zonesLayer.appendChild(svg);report.zones.forEach((z,i)=>{if(!z.rect||!visible.has(i))return;const r=z.rect,b=document.createElement('div');
+const shapes=z.polygons_px||[];if(shapes.length){const group=document.createElementNS(ns,'g');group.setAttribute('class',`object-shape ${kind(z)} ${i===selectedIndex?'selected':''}`);shapes.forEach(points=>{const poly=document.createElementNS(ns,'polygon');poly.setAttribute('points',points.map(p=>p.join(',')).join(' '));group.appendChild(poly)});svg.appendChild(group)}
+b.className=`zone-box ${shapes.length?'has-shape':''} ${report.report_schema==='semantic-v1'?'object-bound':''} ${kind(z)} ${i===selectedIndex?'selected':''} ${r.y<120?'near-top':''}`;b.style.cssText=`left:${r.x/W*100}%;top:${r.y/H*100}%;
 width:${r.w/W*100}%;height:${r.h/H*100}%`;b.innerHTML=`<span class="zone-tag">${z.id}</span>`;zonesLayer.appendChild(b)})}
-function selectZone(i,focus=false){selectedIndex=(i+report.zones.length)%report.zones.length;const z=report.zones[selectedIndex],r=z.rect,k=kind(z),s=structure(z);
+function updateNoiseLabel(){const b=document.getElementById('noiseToggle');b.classList.toggle('active',showNoise);b.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать оформление/шум (${report.counts.alignment_or_rendering_noise})`}
+function selectZone(i,focus=false){updateNoiseLabel();if(!report.zones.length||!visibleZones().length){const hasChanges=report.zones.some(z=>z.classification==='real_change'||z.classification==='uncertain');document.getElementById('zoneTitle').textContent=hasChanges?'В этом фильтре зон нет':'Содержательных правок не выявлено';document.getElementById('observationTitle').textContent='Результат просмотра';document.getElementById('observationLead').textContent=hasChanges?'Выберите другой фильтр для просмотра наблюдений.':'В прочитанных фрагментах AI не выявил содержательных изменений. Техническое покрытие отдельно указано в отчёте.';document.getElementById('changesSection').hidden=true;document.getElementById('classBadge').hidden=true;document.getElementById('detailSlider').hidden=true;document.getElementById('detailRange').hidden=true;document.getElementById('detailEmpty').hidden=false;document.getElementById('detailEmpty').textContent='Выберите наблюдение в другом фильтре.';document.getElementById('focusZone').disabled=true;document.getElementById('bigNo').textContent='—';document.getElementById('confidence').textContent='—';document.getElementById('rect').textContent='—';document.getElementById('manualClass').disabled=true;document.getElementById('aiVerdict').textContent='';renderBoxes();return}const visible=visibleZones();selectedIndex=visible.some(v=>v.i===i)?i:visible[0].i;const z=report.zones[selectedIndex],r=z.rect,k=kind(z),s=structure(z);
+document.getElementById('manualClass').disabled=false;document.getElementById('manualClass').value=z.manual_classification||'auto';document.getElementById('aiVerdict').textContent='Вывод AI: '+kindLabel({classification:z.ai_classification})+(z.manual_classification?' · изменено вручную':'');
 document.getElementById('bigNo').textContent=z.id;document.getElementById('bigNo').className=`big-no ${k}`;document.getElementById('zoneTitle').textContent=`Зона ${z.id}`;
-const badge=document.getElementById('classBadge');badge.textContent=kindLabel(z);badge.className=`class-badge ${k}`;document.getElementById('observationTitle').textContent=s.title;
+const badge=document.getElementById('classBadge');badge.hidden=false;badge.textContent=kindLabel(z);badge.className=`class-badge ${k}`;document.getElementById('observationTitle').textContent=s.title;
 document.getElementById('observationLead').innerHTML=emphasize(s.facts[0]);const changes=document.getElementById('changesSection');changes.hidden=s.facts.length<2;
 document.getElementById('observationFacts').innerHTML=s.facts.slice(1).map(x=>`<li>${emphasize(x)}</li>`).join('');document.getElementById('confidence').textContent=`${z.confidence}%`;
 document.getElementById('rect').textContent=r?`${r.x}, ${r.y} · ${r.w}×${r.h}`:'весь лист';const slider=document.getElementById('detailSlider'),range=document.getElementById('detailRange');
-const empty=document.getElementById('detailEmpty'),focusBtn=document.getElementById('focusZone');slider.hidden=!r;range.hidden=!r;empty.hidden=!!r;focusBtn.disabled=!r;
+const empty=document.getElementById('detailEmpty'),focusBtn=document.getElementById('focusZone');slider.hidden=!r;range.hidden=!r;empty.hidden=!!r;empty.textContent='Вывод относится ко всему листу; локальная область не задана.';focusBtn.disabled=!r;
 if(r&&z.images){document.getElementById('detailOld').src=z.images.old||'';document.getElementById('detailNew').src=z.images.new||''}renderList();renderBoxes();if(focus&&r)requestAnimationFrame(focusSelected)}
 function setScale(n,a){n=Math.max(.025,Math.min(2.5,n));const old=scale,ax=a?.x??(stage.scrollLeft+stage.clientWidth/2)/old,ay=a?.y??(stage.scrollTop+stage.clientHeight/2)/old;
 scale=n;surface.style.width=`${W*scale}px`;surface.style.height=`${H*scale}px`;document.getElementById('zoomLabel').textContent=`${Math.round(scale*100)}%`;
 requestAnimationFrame(()=>{stage.scrollLeft=ax*scale-(a?.clientX??stage.clientWidth/2);stage.scrollTop=ay*scale-(a?.clientY??stage.clientHeight/2)})}
 function fit(){const p=52;setScale(Math.min((stage.clientWidth-p)/W,(stage.clientHeight-p)/H));requestAnimationFrame(()=>{stage.scrollLeft=0;stage.scrollTop=0})}
-function focusSelected(){const r=report.zones[selectedIndex].rect;if(!r)return;const p=Math.max(100,Math.min(350,Math.max(r.w,r.h)*.18));
+function focusSelected(){const r=report.zones[selectedIndex]?.rect;if(!r)return;const p=Math.max(100,Math.min(350,Math.max(r.w,r.h)*.18));
 const target=Math.min((stage.clientWidth*.76)/(r.w+p*2),(stage.clientHeight*.76)/(r.h+p*2),1.35);setScale(Math.max(target,.08),{x:r.x+r.w/2,y:r.y+r.h/2,
 clientX:stage.clientWidth/2,clientY:stage.clientHeight/2})}function setSplit(v){v=Math.max(0,Math.min(100,v));surface.style.setProperty('--split',`${v}%`);splitKnob.textContent=`${Math.round(v)}%`}
-function splitAt(e){const r=surface.getBoundingClientRect();setSplit((e.clientX-r.left)/r.width*100)}function toggleNoise(){showNoise=!showNoise;const b=document.getElementById('noiseToggle');
+function splitAt(e){const r=surface.getBoundingClientRect();setSplit((e.clientX-r.left)/r.width*100)}function toggleNoise(){showNoise=!showNoise;if(showNoise&&activeFilter==='real_change')activeFilter='all';const b=document.getElementById('noiseToggle');
 b.classList.toggle('active',showNoise);b.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать шум (${report.counts.alignment_or_rendering_noise})`;
 if(!showNoise&&activeFilter==='alignment_or_rendering_noise'){activeFilter='all';document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter==='all'))}
-renderList();renderBoxes();ensureSelection();selectZone(selectedIndex,false)}function markdown(){const z=report.zones[selectedIndex],s=structure(z),r=z.rect;
+document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===activeFilter));renderList();renderBoxes();ensureSelection();selectZone(selectedIndex,false)}function markdown(){if(!visibleZones().length)return `Лист ${report.seq}: в текущем фильтре нет наблюдений.`;const z=report.zones[selectedIndex],s=structure(z),r=z.rect;
 const lines=[`### Лист ${report.seq} — зона ${z.id}`,`**Тип:** ${kindLabel(z)}`,`**Уверенность:** ${z.confidence}%`,`**Область:** ${r?`${r.x}, ${r.y}; ${r.w}×${r.h} px`:'весь лист'}`,
+'**Классификация:** '+(z.manual_classification?'ручная; вывод AI: '+kindLabel({classification:z.ai_classification}):'AI'),
 '',`#### ${s.title}`,...s.facts.map(x=>`- ${x}`)];return lines.join('\n')}async function copyMarkdown(){const text=markdown();let copied=false;
 const onCopy=e=>{e.clipboardData.setData('text/plain',text);e.preventDefault()};document.addEventListener('copy',onCopy);try{copied=document.execCommand('copy')}finally{
 document.removeEventListener('copy',onCopy)}if(!copied&&navigator.clipboard){try{await navigator.clipboard.writeText(text);copied=true}catch(e){copied=false}}
 const toast=document.getElementById('toast');toast.textContent=copied?'Markdown скопирован':'Не удалось скопировать — повторите';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800)}
 document.getElementById('noiseToggle').onclick=toggleNoise;document.getElementById('copyMarkdown').onclick=copyMarkdown;document.getElementById('zoomIn').onclick=()=>setScale(scale*1.18);
+document.getElementById('manualClass').onchange=e=>{const z=report.zones[selectedIndex];if(!z)return;
+const key=reviewZoneKey(report,z);if(e.target.value==='auto')delete reviewState.overrides[key];else reviewState.overrides[key]=e.target.value;
+saveReview();updateReviewCounts([report]);renderList();renderBoxes();selectZone(selectedIndex,false)};
 document.getElementById('zoomOut').onclick=()=>setScale(scale/1.18);document.getElementById('fit').onclick=fit;document.getElementById('focusZone').onclick=focusSelected;
 function adjacent(d){const v=visibleZones();let p=v.findIndex(x=>x.i===selectedIndex);p=(p+d+v.length)%v.length;if(v.length)selectZone(v[p].i,true)}
 document.getElementById('prevZone').onclick=()=>adjacent(-1);document.getElementById('nextZone').onclick=()=>adjacent(1);document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{
@@ -180,7 +192,9 @@ stage.classList.add('panning');panStart={x:e.clientX,y:e.clientY,left:stage.scro
 stage.onpointermove=e=>{if(splitDragging){splitAt(e);return}if(panning){stage.scrollLeft=panStart.left-(e.clientX-panStart.x);stage.scrollTop=panStart.top-(e.clientY-panStart.y)}};
 stage.onpointerup=stage.onpointercancel=()=>{splitDragging=false;panning=false;stage.classList.remove('panning')};window.onkeydown=e=>{if(e.code==='Space')spaceDown=true;
 if(e.key==='0')fit();if(e.key===']')adjacent(1);if(e.key==='[')adjacent(-1)};window.onkeyup=e=>{if(e.code==='Space')spaceDown=false};document.querySelector('.sheet.new').onload=()=>{fit();selectZone(0,false)};
-setSplit(50);renderList();renderBoxes();selectZone(0,false);
+document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===activeFilter));
+const noiseButton=document.getElementById('noiseToggle');noiseButton.classList.toggle('active',showNoise);noiseButton.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать оформление/шум (${report.counts.alignment_or_rendering_noise})`;
+setSplit(50);renderList();renderBoxes();ensureSelection();selectZone(selectedIndex,false);
 """
 
 
@@ -207,10 +221,10 @@ def vision_index_html(
         summary = str(sheet.get("global_alignment") or "Совмещение не определено").rstrip(". ") + "."
         rows.append(
             f"<tr><td><span class='sheet-no'>{seq}</span></td><td><div class='counts'>"
-            f"<span class='chip real'>{int(counts.get('real_change') or 0)} правок</span>"
-            f"<span class='chip noise'>{int(counts.get('alignment_or_rendering_noise') or 0)} шум</span>"
-            f"<span class='chip uncertain'>{int(counts.get('uncertain') or 0)} проверить</span></div></td>"
-            f"<td><div class='summary-text'>{escape(summary)} Все зоны показаны при открытии листа.</div></td>"
+            f"<span class='chip real' data-sheet='{seq}' data-count='real_change' data-suffix=' правок'>{int(counts.get('real_change') or 0)} правок</span>"
+            f"<span class='chip noise' data-sheet='{seq}' data-count='alignment_or_rendering_noise' data-suffix=' шум'>{int(counts.get('alignment_or_rendering_noise') or 0)} шум</span>"
+            f"<span class='chip uncertain' data-sheet='{seq}' data-count='uncertain' data-suffix=' проверить'>{int(counts.get('uncertain') or 0)} проверить</span></div></td>"
+            f"<td><div class='summary-text'>{escape(summary)} Контуры относятся к объектам; сомнения требуют проверки.</div></td>"
             f"<td><div class='preview'><figure><img src='sheets/sheet_{seq:03d}/old_thumb.png' alt='OLD лист {seq}'>"
             f"<figcaption>OLD</figcaption></figure><figure><img src='sheets/sheet_{seq:03d}/new_thumb.png' alt='NEW лист {seq}'>"
             f"<figcaption>NEW</figcaption></figure></div></td><td><a class='btn primary' "
@@ -227,12 +241,16 @@ def vision_index_html(
         f"<article class='doc'><b>NEW · {escape(str(source.get('new_revision') or 'NEW'))}</b>"
         f"<span>{escape(str(source.get('new_name') or 'NEW'))}</span></article></section><section class='kpis'>"
         f"<article class='kpi'><span>Проверено листов</span><strong>{len(sheets)}</strong></article>"
-        f"<article class='kpi'><span>Реальные изменения</span><strong>{totals['real_change']}</strong></article>"
-        f"<article class='kpi'><span>Шумовые зоны</span><strong>{totals['alignment_or_rendering_noise']}</strong></article>"
-        f"<article class='kpi'><span>Требуют проверки</span><strong>{totals['uncertain']}</strong></article></section>"
-        "<div class='section-title'><h2>Матрица AI-сравнения</h2><span class='chip'>Шум показан по умолчанию</span></div>"
+        f"<article class='kpi'><span>Реальные изменения</span><strong data-count='real_change'>{totals['real_change']}</strong></article>"
+        f"<article class='kpi'><span>Шумовые зоны</span><strong data-count='alignment_or_rendering_noise'>{totals['alignment_or_rendering_noise']}</strong></article>"
+        f"<article class='kpi'><span>Требуют проверки</span><strong data-count='uncertain'>{totals['uncertain']}</strong></article></section>"
+        "<section class='doc'><label><input type='checkbox' id='defaultOnlyChanges'> По умолчанию показывать только правки на всех листах</label>"
+        "<p id='reviewStatus'>Ручная оценка сохраняется в этом браузере и не меняет исходный вывод AI. Оранжевые зоны доступны в фильтре «Проверить».</p></section>"
+        "<div class='section-title'><h2>Матрица AI-сравнения</h2><span class='chip'>Правки и сомнения; оформление можно скрыть</span></div>"
         "<table class='matrix'><thead><tr><th>Лист</th><th>Классификация</th><th>Сводка</th><th>Превью</th><th>Открыть</th>"
-        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></main></body></html>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></main>"
+        f"<script id='reportData' type='application/json'>{json.dumps(dict(model=model,sheets=list(sheets)),ensure_ascii=False).replace('</','<\\/')}</script>"
+        f"<script>{INDEX_REVIEW_SCRIPT}</script></body></html>"
     )
 
 
@@ -276,14 +294,14 @@ def vision_sheet_html(
         "<body><div class='app'><header class='topbar'>"
         f"<a class='btn' href='../../{escape(root_filename)}'>⌂ Обзор</a><div class='brand'><div class='brand-mark'>AI</div><div>"
         f"<div class='title'>Лист {seq} · {escape(str(source.get('old_revision') or 'OLD'))} → "
-        f"{escape(str(source.get('new_revision') or 'NEW'))}</div><div class='subtitle'>AI-проверка поверх исходных PNG PDFCompare</div></div></div>"
+        f"{escape(str(source.get('new_revision') or 'NEW'))}</div><div class='subtitle'>Содержательные правки · оранжевый: требуется проверка · контуры приблизительные</div></div></div>"
         f"<button class='btn noise-toggle active' id='noiseToggle'>Скрыть шум ({int(counts.get('alignment_or_rendering_noise') or 0)})</button>"
         "<button class='btn' id='copyMarkdown'>⧉ Копировать Markdown</button></header><main class='workspace'>"
-        "<aside class='panel summary'><div class='panel-head'><h2>Общая сводка</h2><p>Все зоны показаны. Выберите зону — лист приблизится к ней, "
+        "<aside class='panel summary'><div class='panel-head'><h2>Общая сводка</h2><p>Выберите наблюдение — лист приблизится к объекту, "
         "справа появится структурированное объяснение.</p></div><div><div class='summary-metrics'>"
-        f"<div class='metric'><b>{int(counts.get('real_change') or 0)}</b><span>правки</span></div>"
-        f"<div class='metric'><b>{int(counts.get('alignment_or_rendering_noise') or 0)}</b><span>шум</span></div>"
-        f"<div class='metric'><b>{int(counts.get('uncertain') or 0)}</b><span>проверить</span></div></div>"
+        f"<div class='metric'><b data-count='real_change'>{int(counts.get('real_change') or 0)}</b><span>правки</span></div>"
+        f"<div class='metric'><b data-count='alignment_or_rendering_noise'>{int(counts.get('alignment_or_rendering_noise') or 0)}</b><span>шум</span></div>"
+        f"<div class='metric'><b data-count='uncertain'>{int(counts.get('uncertain') or 0)}</b><span>проверить</span></div></div>"
         "<div class='filters'><button class='filter active' data-filter='all'>Все</button><button class='filter' data-filter='real_change'>Правки</button>"
         "<button class='filter' data-filter='uncertain'>Проверить</button><button class='filter' data-filter='alignment_or_rendering_noise'>Шум</button>"
         "</div></div><div class='zone-list' id='zoneList'></div></aside><section class='panel viewer'><div class='toolbar'>"
@@ -296,6 +314,9 @@ def vision_sheet_html(
         "Ctrl+колесо — масштаб · ПКМ/СКМ или Space+drag — панорама · 0 — вписать</div></div></section>"
         "<aside class='panel inspector'><div class='zone-header'><div class='zone-heading'><span class='big-no real' id='bigNo'>1</span><div>"
         "<h2 id='zoneTitle'>Зона 1</h2><span class='class-badge real' id='classBadge'>Реальное изменение</span></div></div></div>"
+        "<div class='panel-head'><label for='manualClass'>Ваша оценка</label> <select id='manualClass'><option value='auto'>Вывод AI</option>"
+        "<option value='real_change'>Правка</option><option value='alignment_or_rendering_noise'>Шум</option><option value='uncertain'>Проверить</option></select>"
+        "<p id='aiVerdict'></p><small id='reviewStatus'>Сохраняется в этом браузере</small></div>"
         "<div class='structured'><h3 id='observationTitle'>Наблюдение</h3><p class='lead' id='observationLead'></p>"
         "<div id='changesSection'><h3>Что изменилось</h3><ul id='observationFacts'></ul></div><h3>Проверка</h3><div class='facts'>"
         "<div class='fact'>Уверенность<b id='confidence'>—</b></div><div class='fact'>Область, px<b id='rect'>—</b></div></div></div>"
@@ -311,3 +332,4 @@ def vision_sheet_html(
 
 
 __all__ = ["vision_index_html", "vision_sheet_html"]
+
