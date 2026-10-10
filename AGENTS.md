@@ -6,7 +6,7 @@ PDFCompare Local — Windows-приложение для сравнения дв
 
 ## Структура
 
-- `pdfcompare_core/` — движок, без Tk и без сети:
+- `pdfcompare_core/` — движок, без Tk. Native-сравнение работает без сети; исключение — AI-модули `vision_analysis.py` (HTTP-клиенты провайдеров), `vision_cache.py`, `vision_pricing.py` и просмотрщики `vision_report_ui.py` / `vision_review_ui.py`:
   - `runner.py` — оркестрация прогона, перегенерация страниц, отмена, транзакции;
   - `diff_engine.py`, `alignment.py`, `classification.py` — дифф, выравнивание (ECC), уровни изменений;
   - `exclusions.py` — зоны исключения: `percent` / `mm` / `px` + якорь угла;

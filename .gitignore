@@ -20,6 +20,8 @@ build/
 build_*/
 runs/
 runs_*/
+# Delivered reports and other user deliverables — never part of the public repo.
+output/
 TestDocs/
 
 dist/*
