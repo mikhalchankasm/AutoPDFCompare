@@ -31,27 +31,46 @@ background:var(--surface2);font-size:12px;font-weight:800}.chip.real{color:#991b
 
 
 _INDEX_CSS = _BASE_CSS + """
-body{min-height:100%;padding-bottom:40px}.hero{padding:22px 28px 18px;border-bottom:1px solid var(--border);
+body{min-height:100%;padding-bottom:40px}.hero{padding:20px 28px 16px;border-bottom:1px solid var(--border);
 background:var(--surface)}.hero-row{display:flex;align-items:center;gap:14px;max-width:1500px;margin:auto}
 .hero-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:#0f172a;color:#fff;
 font-weight:900}.hero h1{margin:0;font-size:22px}.hero p{margin:4px 0 0;color:var(--muted);font-size:13px}
-.wrap{max-width:1500px;margin:auto;padding:18px 28px}.documents{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.doc,.kpi{border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 1px 2px #0f172a0f}
-.doc{padding:13px 15px}.doc b{display:block;margin-bottom:4px}.doc span{color:var(--muted);font-size:12px}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.kpi{padding:14px}
-.kpi span{display:block;color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase}.kpi strong{font-size:25px}
-.section-title{display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px}.section-title h2{font-size:16px;margin:0}
-.matrix{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--border);
+.wrap{max-width:1500px;margin:auto;padding:18px 28px}
+.documents{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr);gap:10px;align-items:center}
+.doc{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-left:4px solid var(--doc);border-radius:10px;
+padding:12px 15px;background:var(--surface);box-shadow:0 1px 2px #0f172a0f;min-width:0}.doc.old{--doc:var(--real)}.doc.new{--doc:var(--brand)}
+.doc-pill{flex:0 0 auto;border-radius:999px;padding:3px 9px;background:var(--doc);color:#fff;font-size:11px;font-weight:900;letter-spacing:.6px}
+.doc-name{font-weight:700;overflow-wrap:anywhere}.doc-rev{color:var(--muted);font-size:12px}.doc-arrow{text-align:center;color:#94a3b8;font-size:18px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+.kpi{border:1px solid var(--border);border-top:3px solid var(--accent,var(--border-strong));border-radius:10px;background:var(--surface);
+padding:13px 15px;box-shadow:0 1px 2px #0f172a0f}.kpi.real{--accent:var(--real)}.kpi.uncertain{--accent:var(--uncertain)}.kpi.noise{--accent:var(--noise)}
+.kpi span{display:block;color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
+.kpi strong{display:block;font-size:28px;line-height:1.15;margin-top:2px}.kpi small{color:var(--muted);font-size:12px}
+.matrix-title{margin:22px 0 0;font-size:16px}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:10px 0}
+.seg{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}
+.seg button{border:0;border-radius:6px;padding:6px 11px;background:transparent;color:var(--muted);font-weight:700;cursor:pointer}
+.seg button:hover{background:var(--surface2);color:var(--text)}.seg button.active{background:#334155;color:#fff}
+.seg button b{margin-left:5px;font-variant-numeric:tabular-nums;opacity:.75}
+.defaults{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}.defaults small{color:var(--muted);font-size:12px}
+.matrix{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface);border:1px solid var(--border);
 border-radius:10px;overflow:hidden}.matrix th,.matrix td{padding:11px 12px;border-bottom:1px solid var(--border);
-text-align:left;vertical-align:middle}.matrix th{font-size:11px;text-transform:uppercase;color:var(--muted);background:var(--surface2)}
-.matrix tr:last-child td{border-bottom:0}.matrix tbody tr:hover{background:#f8fafc}.sheet-no{font-size:20px;font-weight:900}
-.counts{display:flex;gap:5px;flex-wrap:wrap}.preview{display:grid;grid-template-columns:1fr 1fr;gap:5px;width:290px}
+text-align:left;vertical-align:top}.matrix th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:var(--surface2)}
+.matrix tr:last-child td{border-bottom:0}.matrix tbody tr{cursor:pointer}.matrix tbody tr:hover{background:#f8fafc}
+.matrix td.mid{vertical-align:middle}.sheet-no{font-size:20px;font-weight:900}
+.counts{display:flex;gap:5px;flex-wrap:wrap}.chip.zero{color:#94a3b8;background:transparent;border-color:var(--border)}
+.hl{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-width:520px;font-size:13px;line-height:1.35}
+.hl li{position:relative;padding-left:14px}.hl li:before{content:"";position:absolute;left:0;top:.45em;width:7px;height:7px;border-radius:2px;background:var(--real)}
+.hl li.uncertain:before{background:var(--uncertain)}.hl li.more,.hl li.none{color:var(--muted)}.hl li.more:before,.hl li.none:before{display:none}
+.hl li.none{padding-left:0}
+.preview{display:grid;grid-template-columns:1fr 1fr;gap:5px;width:250px}
 .preview figure{margin:0;position:relative;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#e2e8f0}
-.preview img{display:block;width:100%;height:64px;object-fit:contain;background:#fff}.preview figcaption{position:absolute;left:4px;
+.preview img{display:block;width:100%;height:58px;object-fit:contain;background:#fff}.preview figcaption{position:absolute;left:4px;
 top:4px;padding:2px 5px;border-radius:4px;background:#0f172ad9;color:#fff;font-size:9px;font-weight:900}
-.summary-text{max-width:420px;font-size:12px;color:var(--muted);line-height:1.5}
-@media(max-width:900px){.documents,.kpis{grid-template-columns:1fr 1fr}.wrap{padding:14px}.matrix{display:block;
-overflow-x:auto}.preview{width:230px}}@media(max-width:560px){.documents,.kpis{grid-template-columns:1fr}.hero{padding:16px}}
+.open{white-space:nowrap;color:var(--brand);font-weight:800;text-decoration:none}.open:hover{text-decoration:underline}
+.empty{padding:22px;text-align:center;color:var(--muted)}.footnote{margin:14px 2px 0;color:var(--muted);font-size:12px;line-height:1.5}
+@media(max-width:1100px){.preview{width:180px}}
+@media(max-width:900px){.kpis{grid-template-columns:1fr 1fr}.wrap{padding:14px}.matrix{display:block;
+overflow-x:auto}.documents{grid-template-columns:1fr}.doc-arrow{display:none}}@media(max-width:560px){.kpis{grid-template-columns:1fr}.hero{padding:16px}}
 """
 
 
@@ -74,7 +93,7 @@ gap:8px;align-items:center;border:1px solid transparent;border-radius:7px;paddin
 .zone-row:hover{background:var(--surface2)}.zone-row.active{border-color:var(--brand);background:#eff6ff}.zone-no{display:grid;
 place-items:center;width:25px;height:25px;border-radius:6px;color:#fff;font-size:11px;font-weight:900}.real .zone-no,.big-no.real{background:var(--real)}
 .noise .zone-no,.big-no.noise{background:var(--noise)}.uncertain .zone-no,.big-no.uncertain{background:var(--uncertain)}
-.zone-label{overflow:hidden}.zone-label b{display:block;font-size:12px}.zone-label span{display:block;overflow:hidden;text-overflow:ellipsis;
+.zone-label{overflow:hidden}.zone-label b{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.zone-label span{display:block;overflow:hidden;text-overflow:ellipsis;
 white-space:nowrap;color:var(--muted);font-size:10px}.confidence{font-size:10px;font-weight:800;color:var(--muted)}
 .viewer{display:grid;grid-template-rows:auto minmax(0,1fr);position:relative}.toolbar{display:flex;align-items:center;gap:7px;
 min-height:52px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap}.zoom-label{min-width:58px;
@@ -104,7 +123,7 @@ background:var(--noise-soft)}.class-badge.uncertain{color:#9a3412;background:var
 overflow:auto;padding:14px 15px;border-bottom:1px solid var(--border);font-size:13px;line-height:1.55}.structured h3{margin:0 0 7px;font-size:13px}
 .structured .lead{margin:0 0 13px;font-weight:750}.structured ul{margin:0 0 14px;padding-left:19px}.structured li{margin:0 0 6px}
 .structured strong{color:#0f172a;background:#fef3c7;border-radius:3px;padding:0 2px}.facts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-.fact{padding:7px 8px;border-radius:7px;background:var(--surface2);font-size:10px;color:var(--muted)}.fact b{display:block;color:var(--text);
+.delta{display:grid;gap:6px;margin:0 0 14px}.delta-row{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;align-items:start;border-radius:7px;padding:7px 9px;background:var(--surface2)}.delta-row span{justify-self:start;border-radius:4px;padding:1px 6px;color:#fff;font-size:10px;font-weight:900}.delta-row.old span{background:var(--real)}.delta-row.new span{background:var(--brand)}.delta-row p{margin:0;overflow-wrap:anywhere}.delta-impact{border-left:3px solid var(--border-strong);padding:2px 0 2px 10px}.delta-impact b{font-size:12px}.delta-impact p{margin:2px 0 0;color:var(--muted)}#manualClass{min-height:30px;margin-left:6px;border:1px solid var(--border-strong);border-radius:6px;padding:4px 8px;background:var(--surface);font:inherit;font-weight:700}.fact{padding:7px 8px;border-radius:7px;background:var(--surface2);font-size:10px;color:var(--muted)}.fact b{display:block;color:var(--text);
 font-size:12px;margin-top:2px}.detail{flex:0 0 228px;min-height:0;padding:13px 15px;border-bottom:1px solid var(--border);overflow:hidden}
 .detail-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.detail-title b{font-size:13px}.detail-slider{position:relative;
 overflow:hidden;aspect-ratio:1.8;border:1px solid var(--border);border-radius:8px;background:#e2e8f0}.detail-slider img{position:absolute;inset:0;
@@ -137,22 +156,24 @@ const emphasize=s=>esc(s).replace(/\b(OLD|NEW)\b|→|->|удален[а-яё]*|�
 function structure(z){let text=z.description.replace(/\*\*/g,'').trim(),title=`Зона ${z.id}`,body=text;const colon=text.indexOf(':');
 if(colon>0&&colon<115){title=text.slice(0,colon).trim().replace(/[«»]/g,'').replace(/\s*OLD\s*(?:->|→)\s*NEW\s*$/i,'');
 body=text.slice(colon+1).trim()}let facts=body.split(/;\s*/).map(x=>x.trim()).filter(Boolean);if(facts.length===1&&body.length>180)
-facts=body.split(/\.\s+(?=[А-ЯA-Z«])/).map(x=>x.trim()).filter(Boolean);return{title,facts:facts.length?facts:[body]}}
+facts=body.split(/\.\s+(?=[А-ЯA-Z«])/).map(x=>x.trim()).filter(Boolean);if(hasDelta(z))facts=facts.filter((x,n)=>n===0||!/^(OLD|NEW|Следствие|Последствие)\s*:/i.test(x));return{title,facts:facts.length?facts:[body]}}
+const hasDelta=z=>!!(String(z.old_value||'').trim()||String(z.new_value||'').trim());
+function zoneLabel(z){const ref=String(z.object_ref||'').trim();return ref||structure(z).title}
 function visibleZones(){return report.zones.map((z,i)=>({z,i})).filter(({z})=>(showNoise||kind(z)!=='noise')&&
 (activeFilter==='all'||z.classification===activeFilter))}function ensureSelection(){const v=visibleZones();if(!v.some(x=>x.i===selectedIndex)&&v.length)selectedIndex=v[0].i}
 function renderList(){ensureSelection();zoneList.innerHTML='';visibleZones().forEach(({z,i})=>{const b=document.createElement('button');
 b.className=`zone-row ${kind(z)} ${i===selectedIndex?'active':''}`;b.innerHTML=`<span class="zone-no">${z.id}</span><span class="zone-label">
-<b>Зона ${z.id}</b><span>${esc(z.description.slice(0,88))}${z.description.length>88?'…':''}</span></span><span class="confidence">${z.confidence}%</span>`;
+<b>${esc(zoneLabel(z))}</b><span>${esc(structure(z).facts[0].slice(0,96))}${structure(z).facts[0].length>96?'…':''}</span></span><span class="confidence">${z.confidence}%</span>`;
 b.onclick=()=>selectZone(i,true);zoneList.appendChild(b)});if(!zoneList.children.length)zoneList.innerHTML='<div class="detail-empty">В этом фильтре зон нет.</div>'}
 function renderBoxes(){zonesLayer.innerHTML='';const visible=new Set(visibleZones().map(v=>v.i));const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('class','shape-layer');zonesLayer.appendChild(svg);report.zones.forEach((z,i)=>{if(!z.rect||!visible.has(i))return;const r=z.rect,b=document.createElement('div');
 const shapes=z.polygons_px||[];if(shapes.length){const group=document.createElementNS(ns,'g');group.setAttribute('class',`object-shape ${kind(z)} ${i===selectedIndex?'selected':''}`);shapes.forEach(points=>{const poly=document.createElementNS(ns,'polygon');poly.setAttribute('points',points.map(p=>p.join(',')).join(' '));group.appendChild(poly)});svg.appendChild(group)}
 b.className=`zone-box ${shapes.length?'has-shape':''} ${report.report_schema==='semantic-v1'?'object-bound':''} ${kind(z)} ${i===selectedIndex?'selected':''} ${r.y<120?'near-top':''}`;b.style.cssText=`left:${r.x/W*100}%;top:${r.y/H*100}%;
 width:${r.w/W*100}%;height:${r.h/H*100}%`;b.innerHTML=`<span class="zone-tag">${z.id}</span>`;zonesLayer.appendChild(b)})}
 function updateNoiseLabel(){const b=document.getElementById('noiseToggle');b.classList.toggle('active',showNoise);b.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать оформление/шум (${report.counts.alignment_or_rendering_noise})`}
-function selectZone(i,focus=false){updateNoiseLabel();if(!report.zones.length||!visibleZones().length){const hasChanges=report.zones.some(z=>z.classification==='real_change'||z.classification==='uncertain');document.getElementById('zoneTitle').textContent=hasChanges?'В этом фильтре зон нет':'Содержательных правок не выявлено';document.getElementById('observationTitle').textContent='Результат просмотра';document.getElementById('observationLead').textContent=hasChanges?'Выберите другой фильтр для просмотра наблюдений.':'В прочитанных фрагментах AI не выявил содержательных изменений. Техническое покрытие отдельно указано в отчёте.';document.getElementById('changesSection').hidden=true;document.getElementById('classBadge').hidden=true;document.getElementById('detailSlider').hidden=true;document.getElementById('detailRange').hidden=true;document.getElementById('detailEmpty').hidden=false;document.getElementById('detailEmpty').textContent='Выберите наблюдение в другом фильтре.';document.getElementById('focusZone').disabled=true;document.getElementById('bigNo').textContent='—';document.getElementById('confidence').textContent='—';document.getElementById('rect').textContent='—';document.getElementById('manualClass').disabled=true;document.getElementById('aiVerdict').textContent='';renderBoxes();return}const visible=visibleZones();selectedIndex=visible.some(v=>v.i===i)?i:visible[0].i;const z=report.zones[selectedIndex],r=z.rect,k=kind(z),s=structure(z);
+function selectZone(i,focus=false){updateNoiseLabel();if(!report.zones.length||!visibleZones().length){const hasChanges=report.zones.some(z=>z.classification==='real_change'||z.classification==='uncertain');document.getElementById('zoneTitle').textContent=hasChanges?'В этом фильтре зон нет':'Содержательных правок не выявлено';document.getElementById('observationTitle').textContent='Результат просмотра';document.getElementById('observationLead').textContent=hasChanges?'Выберите другой фильтр для просмотра наблюдений.':'В прочитанных фрагментах AI не выявил содержательных изменений. Техническое покрытие отдельно указано в отчёте.';document.getElementById('changesSection').hidden=true;document.getElementById('deltaBlock').hidden=true;document.getElementById('observationTitle').hidden=false;document.getElementById('classBadge').hidden=true;document.getElementById('detailSlider').hidden=true;document.getElementById('detailRange').hidden=true;document.getElementById('detailEmpty').hidden=false;document.getElementById('detailEmpty').textContent='Выберите наблюдение в другом фильтре.';document.getElementById('focusZone').disabled=true;document.getElementById('bigNo').textContent='—';document.getElementById('confidence').textContent='—';document.getElementById('rect').textContent='—';document.getElementById('manualClass').disabled=true;document.getElementById('aiVerdict').textContent='';renderBoxes();return}const visible=visibleZones();selectedIndex=visible.some(v=>v.i===i)?i:visible[0].i;const z=report.zones[selectedIndex],r=z.rect,k=kind(z),s=structure(z);
 document.getElementById('manualClass').disabled=false;document.getElementById('manualClass').value=z.manual_classification||'auto';document.getElementById('aiVerdict').textContent='Вывод AI: '+kindLabel({classification:z.ai_classification})+(z.manual_classification?' · изменено вручную':'');
-document.getElementById('bigNo').textContent=z.id;document.getElementById('bigNo').className=`big-no ${k}`;document.getElementById('zoneTitle').textContent=`Зона ${z.id}`;
-const badge=document.getElementById('classBadge');badge.hidden=false;badge.textContent=kindLabel(z);badge.className=`class-badge ${k}`;document.getElementById('observationTitle').textContent=s.title;
+document.getElementById('bigNo').textContent=z.id;document.getElementById('bigNo').className=`big-no ${k}`;document.getElementById('zoneTitle').textContent=zoneLabel(z);
+const badge=document.getElementById('classBadge');badge.hidden=false;badge.textContent=kindLabel(z);badge.className=`class-badge ${k}`;document.getElementById('observationTitle').textContent=s.title;document.getElementById('observationTitle').hidden=s.title===zoneLabel(z);const delta=document.getElementById('deltaBlock');delta.hidden=!hasDelta(z);document.getElementById('deltaOld').textContent=String(z.old_value||'').trim()||'—';document.getElementById('deltaNew').textContent=String(z.new_value||'').trim()||'—';const impact=String(z.design_impact||'').trim();document.getElementById('deltaImpact').hidden=!impact;document.getElementById('deltaImpactText').textContent=impact;
 document.getElementById('observationLead').innerHTML=emphasize(s.facts[0]);const changes=document.getElementById('changesSection');changes.hidden=s.facts.length<2;
 document.getElementById('observationFacts').innerHTML=s.facts.slice(1).map(x=>`<li>${emphasize(x)}</li>`).join('');document.getElementById('confidence').textContent=`${z.confidence}%`;
 document.getElementById('rect').textContent=r?`${r.x}, ${r.y} · ${r.w}×${r.h}`:'весь лист';const slider=document.getElementById('detailSlider'),range=document.getElementById('detailRange');
@@ -166,7 +187,7 @@ function focusSelected(){const r=report.zones[selectedIndex]?.rect;if(!r)return;
 const target=Math.min((stage.clientWidth*.76)/(r.w+p*2),(stage.clientHeight*.76)/(r.h+p*2),1.35);setScale(Math.max(target,.08),{x:r.x+r.w/2,y:r.y+r.h/2,
 clientX:stage.clientWidth/2,clientY:stage.clientHeight/2})}function setSplit(v){v=Math.max(0,Math.min(100,v));surface.style.setProperty('--split',`${v}%`);splitKnob.textContent=`${Math.round(v)}%`}
 function splitAt(e){const r=surface.getBoundingClientRect();setSplit((e.clientX-r.left)/r.width*100)}function toggleNoise(){showNoise=!showNoise;if(showNoise&&activeFilter==='real_change')activeFilter='all';const b=document.getElementById('noiseToggle');
-b.classList.toggle('active',showNoise);b.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать шум (${report.counts.alignment_or_rendering_noise})`;
+b.classList.toggle('active',showNoise);b.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать оформление/шум (${report.counts.alignment_or_rendering_noise})`;
 if(!showNoise&&activeFilter==='alignment_or_rendering_noise'){activeFilter='all';document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter==='all'))}
 document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===activeFilter));renderList();renderBoxes();ensureSelection();selectZone(selectedIndex,false)}function markdown(){if(!visibleZones().length)return `Лист ${report.seq}: в текущем фильтре нет наблюдений.`;const z=report.zones[selectedIndex],s=structure(z),r=z.rect;
 const lines=[`### Лист ${report.seq} — зона ${z.id}`,`**Тип:** ${kindLabel(z)}`,`**Уверенность:** ${z.confidence}%`,`**Область:** ${r?`${r.x}, ${r.y}; ${r.w}×${r.h} px`:'весь лист'}`,
@@ -198,6 +219,72 @@ setSplit(50);renderList();renderBoxes();ensureSelection();selectZone(selectedInd
 """
 
 
+_INDEX_UI_SCRIPT = r"""
+const sheetRows=[...document.querySelectorAll('tr[data-seq]')],emptyRow=document.getElementById('emptySheets');
+const escHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function zoneLabel(z){const ref=String(z.object_ref||'').trim();if(ref)return ref;const d=String(z.description||'').replace(/\*\*/g,'').trim(),c=d.indexOf(':');
+return(c>0&&c<115?d.slice(0,c):d).trim()}
+const clip=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+function renderHighlights(){reviewReport.sheets.forEach(s=>{const el=document.querySelector('[data-highlights="'+s.seq+'"]');if(!el)return;
+const seen=new Set(),items=[];['real_change','uncertain'].forEach(k=>s.zones.forEach(z=>{if(z.classification!==k)return;const t=zoneLabel(z);
+if(t&&!seen.has(k+t)){seen.add(k+t);items.push([k==='real_change'?'real':'uncertain',t])}}));const noise=s.zones.filter(z=>z.classification==='alignment_or_rendering_noise').length;
+let html=items.slice(0,4).map(([k,t])=>`<li class="${k}" title="${escHtml(t)}">${escHtml(clip(t,72))}</li>`).join('');
+if(items.length>4)html+=`<li class="more">и ещё ${items.length-4}</li>`;if(!items.length)html=`<li class="none">${noise?`Только оформление / шум (${noise})`:'Правок не найдено'}</li>`;el.innerHTML=html})}
+const sheetKind=s=>s.counts.real_change?'real':s.counts.uncertain?'uncertain':'none';let sheetFilter='all';
+function applySheetFilter(){const bySeq=new Map(reviewReport.sheets.map(s=>[String(s.seq),s]));let shown=0;sheetRows.forEach(r=>{const s=bySeq.get(r.dataset.seq);
+const ok=sheetFilter==='all'||(sheetFilter==='real'&&s.counts.real_change>0)||(sheetFilter==='uncertain'&&s.counts.uncertain>0)||(sheetFilter==='none'&&sheetKind(s)==='none');
+r.hidden=!ok;if(ok)shown++});emptyRow.hidden=shown>0;document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('active',b.dataset.sheets===sheetFilter))}
+function refreshIndex(){const n={all:reviewReport.sheets.length,real:0,uncertain:0,none:0};reviewReport.sheets.forEach(s=>{if(s.counts.real_change)n.real++;if(s.counts.uncertain)n.uncertain++;if(sheetKind(s)==='none')n.none++});
+document.querySelectorAll('[data-sheet-count]').forEach(el=>el.textContent=n[el.dataset.sheetCount]);
+document.querySelectorAll('.chip[data-count]').forEach(c=>c.classList.toggle('zero',parseInt(c.textContent,10)===0));renderHighlights();applySheetFilter()}
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{sheetFilter=b.dataset.sheets;applySheetFilter()});
+sheetRows.forEach(r=>r.addEventListener('click',e=>{if(e.target.closest('a'))return;const a=r.querySelector('a.open');if(a)location.href=a.href}));
+refreshIndex();
+"""
+
+
+def _revision(source: dict[str, Any], key: str, default: str) -> str:
+    """The revision label, or "" when the report only knows the role name."""
+    value = str(source.get(key) or "").strip()
+    return "" if not value or value.upper() == default else value
+
+
+def _zone_label(zone: dict[str, Any]) -> str:
+    reference = str(zone.get("object_ref") or "").strip()
+    if reference:
+        return reference
+    text = str(zone.get("description") or "").replace("**", "").strip()
+    colon = text.find(":")
+    return (text[:colon] if 0 < colon < 115 else text).strip()
+
+
+def _highlights_html(zones: Sequence[dict[str, Any]]) -> str:
+    """What changed on the sheet: object names, edits first, then items to check.
+
+    Mirrors renderHighlights() in the page script, which redraws the list once the
+    reader's manual decisions are applied; this copy is what shows without them.
+    """
+    seen: set[tuple[str, str]] = set()
+    items: list[tuple[str, str]] = []
+    for classification, css in (("real_change", "real"), ("uncertain", "uncertain")):
+        for zone in zones:
+            label = _zone_label(zone)
+            if zone.get("classification") == classification and label and (css, label) not in seen:
+                seen.add((css, label))
+                items.append((css, label))
+    noise = sum(zone.get("classification") == "alignment_or_rendering_noise" for zone in zones)
+    if not items:
+        text = f"Только оформление / шум ({noise})" if noise else "Правок не найдено"
+        return f"<li class='none'>{escape(text)}</li>"
+    html = "".join(
+        f"<li class='{css}' title='{escape(label, quote=True)}'>{escape(label if len(label) <= 72 else label[:71] + '…')}</li>"
+        for css, label in items[:4]
+    )
+    if len(items) > 4:
+        html += f"<li class='more'>и ещё {len(items) - 4}</li>"
+    return html
+
+
 def vision_index_html(
     provider: str,
     model: str,
@@ -210,47 +297,84 @@ def vision_index_html(
         raise ValueError("At least one sheet is required")
     first = sheets[0]
     source = first.get("source") or {}
+
+    def count(sheet: dict[str, Any], name: str) -> int:
+        return int((sheet.get("counts") or {}).get(name) or 0)
+
     totals = {
-        name: sum(int((sheet.get("counts") or {}).get(name) or 0) for sheet in sheets)
+        name: sum(count(sheet, name) for sheet in sheets)
         for name in ("real_change", "alignment_or_rendering_noise", "uncertain")
     }
+    with_real = sum(1 for sheet in sheets if count(sheet, "real_change"))
+    with_uncertain = sum(1 for sheet in sheets if count(sheet, "uncertain"))
+    clean = sum(1 for sheet in sheets if not count(sheet, "real_change") and not count(sheet, "uncertain"))
     rows: list[str] = []
     for sheet in sheets:
         seq = int(sheet["seq"])
-        counts = sheet.get("counts") or {}
-        summary = str(sheet.get("global_alignment") or "Совмещение не определено").rstrip(". ") + "."
-        rows.append(
-            f"<tr><td><span class='sheet-no'>{seq}</span></td><td><div class='counts'>"
-            f"<span class='chip real' data-sheet='{seq}' data-count='real_change' data-suffix=' правок'>{int(counts.get('real_change') or 0)} правок</span>"
-            f"<span class='chip noise' data-sheet='{seq}' data-count='alignment_or_rendering_noise' data-suffix=' шум'>{int(counts.get('alignment_or_rendering_noise') or 0)} шум</span>"
-            f"<span class='chip uncertain' data-sheet='{seq}' data-count='uncertain' data-suffix=' проверить'>{int(counts.get('uncertain') or 0)} проверить</span></div></td>"
-            f"<td><div class='summary-text'>{escape(summary)} Контуры относятся к объектам; сомнения требуют проверки.</div></td>"
-            f"<td><div class='preview'><figure><img src='sheets/sheet_{seq:03d}/old_thumb.png' alt='OLD лист {seq}'>"
-            f"<figcaption>OLD</figcaption></figure><figure><img src='sheets/sheet_{seq:03d}/new_thumb.png' alt='NEW лист {seq}'>"
-            f"<figcaption>NEW</figcaption></figure></div></td><td><a class='btn primary' "
-            f"href='sheets/sheet_{seq:03d}/comparison.html'>Открыть лист</a></td></tr>"
+        chips = "".join(
+            f"<span class='chip {css}{'' if count(sheet, name) else ' zero'}' data-sheet='{seq}' data-count='{name}' "
+            f"data-suffix='{suffix}'>{count(sheet, name)}{suffix}</span>"
+            for name, css, suffix in (
+                ("real_change", "real", " правок"),
+                ("uncertain", "uncertain", " проверить"),
+                ("alignment_or_rendering_noise", "noise", " шум"),
+            )
         )
+        rows.append(
+            f"<tr data-seq='{seq}'><td class='mid'><span class='sheet-no'>{seq}</span></td>"
+            f"<td class='mid'><div class='counts'>{chips}</div></td>"
+            f"<td><ul class='hl' data-highlights='{seq}'>{_highlights_html(sheet.get('zones') or [])}</ul></td>"
+            f"<td class='mid'><div class='preview'><figure><img loading='lazy' src='sheets/sheet_{seq:03d}/old_thumb.png' alt='OLD лист {seq}'>"
+            f"<figcaption>OLD</figcaption></figure><figure><img loading='lazy' src='sheets/sheet_{seq:03d}/new_thumb.png' alt='NEW лист {seq}'>"
+            f"<figcaption>NEW</figcaption></figure></div></td><td class='mid'><a class='open' "
+            f"href='sheets/sheet_{seq:03d}/comparison.html'>Открыть лист →</a></td></tr>"
+        )
+    alignments = {str(sheet.get("global_alignment") or "").strip().rstrip(". ") for sheet in sheets}
+    alignments.discard("")
+    method = f"{alignments.pop()}. " if len(alignments) == 1 else ""
+
+    def document(role: str, key: str, name_key: str) -> str:
+        revision = _revision(source, key, role)
+        rev_html = f"<div class='doc-rev'>ревизия {escape(revision)}</div>" if revision else ""
+        return (
+            f"<article class='doc {role.lower()}'><span class='doc-pill'>{role}</span><div>"
+            f"<div class='doc-name'>{escape(str(source.get(name_key) or role))}</div>{rev_html}</div></article>"
+        )
+
+    payload = json.dumps(dict(model=model, sheets=list(sheets)), ensure_ascii=False).replace("</", "<\\/")
     return (
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' "
         "content='width=device-width,initial-scale=1'><title>AI Compare — матрица листов</title>"
         f"<style>{_INDEX_CSS}</style></head><body><header class='hero'><div class='hero-row'><div class='hero-mark'>AI</div>"
-        f"<div><h1>{escape(provider)} AI Compare — матрица проверенных листов</h1><p>Модель: {escape(model)} · интерфейс PDFCompare</p>"
+        f"<div><h1>{escape(provider)} AI Compare — матрица проверенных листов</h1>"
+        f"<p>Модель: {escape(model)} · листов: {len(sheets)} · интерфейс PDFCompare</p>"
         "</div></div></header><main class='wrap'><section class='documents'>"
-        f"<article class='doc'><b>OLD · {escape(str(source.get('old_revision') or 'OLD'))}</b>"
-        f"<span>{escape(str(source.get('old_name') or 'OLD'))}</span></article>"
-        f"<article class='doc'><b>NEW · {escape(str(source.get('new_revision') or 'NEW'))}</b>"
-        f"<span>{escape(str(source.get('new_name') or 'NEW'))}</span></article></section><section class='kpis'>"
-        f"<article class='kpi'><span>Проверено листов</span><strong>{len(sheets)}</strong></article>"
-        f"<article class='kpi'><span>Реальные изменения</span><strong data-count='real_change'>{totals['real_change']}</strong></article>"
-        f"<article class='kpi'><span>Шумовые зоны</span><strong data-count='alignment_or_rendering_noise'>{totals['alignment_or_rendering_noise']}</strong></article>"
-        f"<article class='kpi'><span>Требуют проверки</span><strong data-count='uncertain'>{totals['uncertain']}</strong></article></section>"
-        "<section class='doc'><label><input type='checkbox' id='defaultOnlyChanges'> По умолчанию показывать только правки на всех листах</label>"
-        "<p id='reviewStatus'>Ручная оценка сохраняется в этом браузере и не меняет исходный вывод AI. Оранжевые зоны доступны в фильтре «Проверить».</p></section>"
-        "<div class='section-title'><h2>Матрица AI-сравнения</h2><span class='chip'>Правки и сомнения; оформление можно скрыть</span></div>"
-        "<table class='matrix'><thead><tr><th>Лист</th><th>Классификация</th><th>Сводка</th><th>Превью</th><th>Открыть</th>"
-        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></main>"
-        f"<script id='reportData' type='application/json'>{json.dumps(dict(model=model,sheets=list(sheets)),ensure_ascii=False).replace('</','<\\/')}</script>"
-        f"<script>{INDEX_REVIEW_SCRIPT}</script></body></html>"
+        f"{document('OLD', 'old_revision', 'old_name')}<span class='doc-arrow'>→</span>"
+        f"{document('NEW', 'new_revision', 'new_name')}</section><section class='kpis'>"
+        f"<article class='kpi real'><span>Правки</span><strong data-count='real_change'>{totals['real_change']}</strong>"
+        f"<small>на листах: <b data-sheet-count='real'>{with_real}</b></small></article>"
+        f"<article class='kpi uncertain'><span>Требуют проверки</span><strong data-count='uncertain'>{totals['uncertain']}</strong>"
+        f"<small>на листах: <b data-sheet-count='uncertain'>{with_uncertain}</b></small></article>"
+        "<article class='kpi noise'><span>Оформление / шум</span>"
+        f"<strong data-count='alignment_or_rendering_noise'>{totals['alignment_or_rendering_noise']}</strong>"
+        "<small>на листах скрыты по умолчанию</small></article>"
+        f"<article class='kpi'><span>Проверено листов</span><strong>{len(sheets)}</strong>"
+        f"<small>без правок: <b data-sheet-count='none'>{clean}</b></small></article></section>"
+        "<h2 class='matrix-title'>Матрица AI-сравнения</h2><section class='toolbar'><div class='seg' role='group' aria-label='Какие листы показать'>"
+        f"<button class='active' data-sheets='all'>Все<b data-sheet-count='all'>{len(sheets)}</b></button>"
+        f"<button data-sheets='real'>С правками<b data-sheet-count='real'>{with_real}</b></button>"
+        f"<button data-sheets='uncertain'>Проверить<b data-sheet-count='uncertain'>{with_uncertain}</b></button>"
+        f"<button data-sheets='none'>Без правок<b data-sheet-count='none'>{clean}</b></button></div>"
+        "<div class='defaults'><label><input type='checkbox' id='defaultOnlyChanges'> "
+        "По умолчанию показывать только правки на всех листах</label>"
+        "<small id='reviewStatus'>Ручная оценка хранится в этом браузере.</small></div></section>"
+        "<table class='matrix'><thead><tr><th>Лист</th><th>Найдено</th><th>Что изменилось</th><th>Превью</th><th></th>"
+        f"</tr></thead><tbody>{''.join(rows)}"
+        "<tr id='emptySheets' hidden><td colspan='5' class='empty'>Нет листов в этом фильтре.</td></tr></tbody></table>"
+        f"<p class='footnote'>{escape(method)}Контуры объектов приблизительны. Оранжевые наблюдения AI не подтвердил — "
+        "их нужно проверить. Ручная оценка («Ваша оценка» на листе) хранится в этом браузере и не меняет исходный вывод AI.</p></main>"
+        f"<script id='reportData' type='application/json'>{payload}</script>"
+        f"<script>{INDEX_REVIEW_SCRIPT}{_INDEX_UI_SCRIPT}</script></body></html>"
     )
 
 
@@ -285,6 +409,10 @@ def vision_sheet_html(
     source = sheet.get("source") or {}
     counts = sheet.get("counts") or {}
     width, height = (int(value) for value in sheet["size_px"])
+    old_rev, new_rev = _revision(source, "old_revision", "OLD"), _revision(source, "new_revision", "NEW")
+    revisions = f" · {escape(old_rev or 'OLD')} → {escape(new_rev or 'NEW')}" if old_rev or new_rev else ""
+    old_corner = f"OLD · {escape(old_rev)}" if old_rev else "OLD"
+    new_corner = f"NEW · {escape(new_rev)}" if new_rev else "NEW"
     payload = dict(sheet)
     payload["size_px"] = [width, height]
     report_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
@@ -293,8 +421,7 @@ def vision_sheet_html(
         f"content='width=device-width,initial-scale=1'><title>AI-сравнение · Лист {seq}</title><style>{_SHEET_CSS}</style></head>"
         "<body><div class='app'><header class='topbar'>"
         f"<a class='btn' href='../../{escape(root_filename)}'>⌂ Обзор</a><div class='brand'><div class='brand-mark'>AI</div><div>"
-        f"<div class='title'>Лист {seq} · {escape(str(source.get('old_revision') or 'OLD'))} → "
-        f"{escape(str(source.get('new_revision') or 'NEW'))}</div><div class='subtitle'>Содержательные правки · оранжевый: требуется проверка · контуры приблизительные</div></div></div>"
+        f"<div class='title'>Лист {seq}{revisions}</div><div class='subtitle'>Содержательные правки · оранжевый: требуется проверка · контуры приблизительные</div></div></div>"
         f"<button class='btn noise-toggle active' id='noiseToggle'>Скрыть шум ({int(counts.get('alignment_or_rendering_noise') or 0)})</button>"
         "<button class='btn' id='copyMarkdown'>⧉ Копировать Markdown</button></header><main class='workspace'>"
         "<aside class='panel summary'><div class='panel-head'><h2>Общая сводка</h2><p>Выберите наблюдение — лист приблизится к объекту, "
@@ -309,8 +436,8 @@ def vision_sheet_html(
         f"<button class='btn' id='fit'>Вписать</button><span class='slider-help'>ЛКМ по листу — граница OLD / NEW</span><span class='quality'>PNG · {width}×{height}</span>"
         "</div><div class='stage' id='stage'><div class='surface' id='surface'><img class='sheet new' src='new.png' alt='Новая ревизия'>"
         "<img class='sheet old' src='old.png' alt='Старая ревизия'><div class='zones-layer' id='zonesLayer'></div><div class='split-line'></div>"
-        f"<div class='split-knob' id='splitKnob'>50%</div><span class='corner-label old'>OLD · {escape(str(source.get('old_revision') or 'OLD'))}</span>"
-        f"<span class='corner-label new'>NEW · {escape(str(source.get('new_revision') or 'NEW'))}</span></div><div class='hint'>ЛКМ — OLD/NEW · "
+        f"<div class='split-knob' id='splitKnob'>50%</div><span class='corner-label old'>{old_corner}</span>"
+        f"<span class='corner-label new'>{new_corner}</span></div><div class='hint'>ЛКМ — OLD/NEW · "
         "Ctrl+колесо — масштаб · ПКМ/СКМ или Space+drag — панорама · 0 — вписать</div></div></section>"
         "<aside class='panel inspector'><div class='zone-header'><div class='zone-heading'><span class='big-no real' id='bigNo'>1</span><div>"
         "<h2 id='zoneTitle'>Зона 1</h2><span class='class-badge real' id='classBadge'>Реальное изменение</span></div></div></div>"
@@ -318,7 +445,7 @@ def vision_sheet_html(
         "<option value='real_change'>Правка</option><option value='alignment_or_rendering_noise'>Шум</option><option value='uncertain'>Проверить</option></select>"
         "<p id='aiVerdict'></p><small id='reviewStatus'>Сохраняется в этом браузере</small></div>"
         "<div class='structured'><h3 id='observationTitle'>Наблюдение</h3><p class='lead' id='observationLead'></p>"
-        "<div id='changesSection'><h3>Что изменилось</h3><ul id='observationFacts'></ul></div><h3>Проверка</h3><div class='facts'>"
+        "<div class='delta' id='deltaBlock' hidden><div class='delta-row old'><span>OLD</span><p id='deltaOld'></p></div><div class='delta-row new'><span>NEW</span><p id='deltaNew'></p></div><div class='delta-impact' id='deltaImpact'><b>Последствие</b><p id='deltaImpactText'></p></div></div><div id='changesSection'><h3>Что изменилось</h3><ul id='observationFacts'></ul></div><h3>Проверка</h3><div class='facts'>"
         "<div class='fact'>Уверенность<b id='confidence'>—</b></div><div class='fact'>Область, px<b id='rect'>—</b></div></div></div>"
         "<div class='detail'><div class='detail-title'><b>Детальный OLD / NEW</b><span class='quality'>без JPEG</span></div>"
         "<div class='detail-slider' id='detailSlider'><img id='detailNew' alt='NEW crop'><img class='detail-old' id='detailOld' alt='OLD crop'>"
