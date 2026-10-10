@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import html
 
-from .classification import level_to_report_tags
+from .classification import level_signals, level_to_report_tags
 from .constants import FG_MINOR_PERCENT, FG_MODERATE_PERCENT
 from .html_i18n import HTML_REPORT_I18N
 
@@ -27,6 +27,7 @@ LEVEL_LABEL_KEYS = {
     "MODERATE": "level_moderate",
     "MINOR": "level_minor",
     "UNCHANGED": "level_unchanged",
+    "SIZE_MISMATCH": "level_size_mismatch",
 }
 STATUS_BADGE_CLASSES = {
     "CHANGED": "st-changed",
@@ -39,6 +40,13 @@ LEVEL_BADGE_CLASSES = {
     "MODERATE": "lv-moderate",
     "MINOR": "lv-minor",
     "UNCHANGED": "lv-unchanged",
+    "SIZE_MISMATCH": "lv-format",
+}
+SIGNAL_LEVEL_NAMES = {
+    "unchanged": ("нет", "none"),
+    "minor": ("малые", "minor"),
+    "moderate": ("средние", "moderate"),
+    "major": ("крупные", "major"),
 }
 
 
@@ -78,6 +86,14 @@ class ReportI18n:
         en_attr = html.escape(en_text, quote=True)
         current = html.escape(en_text if self.lang == "en" else ru_text, quote=True)
         return f'{attr_name}="{current}" data-i18n-aria-ru="{ru_attr}" data-i18n-aria-en="{en_attr}"'
+
+    def i18n_title(self, ru_text: str, en_text: str) -> str:
+        """A ``title`` tooltip that follows the in-browser language switch."""
+        current = html.escape(en_text if self.lang == "en" else ru_text, quote=True)
+        return (
+            f'title="{current}" data-i18n-title-ru="{html.escape(ru_text, quote=True)}" '
+            f'data-i18n-title-en="{html.escape(en_text, quote=True)}"'
+        )
 
     def i18n_attr(self, key: str, attr_name: str) -> str:
         ru = html.escape(str(self.all["ru"].get(key, key)), quote=True)
@@ -131,13 +147,48 @@ class ReportBadges:
         label = self.i18n.i18n_span(key) if key else html.escape(status_tag)
         return f'<span class="badge {cls}">{label}</span>'
 
-    def level_badge_html(self, level_tag: str) -> str:
+    def level_badge_html(self, level_tag: str, page: dict | None = None) -> str:
         if not level_tag:
             return "—"
         cls = LEVEL_BADGE_CLASSES.get(level_tag, "lv-major")
         key = LEVEL_LABEL_KEYS.get(level_tag)
         label = self.i18n.i18n_span(key) if key else html.escape(level_tag)
-        return f'<span class="badge {cls}">{label}</span>'
+        reason = self.level_reason(page) if page is not None else None
+        title = f" {self.i18n.i18n_title(*reason)}" if reason else ""
+        return f'<span class="badge {cls}"{title}>{label}</span>'
+
+    def level_signal_rows(self, page: dict) -> list[tuple[str, str, str, str, str]]:
+        """``(name_ru, name_en, value_ru, value_en, level)`` for each signal the level weighs."""
+        rows: list[tuple[str, str, str, str, str]] = []
+        for signal, value, level in level_signals(
+            page.get("diff_foreground_metric"),
+            bool(page.get("foreground_sparse") or False),
+            page.get("max_region_area_mm2"),
+            page.get("bboxes_count"),
+        ):
+            if signal == "fg":
+                rows.append(("заполнено", "drawn", f"{value:.2f}%", f"{value:.2f}%", level))
+            elif signal == "region":
+                rows.append(("макс. зона", "largest zone", f"{value:.1f} мм²", f"{value:.1f} mm²", level))
+            else:
+                rows.append(("зон", "zones", f"{int(value)}", f"{int(value)}", level))
+        return rows
+
+    def level_reason(self, page: dict) -> tuple[str, str] | None:
+        """Tooltip text: every signal with the level it reached; the sheet gets the worst."""
+        rows = self.level_signal_rows(page)
+        if not rows:
+            return None
+        parts_ru: list[str] = []
+        parts_en: list[str] = []
+        for name_ru, name_en, value_ru, value_en, level in rows:
+            level_ru, level_en = SIGNAL_LEVEL_NAMES.get(level, (level, level))
+            parts_ru.append(f"{name_ru} {value_ru} → {level_ru}")
+            parts_en.append(f"{name_en} {value_en} → {level_en}")
+        return (
+            "Уровень = худший из сигналов: " + "; ".join(parts_ru),
+            "Level = worst of the signals: " + "; ".join(parts_en),
+        )
 
     def is_mixed_precision_page(self, page: dict) -> bool:
         return bool((page.get("page_settings") or {}).get("mixed_settings"))

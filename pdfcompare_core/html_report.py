@@ -17,9 +17,18 @@ import fitz
 
 from .classification import status_and_confidence
 from .constants import (
+    FG_MAJOR_PERCENT,
+    FG_MINOR_PERCENT,
+    FG_MODERATE_PERCENT,
     PAGE_INFO_THUMB_DPI,
+    REGION_MAJOR_MM2,
+    REGION_MINOR_MM2,
+    REGION_MODERATE_MM2,
     START_REPORT_FILE,
     UNCHANGED_DIFF_PERCENT,
+    ZONES_MAJOR,
+    ZONES_MINOR,
+    ZONES_MODERATE,
 )
 from .pdf_io import (
     copy_thumb,
@@ -39,8 +48,45 @@ from .html_fragments import (
     ReportBadges,
     ReportI18n,
 )
+from .html_i18n import HTML_REPORT_I18N
 from .html_icons import report_icon
 from .html_help import help_script, help_shell_html
+
+
+def _page_notes(row: dict, content_status: str, t: dict[str, str]) -> list[tuple[str, str]]:
+    """The sheet's explanation as ``(kind, text)``: a summary, then warnings/info.
+
+    ``kind`` is ``summary``, ``warn`` (the diff is less trustworthy than it looks)
+    or ``info``; the detail page styles them differently.
+    """
+    notes: list[tuple[str, str]] = []
+    if row["status"] == "added":
+        notes.append(("summary", t["note_new_only"]))
+    elif row["status"] == "removed":
+        notes.append(("summary", t["note_removed_in_b"]))
+    elif row["status"] == "size_mismatch":
+        notes.append(("warn", t["note_size_mismatch"]))
+    elif content_status == "UNCHANGED":
+        notes.append(("summary", t["note_no_significant"]))
+    else:
+        fg = row.get("diff_foreground_percent")
+        area = float(row.get("diff_area_mm2") or 0)
+        n_zones = int(row.get("bboxes_count") or 0)
+        max_region = float(row.get("max_region_area_mm2") or 0)
+        if bool(row.get("foreground_sparse") or False) or fg is None:
+            notes.append(("summary", t["note_visual_changes_sparse"].format(area=area, n=n_zones, max=max_region)))
+        else:
+            notes.append(
+                ("summary", t["note_visual_changes"].format(fg=float(fg), area=area, n=n_zones, max=max_region))
+            )
+    if row.get("ecc_failed"):
+        notes.append(("info", t["note_ecc_failed"]))
+    else:
+        shift_x_mm = float(row.get("alignment_shift_x_mm") or 0.0)
+        shift_y_mm = float(row.get("alignment_shift_y_mm") or 0.0)
+        if (shift_x_mm**2 + shift_y_mm**2) ** 0.5 >= 0.2:
+            notes.append(("info", t["note_alignment_shift"].format(x=shift_x_mm, y=shift_y_mm)))
+    return notes
 
 
 def _prepare_pages_records(
@@ -96,43 +142,19 @@ def _prepare_pages_records(
         if row["status"] == "added":
             status_simple = "NEW"
             status_ru = t["status_new_sheet"]
-            note = t["note_new_only"]
         elif row["status"] == "removed":
             status_simple = "CHANGED"
             status_ru = t["status_changed_short"]
-            note = t["note_removed_in_b"]
         elif content_status == "UNCHANGED":
             status_simple = "UNCHANGED"
             status_ru = t["status_unchanged_short"]
-            note = t["note_no_significant"]
         else:
             status_simple = "CHANGED"
             status_ru = t["status_changed_short"]
-            fg = row.get("diff_foreground_percent")
-            area = row.get("diff_area_mm2")
-            n_zones = row.get("bboxes_count")
-            max_region = row.get("max_region_area_mm2")
-            sparse = bool(row.get("foreground_sparse") or False)
-            if sparse or fg is None:
-                note = t["note_visual_changes_sparse"].format(
-                    area=float(area or 0),
-                    n=int(n_zones or 0),
-                    max=float(max_region or 0),
-                )
-            else:
-                note = t["note_visual_changes"].format(
-                    fg=float(fg),
-                    area=float(area or 0),
-                    n=int(n_zones or 0),
-                    max=float(max_region or 0),
-                )
-        if row.get("ecc_failed"):
-            note = f"{note} {t['note_ecc_failed']}"
-        else:
-            shift_x_mm = float(row.get("alignment_shift_x_mm") or 0.0)
-            shift_y_mm = float(row.get("alignment_shift_y_mm") or 0.0)
-            if (shift_x_mm**2 + shift_y_mm**2) ** 0.5 >= 0.2:
-                note = f"{note} {t['note_alignment_shift'].format(x=shift_x_mm, y=shift_y_mm)}"
+        notes_by_lang = {
+            lang: _page_notes(row, content_status, HTML_REPORT_I18N[lang]) for lang in ("ru", "en")
+        }
+        note = " ".join(text for _kind, text in _page_notes(row, content_status, t))
 
         a_label = "-" if a_page is None else str(a_page)
         b_label = "-" if b_page is None else str(b_page)
@@ -158,6 +180,7 @@ def _prepare_pages_records(
                 "max_region_area_mm2": row.get("max_region_area_mm2"),
                 "change_level": row.get("change_level"),
                 "bboxes_count": row.get("bboxes_count"),
+                "ecc_failed": bool(row.get("ecc_failed") or False),
                 "alignment": {
                     "method": row.get("alignment_method"),
                     "score": row.get("alignment_score"),
@@ -181,15 +204,16 @@ def _prepare_pages_records(
                 },
                 "score": row.get("score"),
                 "notes": note,
+                "notes_by_lang": notes_by_lang,
                 "nav_label": nav_label,
                 "view_file": f"{seq:03d}.html",
                 "assets": {
                     "thumb_old": str(thumb_old).replace("\\", "/") if (thumbs_dir / thumb_old.name).exists() else None,
                     "thumb_new": str(thumb_new).replace("\\", "/") if (thumbs_dir / thumb_new.name).exists() else None,
                     "thumb_diff": str(thumb_diff).replace("\\", "/") if (thumbs_dir / thumb_diff.name).exists() else None,
-                    "hires_old": str(old_img).replace("\\", "/") if old_img and (pair_abs / old_img.name).exists() else None,
-                    "hires_new": str(new_img).replace("\\", "/") if new_img and (pair_abs / new_img.name).exists() else None,
-                    "hires_diff": str(diff_img).replace("\\", "/") if diff_img and (pair_abs / diff_img.name).exists() else None,
+                    "hires_old": str(old_img).replace("\\", "/") if old_img.name and (pair_abs / old_img.name).is_file() else None,
+                    "hires_new": str(new_img).replace("\\", "/") if new_img.name and (pair_abs / new_img.name).is_file() else None,
+                    "hires_diff": str(diff_img).replace("\\", "/") if diff_img.name and (pair_abs / diff_img.name).is_file() else None,
                 },
             }
         )
@@ -197,6 +221,65 @@ def _prepare_pages_records(
             progress_cb(row_idx, total_details)
     return pages_records
 
+
+
+# Order of the severity strip and of the "level" sort: worst first.
+LEVEL_SORT_RANK = {
+    "UNCHANGED": 0,
+    "MINOR": 1,
+    "MODERATE": 2,
+    "MAJOR": 3,
+    "SIZE_MISMATCH": 4,
+    "REMOVED": 5,
+    "ADDED": 6,
+}
+_SEVERITY_SEGMENTS: tuple[tuple[str, str, str], ...] = (
+    ("MAJOR", "Крупные", "Major"),
+    ("MODERATE", "Средние", "Moderate"),
+    ("MINOR", "Малые", "Minor"),
+    ("SIZE_MISMATCH", "Другой формат", "Format changed"),
+    ("ADDED", "Добавлены", "Added"),
+    ("REMOVED", "Удалены", "Removed"),
+    ("UNCHANGED", "Без изменений", "Unchanged"),
+)
+
+
+def _severity_distribution_html(strings: ReportI18n, level_counts: dict[str, int], total_pages: int) -> str:
+    """One stacked bar of the whole set by severity, plus chips that filter the matrix.
+
+    The four status cards say *how many* sheets changed; this says how badly —
+    the first thing a reviewer of a 19-sheet revision wants to know.
+    """
+    total = max(1, total_pages)
+    segments: list[str] = []
+    chips: list[str] = []
+    for key, ru, en in _SEVERITY_SEGMENTS:
+        count = int(level_counts.get(key, 0))
+        if count <= 0:
+            continue
+        cls = key.lower().replace("_", "-")
+        pct = 100.0 * count / total
+        label = strings.i18n_span_text(ru, en)
+        segments.append(
+            f'<span class="dist-seg dist-{cls}" style="flex-grow:{count}" '
+            f'{strings.i18n_title(f"{ru}: {count} из {total_pages}", f"{en}: {count} of {total_pages}")}></span>'
+        )
+        chips.append(
+            f'<button type="button" class="dist-chip" data-kind="dist" data-value="{key}" aria-pressed="false">'
+            f'<span class="dist-dot dist-{cls}"></span>{label}<b>{count}</b>'
+            f'<span class="dist-pct">{pct:.0f}%</span></button>'
+        )
+    if not segments:
+        return ""
+    title = strings.i18n_span_text("Серьёзность изменений", "Severity of changes", "dist-title")
+    hint = strings.i18n_span_text("нажмите, чтобы отфильтровать", "click to filter", "dist-hint")
+    return (
+        f'<section class="dist" {strings.i18n_aria("Серьёзность изменений", "Severity of changes")}>'
+        f'<div class="dist-head">{title}{hint}</div>'
+        f'<div class="dist-bar">{"".join(segments)}</div>'
+        f'<div class="dist-chips">{"".join(chips)}</div>'
+        "</section>"
+    )
 
 
 NAV_DATA_FILE = "nav-data.js"
@@ -237,7 +320,7 @@ def _build_nav_data(ctx: _ReportContext) -> dict:
             {
                 # The slider drawer highlights the current sheet by view order.
                 "seq": p["view_ord"],
-                "label": f"{nav_a} -> {nav_b}",
+                "label": f"{nav_a} → {nav_b}",
                 "status": status_tag,
                 "statusRu": str(i18n["ru"].get(status_key, status_tag)),
                 "statusEn": str(i18n["en"].get(status_key, status_tag)),
@@ -274,7 +357,7 @@ def _build_nav_data(ctx: _ReportContext) -> dict:
                 ).lower(),
                 # The detail-page sidebar lists sheets by their report row number.
                 "viewFile": str(p["view_file"]),
-                "navShort": f"{p['seq']} · {nav_a} -> {nav_b}",
+                "navShort": f"{p['seq']} · {nav_a} → {nav_b}",
                 "navLabel": str(p["nav_label"]),
                 "navSearch": (
                     f"{p['seq']} · {nav_a} -> {nav_b} {p['nav_label']} {p['status_ru']} {status_tag} "
@@ -370,6 +453,7 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     mixed_precision_seqs = ctx.mixed_precision_seqs
 
     matrix_rows: list[str] = []
+    level_counts: dict[str, int] = {}
     changed_cnt = 0
     added_cnt = 0
     removed_cnt = 0
@@ -379,6 +463,8 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
         status_tag, level_tag = report_tags_for_page(p)
         p["_status_tag"] = status_tag
         p["_level_tag"] = level_tag
+        dist_key = level_tag if status_tag == "CHANGED" and level_tag else status_tag
+        level_counts[dist_key] = level_counts.get(dist_key, 0) + 1
         if status_tag == "CHANGED":
             changed_cnt += 1
         elif status_tag == "ADDED":
@@ -414,13 +500,26 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
         _precision_ru, precision_en = page_precision_text(p)
         precision_search = "custom precision пересчитан " + (precision_en if is_mixed_precision_page(p) else "")
         row_search = f"{seq_txt} {a_idx} {b_idx} {status_tag} {level_tag} {status_search} {level_search} {precision_search}".lower()
+        dist_key = level_tag if status_tag == "CHANGED" and level_tag else status_tag
+        sort_attrs = " ".join(
+            f"data-sort-{name}='{value}'"
+            for name, value in (
+                ("seq", seq_txt),
+                ("level", LEVEL_SORT_RANK.get(dist_key, 0)),
+                ("fg", "" if fg_diff_val is None or fg_sparse else f"{fg_diff_val:.6f}"),
+                ("sheet", "" if diff_val is None else f"{diff_val:.6f}"),
+                ("area", "" if area_mm2_val is None else f"{area_mm2_val:.3f}"),
+                ("zones", "" if p.get("bboxes_count") is None else str(int(p["bboxes_count"]))),
+            )
+        )
         matrix_rows.append(
-            f"<tr class='mx-row' data-status='{status_tag}' data-level='{level_tag or 'NONE'}' "
+            f"<tr class='mx-row' data-status='{status_tag}' data-level='{level_tag or 'NONE'}' data-dist='{dist_key}' "
+            f"{sort_attrs} "
             f"data-search='{html.escape(row_search, quote=True)}' data-href='{html.escape(href, quote=True)}'>"
             f"<td class='td-seq seq-col'>{html.escape(seq_txt)}</td>"
             f"<td class='td-map map-cell'>{html.escape(a_idx)}{report_icon('arrow-right', 'ic map-icon', 14)}{html.escape(b_idx)}</td>"
-            f"<td class='td-status'>{status_badge_html(status_tag)}{precision_badge}</td>"
-            f"<td class='td-level'>{level_badge_html(level_tag)}</td>"
+            f"<td class='td-status'><span class='badge-row'>{status_badge_html(status_tag)}{precision_badge}</span></td>"
+            f"<td class='td-level'>{level_badge_html(level_tag, p)}</td>"
             f"<td class='td-fg diff-cell'>{fg_meter_html(fg_diff_val, sparse=fg_sparse)}</td>"
             f"<td class='td-diff'>{metric_percent_html(diff_val)}</td>"
             f"<td class='td-area'>{metric_area_html(area_mm2_val)}</td>"
@@ -446,8 +545,9 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
         f"Дата: {run_timestamp} · длительность: {duration_ru} · {dpi_meta_ru} · stroke tol: {stroke_tol_px:g}px",
         f"Date: {run_timestamp} · duration: {duration_en} · {dpi_meta_en} · stroke tol: {stroke_tol_px:g}px",
     )
-    old_doc_meta = i18n_span_text(f"Doc A · {page_count_a} листов · ред. ?", f"Doc A · {page_count_a} sheets · rev. ?")
-    new_doc_meta = i18n_span_text(f"Doc B · {page_count_b} листов · ред. ?", f"Doc B · {page_count_b} sheets · rev. ?")
+    old_doc_meta = i18n_span_text(f"Документ A · листов: {page_count_a}", f"Document A · {page_count_a} sheets")
+    new_doc_meta = i18n_span_text(f"Документ B · листов: {page_count_b}", f"Document B · {page_count_b} sheets")
+    dist_html = _severity_distribution_html(strings, level_counts, total_pages=len(pages_records))
     footer_text = i18n_span_text(
         f"Создано PDFCompare Local · собрано локально · {run_timestamp}",
         f"Created by PDFCompare Local · built locally · {run_timestamp}",
@@ -474,6 +574,12 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     export_menu_html = "".join(export_items)
     sun_icon_js = json.dumps(report_icon("sun", size=18))
     moon_icon_js = json.dumps(report_icon("moon", size=18))
+    def sort_th(key: str, ru: str, en: str) -> str:
+        return (
+            f'<button type="button" class="th-sort" data-sort="{key}">'
+            f"{i18n_span_text(ru, en)}{report_icon('chevrons-up-down', 'ic sort-ic', 12)}</button>"
+        )
+
     index_title_ru = "Сводка сравнения PDF — матрица изменений"
     index_title_en = "PDF compare summary — change matrix"
 
@@ -553,6 +659,7 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
         <span><span class="kpi-label">{i18n_span_text("БЕЗ ИЗМЕНЕНИЙ", "UNCHANGED")}</span><span class="kpi-value"><strong>{unchanged_cnt}</strong><span class="kpi-context">{i18n_span_text(f"из {total_pages}", f"of {total_pages}")}</span></span></span>
       </button>
     </section>
+    {dist_html}
 
     <section class="matrix-tools">
       <label class="search-wrap">
@@ -570,16 +677,16 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
       <table>
         <thead>
           <tr>
-            <th>#</th>
+            <th aria-sort="ascending">{sort_th("seq", "#", "#")}</th>
             <th>A {report_icon("arrow-right", "ic map-icon", 14)} B</th>
             <th>{i18n_span_text("Статус", "Status")}</th>
-            <th>{i18n_span_text("Уровень", "Level")}</th>
-            <th>{i18n_span_text("Заполнено %", "Drawn %")}</th>
-            <th>{i18n_span_text("Лист %", "Sheet %")}</th>
-            <th>mm²</th>
-            <th>Δ</th>
+            <th aria-sort="none">{sort_th("level", "Уровень", "Level")}</th>
+            <th aria-sort="none">{sort_th("fg", "Заполнено %", "Drawn %")}</th>
+            <th aria-sort="none">{sort_th("sheet", "Лист %", "Sheet %")}</th>
+            <th aria-sort="none">{sort_th("area", "мм²", "mm²")}</th>
+            <th aria-sort="none">{sort_th("zones", "Зоны", "Zones")}</th>
             <th>{i18n_span_text("Превью", "Preview")}</th>
-            <th>{i18n_span_text("Открыть", "Open")}</th>
+            <th class="th-open"><span class="sr-only">{i18n_span_text("Открыть", "Open")}</span></th>
           </tr>
         </thead>
         <tbody id="mxBody">
@@ -592,14 +699,25 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     <details class="legend">
       <summary>{i18n_span_text("Легенда и пороги", "Legend and thresholds")}</summary>
       <div class="legend-body">
-        <div class="legend-row">{status_badge_html("CHANGED")}<span>{i18n_span_text("лист содержит визуальные изменения", "sheet has visual changes")}</span></div>
-        <div class="legend-row">{status_badge_html("ADDED")}<span>{i18n_span("legend_added_desc")}</span></div>
-        <div class="legend-row">{status_badge_html("REMOVED")}<span>{i18n_span("legend_removed_desc")}</span></div>
-        <div class="legend-row">{status_badge_html("UNCHANGED")}<span>{i18n_span_text("существенные изменения не обнаружены", "no significant changes detected")}</span></div>
-        <div class="legend-row">{level_badge_html("MAJOR")}<span>{i18n_span_text("≥ 20% заполненного - MAJOR", "≥ 20% drawn - MAJOR")}</span></div>
-        <div class="legend-row">{level_badge_html("MODERATE")}<span>{i18n_span_text("≥ 8% заполненного - MODERATE", "≥ 8% drawn - MODERATE")}</span></div>
-        <div class="legend-row">{level_badge_html("MINOR")}<span>{i18n_span_text("≥ 1% заполненного - MINOR", "≥ 1% drawn - MINOR")}</span></div>
-        <div class="legend-row">{level_badge_html("UNCHANGED")}<span>{i18n_span_text("без зон изменений - UNCHANGED", "no change zones - UNCHANGED")}</span></div>
+        <div class="legend-col">
+          <div class="legend-row">{status_badge_html("CHANGED")}<span>{i18n_span_text("лист содержит визуальные изменения", "sheet has visual changes")}</span></div>
+          <div class="legend-row">{status_badge_html("ADDED")}<span>{i18n_span("legend_added_desc")}</span></div>
+          <div class="legend-row">{status_badge_html("REMOVED")}<span>{i18n_span("legend_removed_desc")}</span></div>
+          <div class="legend-row">{status_badge_html("UNCHANGED")}<span>{i18n_span_text("существенные изменения не обнаружены", "no significant changes detected")}</span></div>
+          <div class="legend-row">{level_badge_html("SIZE_MISMATCH")}<span>{i18n_span_text("формат листа несовместим, попиксельное сравнение не выполнено", "sheet formats are incompatible, no pixel diff")}</span></div>
+        </div>
+        <div class="legend-col">
+          <p class="legend-note">{i18n_span_text("Уровень — худший из трёх сигналов (наведите на бейдж уровня, чтобы увидеть расчёт листа):", "Level is the worst of three signals (hover a level badge to see the sheet's numbers):")}</p>
+          <table class="legend-table">
+            <thead><tr><th></th><th>{level_badge_html("MINOR")}</th><th>{level_badge_html("MODERATE")}</th><th>{level_badge_html("MAJOR")}</th></tr></thead>
+            <tbody>
+              <tr><th>{i18n_span_text("Заполнено %", "Drawn %")}</th><td>≥ {FG_MINOR_PERCENT:g}%</td><td>≥ {FG_MODERATE_PERCENT:g}%</td><td>≥ {FG_MAJOR_PERCENT:g}%</td></tr>
+              <tr><th>{i18n_span_text("Макс. зона, мм²", "Largest zone, mm²")}</th><td>≥ {REGION_MINOR_MM2:g}</td><td>≥ {REGION_MODERATE_MM2:g}</td><td>≥ {REGION_MAJOR_MM2:g}</td></tr>
+              <tr><th>{i18n_span_text("Число зон", "Zone count")}</th><td>≥ {ZONES_MINOR}</td><td>≥ {ZONES_MODERATE}</td><td>≥ {ZONES_MAJOR}</td></tr>
+            </tbody>
+          </table>
+          <p class="legend-note faint">{i18n_span_text("«Заполнено %» — доля изменённых пикселей от нарисованного; на почти пустых листах этот сигнал не учитывается.", "“Drawn %” is the share of changed pixels among drawn ones; it is skipped on near-empty sheets.")}</p>
+        </div>
       </div>
     </details>
 
@@ -609,8 +727,10 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
   {help_shell_html()}
   <script src="{HELP_DATA_FILE}"></script>
   <script>
-    const kpis = [...document.querySelectorAll('.kpi-card')];
+    const kpis = [...document.querySelectorAll('.kpi-card, .dist-chip')];
+    const mxBody = document.getElementById('mxBody');
     const rows = [...document.querySelectorAll('#mxBody tr.mx-row')];
+    const sortButtons = [...document.querySelectorAll('.th-sort')];
     const searchInput = document.getElementById('sheetSearch');
     const emptyMsg = document.getElementById('emptyMsg');
     const langButtons = [...document.querySelectorAll('[data-lang]')];
@@ -618,7 +738,10 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     const helpBtn = document.getElementById('helpBtn');
     const sunIcon = {sun_icon_js};
     const moonIcon = {moon_icon_js};
-    let statusFilter = 'ALL';
+    let filterKind = '';
+    let filterValue = '';
+    let sortKey = 'seq';
+    let sortDir = 1;
 
     function applyTheme(theme) {{
       const next = theme === 'dark' ? 'dark' : 'light';
@@ -648,6 +771,9 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
       document.querySelectorAll('[data-i18n-aria-ru]').forEach(el => {{
         el.setAttribute('aria-label', next === 'en' ? el.dataset.i18nAriaEn : el.dataset.i18nAriaRu);
       }});
+      document.querySelectorAll('[data-i18n-title-ru]').forEach(el => {{
+        el.setAttribute('title', next === 'en' ? el.dataset.i18nTitleEn : el.dataset.i18nTitleRu);
+      }});
       langButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.lang === next));
       if (window.PDFCOMPARE_HELP_RENDER) window.PDFCOMPARE_HELP_RENDER(next);
       if (persist) {{
@@ -657,7 +783,7 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
 
     function updateFilterUi() {{
       kpis.forEach(kpi => {{
-        const active = statusFilter === kpi.dataset.value;
+        const active = filterKind === kpi.dataset.kind && filterValue === kpi.dataset.value;
         kpi.classList.toggle('active', active);
         kpi.setAttribute('aria-pressed', active ? 'true' : 'false');
       }});
@@ -667,10 +793,9 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
       const q = searchInput.value.trim().toLowerCase();
       let visible = 0;
       rows.forEach(row => {{
-        const st = row.dataset.status;
         const text = row.dataset.search || '';
         let ok = true;
-        if (statusFilter !== 'ALL') ok = st === statusFilter;
+        if (filterKind) ok = row.dataset[filterKind] === filterValue;
         if (ok && q) ok = text.includes(q);
         row.style.display = ok ? '' : 'none';
         if (ok) visible += 1;
@@ -680,10 +805,46 @@ def _build_dashboard_html(ctx: _ReportContext) -> tuple[str, dict[str, int]]:
     }}
 
     function handleKpiFilter(control) {{
+      const kind = control.dataset.kind || '';
       const value = control.dataset.value || '';
-      statusFilter = statusFilter === value ? 'ALL' : value;
+      const same = filterKind === kind && filterValue === value;
+      filterKind = same ? '' : kind;
+      filterValue = same ? '' : value;
       applyFilters();
     }}
+
+    // Empty cells (added/removed sheets have no metrics) always sort last.
+    function sortValue(row, key) {{
+      const raw = row.getAttribute('data-sort-' + key);
+      return raw === null || raw === '' ? null : Number(raw);
+    }}
+    function applySort() {{
+      const ordered = rows.slice().sort((a, b) => {{
+        const va = sortValue(a, sortKey);
+        const vb = sortValue(b, sortKey);
+        if (va === null && vb === null) return sortValue(a, 'seq') - sortValue(b, 'seq');
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        if (va !== vb) return (va - vb) * sortDir;
+        return sortValue(a, 'seq') - sortValue(b, 'seq');
+      }});
+      ordered.forEach(row => mxBody.appendChild(row));
+      sortButtons.forEach(btn => {{
+        const th = btn.closest('th');
+        const active = btn.dataset.sort === sortKey;
+        btn.classList.toggle('active', active);
+        if (th) th.setAttribute('aria-sort', active ? (sortDir > 0 ? 'ascending' : 'descending') : 'none');
+      }});
+    }}
+    sortButtons.forEach(btn => {{
+      btn.addEventListener('click', () => {{
+        const key = btn.dataset.sort;
+        // Metrics are read worst-first, so their first click sorts descending.
+        if (key === sortKey) sortDir = -sortDir;
+        else {{ sortKey = key; sortDir = key === 'seq' ? 1 : -1; }}
+        applySort();
+      }});
+    }});
 
     kpis.forEach(control => {{
       control.addEventListener('click', () => handleKpiFilter(control));
@@ -1833,11 +1994,6 @@ def _write_page_views(
     boxes_text = "—" if p.get("bboxes_count") is None else str(int(p["bboxes_count"]))
     detail_precision_badge = precision_badge_html(p)
     precision_ru, precision_en = page_precision_text(p)
-    detail_precision_text = (
-        f'<span class="muted">{i18n_span_text(precision_ru, precision_en)}</span>'
-        if is_mixed_precision_page(p)
-        else ""
-    )
 
     def figure_html(src: str | None, label: str, cls: str = "", bbox_off_src: str | None = None) -> str:
         data_attrs = ""
@@ -1856,6 +2012,50 @@ def _write_page_views(
             f'<figure class="{html.escape(cls, quote=True)}">'
             f'<span class="cap-pill" data-i18n-ru="{label_attr}" data-i18n-en="{label_attr}">{html.escape(label)}</span>'
             f"{media}</figure>"
+        )
+
+    def fact(ru: str, en: str, value: str, swatch: str = "") -> str:
+        dot = f'<span class="fact-swatch {swatch}"></span>' if swatch else ""
+        return (
+            f'<div class="fact"><span class="fact-label">{dot}{i18n_span_text(ru, en)}</span>'
+            f'<span class="fact-value">{html.escape(value)}</span></div>'
+        )
+
+    fact_items: list[str] = []
+    if p.get("diff_metric") is not None:
+        if not p.get("foreground_sparse"):
+            fact_items.append(fact("Заполнено", "Drawn", fg_diff_txt))
+        fact_items.append(fact("Лист", "Sheet", diff_txt))
+        fact_items.append(fact("Площадь", "Area", area_txt))
+        if p.get("added_area_mm2") is not None:
+            fact_items.append(fact("Добавлено", "Added", f'{float(p["added_area_mm2"]):.1f} mm²', "sw-added"))
+        if p.get("removed_area_mm2") is not None:
+            fact_items.append(fact("Удалено", "Removed", f'{float(p["removed_area_mm2"]):.1f} mm²', "sw-removed"))
+        fact_items.append(fact("Зон", "Zones", boxes_text))
+        if p.get("max_region_area_mm2") is not None:
+            fact_items.append(fact("Макс. зона", "Largest zone", f'{float(p["max_region_area_mm2"]):.1f} mm²'))
+    notes_by_lang = p.get("notes_by_lang") or {}
+    note_items: list[str] = []
+    for (kind, ru_note), (_kind_en, en_note) in zip(notes_by_lang.get("ru", []), notes_by_lang.get("en", []), strict=True):
+        if kind == "summary" and fact_items:
+            continue  # the numbers above already say it
+        icon = {"warn": "alert-triangle", "info": "info"}.get(kind, "info")
+        note_items.append(
+            f'<li class="note note-{html.escape(kind, quote=True)}">{report_icon(icon, size=16)}'
+            f"{i18n_span_text(ru_note, en_note)}</li>"
+        )
+    if is_mixed_precision_page(p):
+        note_items.append(
+            f'<li class="note note-info">{report_icon("sliders-horizontal", size=16)}'
+            f"{i18n_span_text(precision_ru, precision_en)}</li>"
+        )
+    facts_html = ""
+    if fact_items or note_items:
+        facts_html = (
+            '<section class="sheet-facts">'
+            + (f'<div class="facts-grid">{"".join(fact_items)}</div>' if fact_items else "")
+            + (f'<ul class="facts-notes">{"".join(note_items)}</ul>' if note_items else "")
+            + "</section>"
         )
 
     external_items: list[str] = []
@@ -1917,16 +2117,13 @@ def _write_page_views(
     <div class="toolbar-center">
       <span class="sheet-title">{i18n_span_text(f"Лист {view_idx} из {len(pages_records)}", f"Sheet {view_idx} of {len(pages_records)}")}</span>
       {status_badge_html(status_tag)}
-      {level_badge_html(level_tag) if level_tag else ""}
+      {level_badge_html(level_tag, p) if level_tag else ""}
       {detail_precision_badge}
-      <span class="muted">{i18n_span_text(f"· заполнено {fg_diff_txt} · лист {diff_txt} · {area_txt} · {boxes_text} областей", f"· drawn {fg_diff_txt} · sheet {diff_txt} · {area_txt} · {boxes_text} areas")}</span>
-      {detail_precision_text}
     </div>
     <div class="toolbar-right">
       <button class="btn" type="button" data-help-open aria-expanded="false">{report_icon("help-circle", size=16)}{i18n_span_text("Справка", "Help")}</button>
       {prev_top}
       {next_top}
-      <span class="muted">{i18n_span_text(f"Лист {view_idx}/{len(pages_records)}", f"Sheet {view_idx}/{len(pages_records)}")}</span>
     </div>
   </header>
 
@@ -1951,6 +2148,7 @@ def _write_page_views(
     </aside>
 
     <main class="view-area">
+      {facts_html}
       <div class="view-tools">
         <div class="view-primary">
           {primary_slider_action}
@@ -2044,6 +2242,9 @@ def _write_page_views(
       document.querySelectorAll('[data-i18n-aria-ru]').forEach(el => {{
         el.setAttribute('aria-label', next === 'en' ? el.dataset.i18nAriaEn : el.dataset.i18nAriaRu);
       }});
+      document.querySelectorAll('[data-i18n-title-ru]').forEach(el => {{
+        el.setAttribute('title', next === 'en' ? el.dataset.i18nTitleEn : el.dataset.i18nTitleRu);
+      }});
       if (window.PDFCOMPARE_HELP_RENDER) window.PDFCOMPARE_HELP_RENDER(next);
     }}
     try {{ applyLang(localStorage.getItem('pdfcompare.lang') || document.documentElement.lang); }} catch (e) {{}}
@@ -2098,11 +2299,11 @@ def _write_page_views(
       }});
     }});
     document.addEventListener('keydown', (e) => {{
-      const tag = (e.target && e.target.tagName || '').toLowerCase();
-      if (!primarySliderHref || tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if (e.key === 'Enter') {{
-        window.location.href = primarySliderHref;
-      }}
+      if (!primarySliderHref || e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      // Enter on a focused link/button/field must do *that* control's action;
+      // jumping to the slider instead made keyboard navigation impossible.
+      if (e.target && e.target.closest && e.target.closest('a, button, input, textarea, select, summary, [contenteditable]')) return;
+      window.location.href = primarySliderHref;
     }});
   </script>
   <script>{help_script()}</script>

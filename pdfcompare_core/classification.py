@@ -90,6 +90,35 @@ def classify(
     return best
 
 
+def level_signals(
+    diff_foreground_percent: float | None,
+    foreground_sparse: bool,
+    max_region_area_mm2: float | None,
+    bboxes_count: int | None,
+) -> list[tuple[str, float, str]]:
+    """The composite path of ``classify`` broken into its signals.
+
+    Returns ``(signal, value, level)`` for every signal ``classify`` would weigh,
+    so the report can say *why* a sheet got its level — FG% alone often reads
+    below the threshold of a level that the zone count or the largest region set.
+    Empty for legacy rows without FG%, which ``classify`` grades differently.
+    """
+    if diff_foreground_percent is None:
+        return []
+    signals: list[tuple[str, float, str]] = []
+    if not foreground_sparse:
+        fg = float(diff_foreground_percent)
+        signals.append(("fg", fg, _signal_level(fg, FG_MINOR_PERCENT, FG_MODERATE_PERCENT, FG_MAJOR_PERCENT)))
+    if max_region_area_mm2 is not None:
+        region = float(max_region_area_mm2)
+        signals.append(
+            ("region", region, _signal_level(region, REGION_MINOR_MM2, REGION_MODERATE_MM2, REGION_MAJOR_MM2))
+        )
+    boxes = float(int(bboxes_count or 0))
+    signals.append(("zones", boxes, _signal_level(boxes, ZONES_MINOR, ZONES_MODERATE, ZONES_MAJOR)))
+    return signals
+
+
 def level_to_report_tags(level: str | None) -> tuple[str, str]:
     if level == "unchanged" or level is None:
         return "UNCHANGED", "UNCHANGED"

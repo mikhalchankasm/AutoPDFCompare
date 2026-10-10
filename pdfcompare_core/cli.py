@@ -112,8 +112,12 @@ def main() -> None:
         print(localize_error(exc, lang), file=sys.stderr)
         raise SystemExit(2) from exc
 
-    print(f"Готово. Результаты: {run_dir}")
-    print(f"Открыть отчёт: {run_dir / START_REPORT_FILE}")
+    if lang == "en":
+        print(f"Done. Results: {run_dir}")
+        print(f"Open report: {run_dir / START_REPORT_FILE}")
+    else:
+        print(f"Готово. Результаты: {run_dir}")
+        print(f"Открыть отчёт: {run_dir / START_REPORT_FILE}")
 
 
 if __name__ == "__main__":
