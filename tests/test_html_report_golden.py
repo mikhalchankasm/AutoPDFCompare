@@ -50,6 +50,19 @@ CANNED_METRICS: dict[str, object] = {
     "bbox_merge_gap_mm": 0.0,
     "bbox_merge_max_area_ratio": 16.0,
     "ecc_failed": False,
+    # The ECC correlation is a float straight out of OpenCV and differs in the
+    # last digits between builds (Python 3.12 CI vs 3.13 locally); report.json
+    # echoes it, so the alignment result is pinned like every other metric.
+    "alignment_method": "ALREADY_ALIGNED",
+    "alignment_score": 0.85,
+    "alignment_improvement": 0.0,
+    "alignment_shift_x_px": 0.0,
+    "alignment_shift_y_px": 0.0,
+    "alignment_shift_x_mm": 0.0,
+    "alignment_shift_y_mm": 0.0,
+    "alignment_rotation_deg": 0.0,
+    "alignment_scale_x": 1.0,
+    "alignment_scale_y": 1.0,
     "width_px": 827,
     "height_px": 1169,
     "pixel_count": 966763,
