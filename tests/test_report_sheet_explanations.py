@@ -17,7 +17,7 @@ from pdfcompare_core.pdf_io import imwrite_compat
 
 class LevelSignalsTests(unittest.TestCase):
     def test_signals_explain_a_major_level_below_the_fg_threshold(self) -> None:
-        # KM4 sheet 11: 6.64% drawn reads "moderate at most", yet the sheet is
+        # A real revision sheet: 6.64% drawn reads "moderate at most", yet the sheet is
         # major — the 67 zones set it. The tooltip must be able to say so.
         signals = level_signals(6.64, False, 2019.7, 67)
         self.assertEqual([(name, level) for name, _value, level in signals], [
