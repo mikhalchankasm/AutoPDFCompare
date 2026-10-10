@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -125,6 +126,33 @@ class ImageRegistrationTests(unittest.TestCase):
         result = align_ecc_detailed(base, moving)
 
         self.assertFalse(result.ok)
+        self.assertIs(result.image, moving)
+
+    def test_registered_revision_with_edits_is_already_aligned_not_failed(self) -> None:
+        # Same pose, different content: ECC converges at identity, and a
+        # sub-pixel warp would only blur strokes. This is the common case on
+        # real revision sets and must not be reported as a registration failure.
+        base = _large_drawing()
+        moving = base.copy()
+        cv2.circle(moving, (900, 700), 140, (0, 0, 0), 4)
+        cv2.putText(moving, "REV 01", (1700, 1500), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 4)
+
+        result = align_ecc_detailed(base, moving)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.method, "ALREADY_ALIGNED")
+        self.assertTrue(np.array_equal(result.image, moving))
+        self.assertEqual((result.shift_x_px, result.shift_y_px), (0.0, 0.0))
+
+    def test_registration_that_never_converges_is_still_reported_as_failed(self) -> None:
+        base = _large_drawing(800, 600)
+        moving = _translate(base, 12.0, 5.0)
+
+        with mock.patch.object(cv2, "findTransformECC", side_effect=cv2.error("no convergence")):
+            result = align_ecc_detailed(base, moving)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.method, "ECC_FAILED")
         self.assertIs(result.image, moving)
 
 

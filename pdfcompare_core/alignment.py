@@ -19,6 +19,7 @@ ECC_MAX_ROTATION_DEG = 3.0
 ECC_MIN_SCALE = 0.95
 ECC_MAX_SCALE = 1.05
 ECC_MAX_SHEAR = 0.05
+ECC_ALREADY_ALIGNED_MAX_PX = 0.5
 
 
 @dataclass(frozen=True)
@@ -481,6 +482,12 @@ def _plausible_warp(warp: np.ndarray, width: int, height: int) -> bool:
     )
 
 
+def _max_corner_displacement(warp: np.ndarray, width: int, height: int) -> float:
+    corners = np.array([[0.0, 0.0, 1.0], [width, 0.0, 1.0], [0.0, height, 1.0], [width, height, 1.0]])
+    moved = corners @ warp.astype(np.float64).T
+    return float(np.max(np.hypot(moved[:, 0] - corners[:, 0], moved[:, 1] - corners[:, 1])))
+
+
 def align_ecc_detailed(
     base_bgr: np.ndarray,
     moving_bgr: np.ndarray,
@@ -577,11 +584,14 @@ def align_ecc_detailed(
 
     height, width = base_bgr.shape[:2]
     best: tuple[float, str, float, np.ndarray, float] | None = None
+    converged_at_identity: float | None = None
     for correlation, method, candidate_scale, analysis_warp in candidates:
         full_warp = analysis_warp.copy()
         full_warp[:, 2] /= candidate_scale
         if not _plausible_warp(full_warp, width, height):
             continue
+        if _max_corner_displacement(full_warp, width, height) < ECC_ALREADY_ALIGNED_MAX_PX:
+            converged_at_identity = correlation
         candidate = cv2.warpAffine(
             moving_gray,
             analysis_warp,
@@ -594,6 +604,24 @@ def align_ecc_detailed(
             best = (error, method, correlation, full_warp, candidate_scale)
 
     if best is None or best[0] >= baseline_error:
+        # ECC that converges to a sub-pixel pose has confirmed the pages are
+        # registered; that warp only loses to the baseline because resampling
+        # blurs the strokes. Reporting it as a failure would warn the reader
+        # about a sheet that is in fact aligned.
+        if converged_at_identity is not None:
+            return ImageAlignment(
+                moving_bgr.copy(),
+                True,
+                "ALREADY_ALIGNED",
+                converged_at_identity,
+                scale,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+            )
         return ImageAlignment(
             moving_bgr,
             False,
