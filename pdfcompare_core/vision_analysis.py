@@ -521,6 +521,7 @@ def create_vision_report(
     markdown_sections: list[str] = []
     items: list[dict[str, Any]] = []
     generated_files: list[Path] = []
+    sheet_pages: list[tuple[Path, dict[str, Any]]] = []
     source_labels = _report_source_labels(run_dir)
     for row in rows:
         seq = int(row["seq"])
@@ -607,12 +608,7 @@ def create_vision_report(
             "source": source_labels,
             "size_px": [width, height],
         }
-        sheet_html_path = sheet_dir / "comparison.html"
-        _atomic_write_text(
-            sheet_html_path,
-            vision_sheet_html(sheet_payload, [int(candidate["seq"]) for candidate in rows]),
-        )
-        generated_files.append(sheet_html_path)
+        sheet_pages.append((sheet_dir / "comparison.html", sheet_payload))
         text_sections.append(f"{_sheet_word(language).upper()} {seq}\n{metrics_text}\n\n{analysis.text}\n")
         report_image_names = {
             "old": f"sheets/{sheet_name}/old.png",
@@ -635,6 +631,14 @@ def create_vision_report(
         items.append(item)
     if not items:
         raise VisionAnalysisError("no_analysis")
+
+    # Pages are written once every sheet is known: the pager and the sheet switcher list only sheets
+    # that have a page, and the switcher shows each sheet's counts.
+    sheet_payloads = [payload for _, payload in sheet_pages]
+    sheet_numbers = [int(payload["seq"]) for payload in sheet_payloads]
+    for sheet_html_path, sheet_payload in sheet_pages:
+        _atomic_write_text(sheet_html_path, vision_sheet_html(sheet_payload, sheet_numbers, sheets=sheet_payloads))
+        generated_files.append(sheet_html_path)
 
     html = vision_index_html(provider_name, model, items)
     readme = _report_readme(provider_name, language, text_sections)

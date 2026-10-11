@@ -123,7 +123,7 @@ background:var(--noise-soft)}.class-badge.uncertain{color:#9a3412;background:var
 overflow:auto;padding:14px 15px;border-bottom:1px solid var(--border);font-size:13px;line-height:1.55}.structured h3{margin:0 0 7px;font-size:13px}
 .structured .lead{margin:0 0 13px;font-weight:750}.structured ul{margin:0 0 14px;padding-left:19px}.structured li{margin:0 0 6px}
 .structured strong{color:#0f172a;background:#fef3c7;border-radius:3px;padding:0 2px}.facts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-.delta{display:grid;gap:6px;margin:0 0 14px}.delta-row{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;align-items:start;border-radius:7px;padding:7px 9px;background:var(--surface2)}.delta-row span{justify-self:start;border-radius:4px;padding:1px 6px;color:#fff;font-size:10px;font-weight:900}.delta-row.old span{background:var(--real)}.delta-row.new span{background:var(--brand)}.delta-row p{margin:0;overflow-wrap:anywhere}.delta-impact{border-left:3px solid var(--border-strong);padding:2px 0 2px 10px}.delta-impact b{font-size:12px}.delta-impact p{margin:2px 0 0;color:var(--muted)}#manualClass{min-height:30px;margin-left:6px;border:1px solid var(--border-strong);border-radius:6px;padding:4px 8px;background:var(--surface);font:inherit;font-weight:700}.fact{padding:7px 8px;border-radius:7px;background:var(--surface2);font-size:10px;color:var(--muted)}.fact b{display:block;color:var(--text);
+.delta{display:grid;gap:6px;margin:0 0 14px}.delta-row{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;align-items:start;border-radius:7px;padding:7px 9px;background:var(--surface2)}.delta-row span{justify-self:start;border-radius:4px;padding:1px 6px;color:#fff;font-size:10px;font-weight:900}.delta-row.old span{background:var(--real)}.delta-row.new span{background:var(--brand)}.delta-row p{margin:0;overflow-wrap:anywhere}.delta-impact{border-left:3px solid var(--border-strong);padding:2px 0 2px 10px}.delta-impact b{font-size:12px}.delta-impact p{margin:2px 0 0;color:var(--muted)}.fact{padding:7px 8px;border-radius:7px;background:var(--surface2);font-size:10px;color:var(--muted)}.fact b{display:block;color:var(--text);
 font-size:12px;margin-top:2px}.detail{flex:0 0 228px;min-height:0;padding:13px 15px;border-bottom:1px solid var(--border);overflow:hidden}
 .detail-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.detail-title b{font-size:13px}.detail-slider{position:relative;
 overflow:hidden;aspect-ratio:1.8;border:1px solid var(--border);border-radius:8px;background:#e2e8f0}.detail-slider img{position:absolute;inset:0;
@@ -136,9 +136,132 @@ color:var(--muted);font-size:12px}.zone-nav{flex:0 0 auto;display:grid;grid-temp
 z-index:10;border-radius:999px;padding:6px 11px;background:#0f172adb;color:#fff;font-size:10px;pointer-events:none;white-space:nowrap}.toast{position:fixed;
 right:18px;top:70px;z-index:99;border-radius:8px;padding:10px 13px;background:#0f172a;color:#fff;box-shadow:var(--shadow);font-size:12px;
 opacity:0;transform:translateY(-8px);transition:.18s;pointer-events:none}.toast.show{opacity:1;transform:none}
+.verdict{display:grid;gap:6px;margin-top:11px}.verdict-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.verdict-label{color:var(--muted);font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+.verdict-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px;background:var(--surface2)}
+.verdict-seg button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:32px;border:0;border-radius:6px;padding:0 6px;
+background:transparent;color:var(--muted);font-size:12px;font-weight:800;cursor:pointer}.verdict-seg button:hover:not(:disabled){background:var(--surface);color:var(--text)}
+.verdict-seg button i{width:9px;height:9px;border-radius:3px}.verdict-seg .v-real i{background:var(--real)}.verdict-seg .v-uncertain i{background:var(--uncertain)}
+.verdict-seg .v-noise i{background:var(--noise)}.verdict-seg button.active{color:#fff}.verdict-seg button.active i{background:#fff}
+.verdict-seg .v-real.active{background:var(--real)}.verdict-seg .v-uncertain.active{background:var(--uncertain)}.verdict-seg .v-noise.active{background:var(--noise)}
+.verdict-seg button:disabled{opacity:.4;cursor:not-allowed}.verdict-note{margin:0;color:var(--muted);font-size:11px;line-height:1.4}.verdict-note b{color:var(--text)}
+.verdict-note small{opacity:.8}.link-btn{border:0;padding:0;background:none;color:var(--brand);font-size:11px;font-weight:800;cursor:pointer}
+.link-btn:hover{text-decoration:underline}.zone-row .meta{display:flex;align-items:center;gap:4px}.manual-mark{color:var(--brand);font-size:11px;font-weight:900}
+.shape-tools{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 15px 0}
+.btn.editing{color:#fff;background:var(--brand);border-color:var(--brand)}.edit-hint{flex:1;color:var(--brand);font-size:11px;font-weight:700;text-align:center}
+.surface.editing{cursor:default}.edit-layer *{pointer-events:all}.edit-body{fill:#2563eb1a;stroke:var(--brand);stroke-width:2;vector-effect:non-scaling-stroke;cursor:move}
+.edit-vertex{fill:#fff;stroke:var(--brand);stroke-width:2;vector-effect:non-scaling-stroke;cursor:grab}.edit-vertex:hover{fill:#bfdbfe}
+.object-shape.is-editing,.zone-box.is-editing{visibility:hidden}.zone-box.is-editing .zone-tag{visibility:visible}
+.detail-slider canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff}
+.sheet-switcher{position:relative}.nav-pos{color:var(--muted);font-weight:700}.sheet-nav{position:absolute;top:42px;left:0;z-index:60;
+width:min(660px,calc(100vw - 24px));height:min(460px,72vh);display:grid;grid-template-columns:minmax(0,1fr) 230px;overflow:hidden;
+border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);box-shadow:0 20px 50px #0f172a33}
+.sheet-nav-list{overflow:auto;padding:6px;border-right:1px solid var(--border)}.sheet-nav-item{display:grid;grid-template-columns:42px minmax(0,1fr);
+gap:8px;align-items:center;border-radius:8px;padding:7px 8px;color:var(--text);text-decoration:none}.sheet-nav-item:hover,.sheet-nav-item:focus-visible{
+background:var(--surface2);outline:0}.sheet-nav-item.current{background:#eff6ff;box-shadow:inset 0 0 0 1px var(--brand)}.sheet-nav-no{font-size:18px;
+font-weight:900;text-align:center}.sheet-nav-item .counts{display:flex;gap:3px;flex-wrap:wrap}.sheet-nav-item .chip{padding:2px 7px;font-size:10px}
+.sheet-nav-item .chip.zero{color:#94a3b8;background:transparent}.sheet-nav-labels{margin-top:3px;overflow:hidden;color:var(--muted);font-size:11px;
+text-overflow:ellipsis;white-space:nowrap}.sheet-nav-preview{display:grid;grid-template-rows:auto minmax(0,1fr) minmax(0,1fr);gap:6px;padding:10px;
+background:var(--surface2)}.sheet-nav-preview b{font-size:12px}.sheet-nav-preview figure{position:relative;margin:0;overflow:hidden;border:1px solid var(--border);
+border-radius:6px;background:#fff}.sheet-nav-preview img{display:block;width:100%;height:100%;object-fit:contain}.sheet-nav-preview figcaption{position:absolute;
+left:5px;top:5px;padding:2px 6px;border-radius:4px;background:#0f172ad9;color:#fff;font-size:9px;font-weight:900}
 @media(max-width:1200px){.workspace{grid-template-columns:245px minmax(440px,1fr) 340px}.subtitle{display:none}}
 @media(max-width:900px){body{overflow:auto}.app{height:auto;min-height:100%}.workspace{display:flex;flex-direction:column}.summary{max-height:380px}
-.viewer{height:68vh;min-height:520px}.inspector{overflow:visible}.topbar{position:sticky;top:0;flex-wrap:wrap}.sheet-pager{position:sticky;bottom:0}.slider-help{display:none}}
+.viewer{height:68vh;min-height:520px}.inspector{overflow:visible}.topbar{position:sticky;top:0;flex-wrap:wrap}.sheet-pager{position:sticky;bottom:0}.slider-help{display:none}
+.sheet-nav{position:fixed;top:64px;right:10px;left:10px;width:auto;grid-template-columns:1fr}.sheet-nav-preview{display:none}}
+"""
+
+
+# Reader's decisions, hand-corrected outlines and the sheet switcher. Function declarations only at the
+# top level: the main sheet script calls them while it starts, before this block's statements run.
+_SHEET_TOOLS_SCRIPT = r"""
+function toastMsg(text){const t=document.getElementById('toast');t.textContent=text;t.classList.add('show');clearTimeout(toastMsg.timer);
+toastMsg.timer=setTimeout(()=>t.classList.remove('show'),2600)}
+function manualMarks(z){return(z.manual_classification?`<span class="manual-mark" title="Решение изменено вами; AI: ${esc(kindLabel({classification:z.ai_classification}))}">✎</span>`:'')+
+(z.manual_shape?'<span class="manual-mark" title="Контур поправлен вручную">◇</span>':'')}
+function updateVerdict(z){document.querySelectorAll('[data-verdict]').forEach(b=>{b.disabled=!z;b.classList.toggle('active',!!z&&b.dataset.verdict===z.classification)});
+const note=document.getElementById('aiVerdict');document.getElementById('resetVerdict').hidden=!z||!z.manual_classification;
+note.innerHTML=!z?'':z.manual_classification?`Изменено вами · AI: <b>${esc(kindLabel({classification:z.ai_classification}))}</b>.`:'Совпадает с выводом AI.'}
+function setVerdict(value){const z=report.zones[selectedIndex];if(!z||document.querySelector('[data-verdict]').disabled)return;const key=reviewZoneKey(report,z);
+if(!value||value===z.ai_classification)delete reviewState.overrides[key];else reviewState.overrides[key]=value;pinnedIndex=selectedIndex;
+updateReviewCounts([report]);saveReview();selectZone(selectedIndex,false);
+if(!((showNoise||kind(z)!=='noise')&&(activeFilter==='all'||z.classification===activeFilter)))
+toastMsg(`Зона ${z.id}: ${kindLabel(z).toLowerCase()}. Текущий фильтр её скрывает — она останется в списке, пока выбрана.`)}
+function rectPolys(r){return r?[[[r.x,r.y],[r.x+r.w,r.y],[r.x+r.w,r.y+r.h],[r.x,r.y+r.h]]]:[]}
+function aiPolys(z){return z.ai_polygons&&z.ai_polygons.length?z.ai_polygons:rectPolys(z.ai_rect)}
+function zonePolys(z){return(z.polygons_px&&z.polygons_px.length?z.polygons_px:rectPolys(z.rect)).map(p=>p.map(q=>[q[0],q[1]]))}
+function roundPolys(polys){return polys.map(p=>p.map(q=>[Math.round(Math.max(0,Math.min(W,q[0]))),Math.round(Math.max(0,Math.min(H,q[1])))]))}
+function boundsOf(polys){const pts=polys.flat(),xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),x=Math.min(...xs),y=Math.min(...ys);
+return[x,y,Math.max(1,Math.max(...xs)-x),Math.max(1,Math.max(...ys)-y)]}
+function commitShape(z,polys){const key=reviewZoneKey(report,z),rounded=roundPolys(polys);reviewState.shapes=reviewState.shapes||{};
+if(JSON.stringify(rounded)===JSON.stringify(roundPolys(aiPolys(z))))delete reviewState.shapes[key];
+else reviewState.shapes[key]={rect:boundsOf(rounded),polygons:rounded};applyReviews(report);saveReview();selectZone(selectedIndex,false)}
+function resetShape(){const z=report.zones[selectedIndex];if(!z)return;if(reviewState.shapes)delete reviewState.shapes[reviewZoneKey(report,z)];
+editHistory=[];applyReviews(report);saveReview();selectZone(selectedIndex,false);toastMsg('Контур возвращён к варианту AI')}
+function showShapeState(z){document.getElementById('editShape').disabled=!z||!z.rect;document.getElementById('resetShape').hidden=!z||!z.manual_shape}
+function stopEditing(){editing=false;editDrag=null;editHistory=[];surface.classList.remove('editing');const b=document.getElementById('editShape');
+b.classList.remove('editing');b.textContent='✎ Править контур';document.getElementById('editHint').hidden=true;document.getElementById('sliderHelp').hidden=false}
+function setEditing(on){const z=report.zones[selectedIndex];if(!on){stopEditing();renderBoxes();return}
+if(!z||!z.rect||document.getElementById('editShape').disabled)return;editing=true;editHistory=[];surface.classList.add('editing');
+const b=document.getElementById('editShape');b.classList.add('editing');b.textContent='✓ Готово';document.getElementById('editHint').hidden=false;
+document.getElementById('sliderHelp').hidden=true;renderBoxes()}
+function renderEdit(svg){if(!editing)return;const z=report.zones[selectedIndex];if(!z||!z.rect)return;const ns=svg.namespaceURI,g=document.createElementNS(ns,'g'),
+radius=Math.max(3,7/scale),polys=zonePolys(z);g.setAttribute('class','edit-layer');polys.forEach((poly,pi)=>{const body=document.createElementNS(ns,'polygon');
+body.setAttribute('class','edit-body');body.setAttribute('points',poly.map(p=>p.join(',')).join(' '));body.dataset.poly=pi;g.appendChild(body)});
+polys.forEach((poly,pi)=>poly.forEach((p,vi)=>{const c=document.createElementNS(ns,'circle');c.setAttribute('class','edit-vertex');c.setAttribute('cx',p[0]);
+c.setAttribute('cy',p[1]);c.setAttribute('r',radius);c.dataset.poly=pi;c.dataset.vertex=vi;g.appendChild(c)}));svg.appendChild(g)}
+function drawDraft(polys){const g=zonesLayer.querySelector('.edit-layer');if(!g)return;g.querySelectorAll('.edit-body').forEach(b=>{const p=polys[+b.dataset.poly];
+if(p)b.setAttribute('points',p.map(q=>q.join(',')).join(' '))});g.querySelectorAll('.edit-vertex').forEach(c=>{const q=(polys[+c.dataset.poly]||[])[+c.dataset.vertex];
+if(q){c.setAttribute('cx',q[0]);c.setAttribute('cy',q[1])}})}
+function sheetPoint(e){const r=surface.getBoundingClientRect();return[(e.clientX-r.left)/r.width*W,(e.clientY-r.top)/r.height*H]}
+function drawDetail(z){const manual=!!(z&&z.manual_shape&&z.rect);['Old','New'].forEach(role=>{const img=document.getElementById('detail'+role),
+canvas=document.getElementById('detail'+role+'Canvas');img.hidden=manual;canvas.hidden=!manual;if(!manual)return;
+const source=document.querySelector('.sheet.'+role.toLowerCase()),r=z.rect,pad=Math.max(40,Math.round(Math.max(r.w,r.h)*.12)),sx=Math.max(0,r.x-pad),
+sy=Math.max(0,r.y-pad),sw=Math.max(1,Math.min(W,r.x+r.w+pad)-sx),sh=Math.max(1,Math.min(H,r.y+r.h+pad)-sy),k=Math.min(1,1000/Math.max(sw,sh));
+canvas.width=Math.max(1,Math.round(sw*k));canvas.height=Math.max(1,Math.round(sh*k));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';
+ctx.fillRect(0,0,canvas.width,canvas.height);const draw=()=>{const fx=source.naturalWidth/W,fy=source.naturalHeight/H;
+try{ctx.drawImage(source,sx*fx,sy*fy,sw*fx,sh*fy,0,0,canvas.width,canvas.height)}catch(err){}};
+if(source.complete&&source.naturalWidth)draw();else source.addEventListener('load',draw,{once:true})})}
+function shortcut(e){const key=String(e.key||'').toLowerCase();if((e.ctrlKey||e.metaKey)&&editing&&(key==='z'||key==='я')){e.preventDefault();
+const previous=editHistory.pop();if(previous)commitShape(report.zones[selectedIndex],previous);return}if(e.ctrlKey||e.metaKey||e.altKey)return;
+if(key==='escape'){if(!document.getElementById('sheetNav').hidden)toggleSheetNav(false);else if(editing)setEditing(false);return}
+if(key==='1')setVerdict('real_change');else if(key==='2')setVerdict('uncertain');else if(key==='3')setVerdict('alignment_or_rendering_noise');
+else if(key==='e'||key==='у')setEditing(!editing)}
+function sheetIndexData(){if(!sheetIndexData.cache)sheetIndexData.cache=JSON.parse(document.getElementById('sheetIndex').textContent);return sheetIndexData.cache}
+function sheetDir(seq){return seq===report.seq?'':`../sheet_${String(seq).padStart(3,'0')}/`}
+function renderSheetNav(){const list=document.getElementById('sheetNavList'),summary=reviewState.summary||{};list.innerHTML=sheetIndexData().map(s=>{
+const current=s.seq===report.seq,c=current?report.counts:summary[s.seq]||s.counts,labels=(s.labels||[]).join(' · ');
+const chips=c?[['real_change','real','правок'],['uncertain','uncertain','проверить']].map(([k,css,w])=>`<span class="chip ${css}${c[k]?'':' zero'}">${c[k]||0} ${w}</span>`).join(''):'';
+return `<a class="sheet-nav-item${current?' current':''}" data-seq="${s.seq}" href="${sheetDir(s.seq)}comparison.html"${current?' aria-current="page"':''}>`+
+`<span class="sheet-nav-no">${s.seq}</span><span><span class="counts">${chips}</span>${labels?`<div class="sheet-nav-labels" title="${esc(labels)}">${esc(labels)}</div>`:''}</span></a>`}).join('');
+list.querySelectorAll('.sheet-nav-item').forEach(a=>{a.onmouseenter=a.onfocus=()=>previewSheet(+a.dataset.seq);
+if(a.classList.contains('current'))a.onclick=e=>{e.preventDefault();toggleSheetNav(false)}});reviewLinks()}
+function previewSheet(seq){const dir=sheetDir(seq),hide="this.closest('figure').hidden=true";document.getElementById('sheetNavPreview').innerHTML=`<b>Лист ${seq}</b>`+
+`<figure><img src="${dir}old_thumb.png" alt="OLD, лист ${seq}" onerror="${hide}"><figcaption>OLD</figcaption></figure>`+
+`<figure><img src="${dir}new_thumb.png" alt="NEW, лист ${seq}" onerror="${hide}"><figcaption>NEW</figcaption></figure>`}
+function toggleSheetNav(open){const nav=document.getElementById('sheetNav'),button=document.getElementById('sheetNavBtn');if(open===undefined)open=nav.hidden;
+nav.hidden=!open;button.setAttribute('aria-expanded',String(open));if(!open)return;renderSheetNav();previewSheet(report.seq);
+const current=nav.querySelector('.current');if(current){current.scrollIntoView({block:'nearest'});current.focus({preventScroll:true})}}
+zonesLayer.addEventListener('pointerdown',e=>{if(!editing||e.button!==0||!e.target.closest||!e.target.closest('.edit-layer'))return;
+e.preventDefault();e.stopPropagation();const z=report.zones[selectedIndex],polys=zonePolys(z),start=sheetPoint(e),t=e.target;
+if(t.classList.contains('edit-vertex')){const pi=+t.dataset.poly,vi=+t.dataset.vertex;if(e.altKey){if(polys[pi].length>3){editHistory.push(zonePolys(z));
+polys[pi].splice(vi,1);commitShape(z,polys)}else toastMsg('В контуре должно остаться не меньше трёх вершин');return}
+editDrag={type:'vertex',pi,vi,polys,start,before:zonePolys(z)}}else editDrag={type:'move',orig:polys,polys,start,before:zonePolys(z)}},true);
+zonesLayer.addEventListener('dblclick',e=>{if(!editing||!e.target.classList||!e.target.classList.contains('edit-body'))return;e.preventDefault();e.stopPropagation();
+const z=report.zones[selectedIndex],polys=zonePolys(z),poly=polys[+e.target.dataset.poly],p=sheetPoint(e);let best=0,bestDistance=Infinity,bestPoint=p;
+poly.forEach((a,k)=>{const b=poly[(k+1)%poly.length],vx=b[0]-a[0],vy=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*vx+(p[1]-a[1])*vy)/((vx*vx+vy*vy)||1))),
+q=[a[0]+t*vx,a[1]+t*vy],d=(q[0]-p[0])**2+(q[1]-p[1])**2;if(d<bestDistance){bestDistance=d;best=k;bestPoint=q}});
+editHistory.push(zonePolys(z));poly.splice(best+1,0,bestPoint);commitShape(z,polys)},true);
+window.addEventListener('pointermove',e=>{const d=editDrag;if(!d)return;const p=sheetPoint(e);if(d.type==='vertex')d.polys[d.pi][d.vi]=[Math.max(0,Math.min(W,p[0])),
+Math.max(0,Math.min(H,p[1]))];else{const pts=d.orig.flat(),xs=pts.map(q=>q[0]),ys=pts.map(q=>q[1]),dx=Math.max(-Math.min(...xs),Math.min(W-Math.max(...xs),p[0]-d.start[0])),
+dy=Math.max(-Math.min(...ys),Math.min(H-Math.max(...ys),p[1]-d.start[1]));d.polys=d.orig.map(poly=>poly.map(q=>[q[0]+dx,q[1]+dy]))}
+d.moved=d.moved||Math.hypot(p[0]-d.start[0],p[1]-d.start[1])*scale>2;drawDraft(d.polys)});
+window.addEventListener('pointerup',()=>{const d=editDrag;if(!d)return;editDrag=null;if(!d.moved){drawDraft(d.before);return}editHistory.push(d.before);
+commitShape(report.zones[selectedIndex],d.polys)});
+document.querySelectorAll('[data-verdict]').forEach(b=>b.onclick=()=>setVerdict(b.dataset.verdict));
+document.getElementById('resetVerdict').onclick=()=>setVerdict(null);document.getElementById('editShape').onclick=()=>setEditing(!editing);
+document.getElementById('resetShape').onclick=resetShape;document.getElementById('sheetNavBtn').onclick=e=>{e.stopPropagation();toggleSheetNav()};
+document.addEventListener('pointerdown',e=>{if(!document.getElementById('sheetNav').hidden&&!e.target.closest('#sheetSwitcher'))toggleSheetNav(false)});
 """
 
 
@@ -149,6 +272,8 @@ const zonesLayer=document.getElementById('zonesLayer'),splitKnob=document.getEle
 """ + REVIEW_SCRIPT + r"""
 applyReviews(report);updateReviewCounts([report]);
 let scale=.1,selectedIndex=0,activeFilter=reviewState.onlyChanges?'real_change':'all',showNoise=report.report_schema!=='semantic-v1'&&!reviewState.onlyChanges,spaceDown=false,panning=false,splitDragging=false,panStart=null;
+// A zone the reader just re-classified stays listed while selected, even if the active filter now hides it.
+let pinnedIndex=-1,editing=false,editDrag=null,editHistory=[];
 const kind=z=>z.classification==='real_change'?'real':z.classification==='uncertain'?'uncertain':'noise';
 const kindLabel=z=>kind(z)==='real'?'Реальное изменение':kind(z)==='uncertain'?'Требует проверки':'Шум / локальный сдвиг';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -159,28 +284,28 @@ body=text.slice(colon+1).trim()}let facts=body.split(/;\s*/).map(x=>x.trim()).fi
 facts=body.split(/\.\s+(?=[А-ЯA-Z«])/).map(x=>x.trim()).filter(Boolean);if(hasDelta(z))facts=facts.filter((x,n)=>n===0||!/^(OLD|NEW|Следствие|Последствие)\s*:/i.test(x));return{title,facts:facts.length?facts:[body]}}
 const hasDelta=z=>!!(String(z.old_value||'').trim()||String(z.new_value||'').trim());
 function zoneLabel(z){const ref=String(z.object_ref||'').trim();return ref||structure(z).title}
-function visibleZones(){return report.zones.map((z,i)=>({z,i})).filter(({z})=>(showNoise||kind(z)!=='noise')&&
-(activeFilter==='all'||z.classification===activeFilter))}function ensureSelection(){const v=visibleZones();if(!v.some(x=>x.i===selectedIndex)&&v.length)selectedIndex=v[0].i}
+function visibleZones(){return report.zones.map((z,i)=>({z,i})).filter(({z,i})=>i===pinnedIndex||((showNoise||kind(z)!=='noise')&&
+(activeFilter==='all'||z.classification===activeFilter)))}function ensureSelection(){const v=visibleZones();if(!v.some(x=>x.i===selectedIndex)&&v.length)selectedIndex=v[0].i}
 function renderList(){ensureSelection();zoneList.innerHTML='';visibleZones().forEach(({z,i})=>{const b=document.createElement('button');
 b.className=`zone-row ${kind(z)} ${i===selectedIndex?'active':''}`;b.innerHTML=`<span class="zone-no">${z.id}</span><span class="zone-label">
-<b>${esc(zoneLabel(z))}</b><span>${esc(structure(z).facts[0].slice(0,96))}${structure(z).facts[0].length>96?'…':''}</span></span><span class="confidence">${z.confidence}%</span>`;
+<b>${esc(zoneLabel(z))}</b><span>${esc(structure(z).facts[0].slice(0,96))}${structure(z).facts[0].length>96?'…':''}</span></span><span class="meta">${manualMarks(z)}<span class="confidence">${z.confidence}%</span></span>`;
 b.onclick=()=>selectZone(i,true);zoneList.appendChild(b)});if(!zoneList.children.length)zoneList.innerHTML='<div class="detail-empty">В этом фильтре зон нет.</div>'}
 function renderBoxes(){zonesLayer.innerHTML='';const visible=new Set(visibleZones().map(v=>v.i));const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.setAttribute('class','shape-layer');zonesLayer.appendChild(svg);report.zones.forEach((z,i)=>{if(!z.rect||!visible.has(i))return;const r=z.rect,b=document.createElement('div');
-const shapes=z.polygons_px||[];if(shapes.length){const group=document.createElementNS(ns,'g');group.setAttribute('class',`object-shape ${kind(z)} ${i===selectedIndex?'selected':''}`);shapes.forEach(points=>{const poly=document.createElementNS(ns,'polygon');poly.setAttribute('points',points.map(p=>p.join(',')).join(' '));group.appendChild(poly)});svg.appendChild(group)}
-b.className=`zone-box ${shapes.length?'has-shape':''} ${report.report_schema==='semantic-v1'?'object-bound':''} ${kind(z)} ${i===selectedIndex?'selected':''} ${r.y<120?'near-top':''}`;b.style.cssText=`left:${r.x/W*100}%;top:${r.y/H*100}%;
-width:${r.w/W*100}%;height:${r.h/H*100}%`;b.innerHTML=`<span class="zone-tag">${z.id}</span>`;zonesLayer.appendChild(b)})}
+const shapes=z.polygons_px||[],edited=editing&&i===selectedIndex?'is-editing':'';if(shapes.length){const group=document.createElementNS(ns,'g');group.setAttribute('class',`object-shape ${kind(z)} ${i===selectedIndex?'selected':''} ${edited}`);shapes.forEach(points=>{const poly=document.createElementNS(ns,'polygon');poly.setAttribute('points',points.map(p=>p.join(',')).join(' '));group.appendChild(poly)});svg.appendChild(group)}
+b.className=`zone-box ${shapes.length?'has-shape':''} ${report.report_schema==='semantic-v1'?'object-bound':''} ${kind(z)} ${i===selectedIndex?'selected':''} ${edited} ${r.y<120?'near-top':''}`;b.style.cssText=`left:${r.x/W*100}%;top:${r.y/H*100}%;
+width:${r.w/W*100}%;height:${r.h/H*100}%`;b.innerHTML=`<span class="zone-tag">${z.id}</span>`;zonesLayer.appendChild(b)});renderEdit(svg)}
 function updateNoiseLabel(){const b=document.getElementById('noiseToggle');b.classList.toggle('active',showNoise);b.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать оформление/шум (${report.counts.alignment_or_rendering_noise})`}
-function selectZone(i,focus=false){updateNoiseLabel();if(!report.zones.length||!visibleZones().length){const hasChanges=report.zones.some(z=>z.classification==='real_change'||z.classification==='uncertain');document.getElementById('zoneTitle').textContent=hasChanges?'В этом фильтре зон нет':'Содержательных правок не выявлено';document.getElementById('observationTitle').textContent='Результат просмотра';document.getElementById('observationLead').textContent=hasChanges?'Выберите другой фильтр для просмотра наблюдений.':'В прочитанных фрагментах AI не выявил содержательных изменений. Техническое покрытие отдельно указано в отчёте.';document.getElementById('changesSection').hidden=true;document.getElementById('deltaBlock').hidden=true;document.getElementById('observationTitle').hidden=false;document.getElementById('classBadge').hidden=true;document.getElementById('detailSlider').hidden=true;document.getElementById('detailRange').hidden=true;document.getElementById('detailEmpty').hidden=false;document.getElementById('detailEmpty').textContent='Выберите наблюдение в другом фильтре.';document.getElementById('focusZone').disabled=true;document.getElementById('bigNo').textContent='—';document.getElementById('confidence').textContent='—';document.getElementById('rect').textContent='—';document.getElementById('manualClass').disabled=true;document.getElementById('aiVerdict').textContent='';renderBoxes();return}const visible=visibleZones();selectedIndex=visible.some(v=>v.i===i)?i:visible[0].i;const z=report.zones[selectedIndex],r=z.rect,k=kind(z),s=structure(z);
-document.getElementById('manualClass').disabled=false;document.getElementById('manualClass').value=z.manual_classification||'auto';document.getElementById('aiVerdict').textContent='Вывод AI: '+kindLabel({classification:z.ai_classification})+(z.manual_classification?' · изменено вручную':'');
+function selectZone(i,focus=false){updateNoiseLabel();if(i!==pinnedIndex)pinnedIndex=-1;if(editing&&i!==selectedIndex)stopEditing();if(!report.zones.length||!visibleZones().length){const hasChanges=report.zones.some(z=>z.classification==='real_change'||z.classification==='uncertain');document.getElementById('zoneTitle').textContent=hasChanges?'В этом фильтре зон нет':'Содержательных правок не выявлено';document.getElementById('observationTitle').textContent='Результат просмотра';document.getElementById('observationLead').textContent=hasChanges?'Выберите другой фильтр для просмотра наблюдений.':'В прочитанных фрагментах AI не выявил содержательных изменений. Техническое покрытие отдельно указано в отчёте.';document.getElementById('changesSection').hidden=true;document.getElementById('deltaBlock').hidden=true;document.getElementById('observationTitle').hidden=false;document.getElementById('classBadge').hidden=true;document.getElementById('detailSlider').hidden=true;document.getElementById('detailRange').hidden=true;document.getElementById('detailEmpty').hidden=false;document.getElementById('detailEmpty').textContent='Выберите наблюдение в другом фильтре.';document.getElementById('focusZone').disabled=true;document.getElementById('bigNo').textContent='—';document.getElementById('confidence').textContent='—';document.getElementById('rect').textContent='—';updateVerdict(null);showShapeState(null);renderBoxes();return}const visible=visibleZones();selectedIndex=visible.some(v=>v.i===i)?i:visible[0].i;const z=report.zones[selectedIndex],r=z.rect,k=kind(z),s=structure(z);
+updateVerdict(z);showShapeState(z);
 document.getElementById('bigNo').textContent=z.id;document.getElementById('bigNo').className=`big-no ${k}`;document.getElementById('zoneTitle').textContent=zoneLabel(z);
 const badge=document.getElementById('classBadge');badge.hidden=false;badge.textContent=kindLabel(z);badge.className=`class-badge ${k}`;document.getElementById('observationTitle').textContent=s.title;document.getElementById('observationTitle').hidden=s.title===zoneLabel(z);const delta=document.getElementById('deltaBlock');delta.hidden=!hasDelta(z);document.getElementById('deltaOld').textContent=String(z.old_value||'').trim()||'—';document.getElementById('deltaNew').textContent=String(z.new_value||'').trim()||'—';const impact=String(z.design_impact||'').trim();document.getElementById('deltaImpact').hidden=!impact;document.getElementById('deltaImpactText').textContent=impact;
 document.getElementById('observationLead').innerHTML=emphasize(s.facts[0]);const changes=document.getElementById('changesSection');changes.hidden=s.facts.length<2;
 document.getElementById('observationFacts').innerHTML=s.facts.slice(1).map(x=>`<li>${emphasize(x)}</li>`).join('');document.getElementById('confidence').textContent=`${z.confidence}%`;
-document.getElementById('rect').textContent=r?`${r.x}, ${r.y} · ${r.w}×${r.h}`:'весь лист';const slider=document.getElementById('detailSlider'),range=document.getElementById('detailRange');
+document.getElementById('rect').textContent=r?`${r.x}, ${r.y} · ${r.w}×${r.h}${z.manual_shape?' · вручную':''}`:'весь лист';const slider=document.getElementById('detailSlider'),range=document.getElementById('detailRange');
 const empty=document.getElementById('detailEmpty'),focusBtn=document.getElementById('focusZone');slider.hidden=!r;range.hidden=!r;empty.hidden=!!r;empty.textContent='Вывод относится ко всему листу; локальная область не задана.';focusBtn.disabled=!r;
-if(r&&z.images){document.getElementById('detailOld').src=z.images.old||'';document.getElementById('detailNew').src=z.images.new||''}renderList();renderBoxes();if(focus&&r)requestAnimationFrame(focusSelected)}
+if(r&&z.images){document.getElementById('detailOld').src=z.images.old||'';document.getElementById('detailNew').src=z.images.new||''}drawDetail(z);renderList();renderBoxes();if(focus&&r)requestAnimationFrame(focusSelected)}
 function setScale(n,a){n=Math.max(.025,Math.min(2.5,n));const old=scale,ax=a?.x??(stage.scrollLeft+stage.clientWidth/2)/old,ay=a?.y??(stage.scrollTop+stage.clientHeight/2)/old;
-scale=n;surface.style.width=`${W*scale}px`;surface.style.height=`${H*scale}px`;document.getElementById('zoomLabel').textContent=`${Math.round(scale*100)}%`;
+scale=n;surface.style.width=`${W*scale}px`;surface.style.height=`${H*scale}px`;document.getElementById('zoomLabel').textContent=`${Math.round(scale*100)}%`;if(editing)renderBoxes();
 requestAnimationFrame(()=>{stage.scrollLeft=ax*scale-(a?.clientX??stage.clientWidth/2);stage.scrollTop=ay*scale-(a?.clientY??stage.clientHeight/2)})}
 function fit(){const p=52;setScale(Math.min((stage.clientWidth-p)/W,(stage.clientHeight-p)/H));requestAnimationFrame(()=>{stage.scrollLeft=0;stage.scrollTop=0})}
 function focusSelected(){const r=report.zones[selectedIndex]?.rect;if(!r)return;const p=Math.max(100,Math.min(350,Math.max(r.w,r.h)*.18));
@@ -192,31 +317,29 @@ if(!showNoise&&activeFilter==='alignment_or_rendering_noise'){activeFilter='all'
 document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===activeFilter));renderList();renderBoxes();ensureSelection();selectZone(selectedIndex,false)}function markdown(){if(!visibleZones().length)return `Лист ${report.seq}: в текущем фильтре нет наблюдений.`;const z=report.zones[selectedIndex],s=structure(z),r=z.rect;
 const lines=[`### Лист ${report.seq} — зона ${z.id}`,`**Тип:** ${kindLabel(z)}`,`**Уверенность:** ${z.confidence}%`,`**Область:** ${r?`${r.x}, ${r.y}; ${r.w}×${r.h} px`:'весь лист'}`,
 '**Классификация:** '+(z.manual_classification?'ручная; вывод AI: '+kindLabel({classification:z.ai_classification}):'AI'),
+...(z.manual_shape?['**Контур:** поправлен вручную']:[]),
 '',`#### ${s.title}`,...s.facts.map(x=>`- ${x}`)];return lines.join('\n')}async function copyMarkdown(){const text=markdown();let copied=false;
 const onCopy=e=>{e.clipboardData.setData('text/plain',text);e.preventDefault()};document.addEventListener('copy',onCopy);try{copied=document.execCommand('copy')}finally{
 document.removeEventListener('copy',onCopy)}if(!copied&&navigator.clipboard){try{await navigator.clipboard.writeText(text);copied=true}catch(e){copied=false}}
 const toast=document.getElementById('toast');toast.textContent=copied?'Markdown скопирован':'Не удалось скопировать — повторите';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800)}
 document.getElementById('noiseToggle').onclick=toggleNoise;document.getElementById('copyMarkdown').onclick=copyMarkdown;document.getElementById('zoomIn').onclick=()=>setScale(scale*1.18);
-document.getElementById('manualClass').onchange=e=>{const z=report.zones[selectedIndex];if(!z)return;
-const key=reviewZoneKey(report,z);if(e.target.value==='auto')delete reviewState.overrides[key];else reviewState.overrides[key]=e.target.value;
-saveReview();updateReviewCounts([report]);renderList();renderBoxes();selectZone(selectedIndex,false)};
 document.getElementById('zoomOut').onclick=()=>setScale(scale/1.18);document.getElementById('fit').onclick=fit;document.getElementById('focusZone').onclick=focusSelected;
 function adjacent(d){const v=visibleZones();let p=v.findIndex(x=>x.i===selectedIndex);p=(p+d+v.length)%v.length;if(v.length)selectZone(v[p].i,true)}
 document.getElementById('prevZone').onclick=()=>adjacent(-1);document.getElementById('nextZone').onclick=()=>adjacent(1);document.querySelectorAll('.filter').forEach(b=>b.onclick=()=>{
 activeFilter=b.dataset.filter;if(activeFilter==='alignment_or_rendering_noise'&&!showNoise)toggleNoise();document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===b));
-renderList();ensureSelection();selectZone(selectedIndex,false)});const dr=document.getElementById('detailRange');dr.oninput=()=>{document.getElementById('detailOld').style.clipPath=
-`inset(0 ${100-dr.value}% 0 0)`;document.getElementById('detailLine').style.left=`${dr.value}%`};stage.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();
+renderList();ensureSelection();selectZone(selectedIndex,false)});const dr=document.getElementById('detailRange');dr.oninput=()=>{document.querySelectorAll('.detail-slider .detail-old').forEach(x=>x.style.clipPath=
+`inset(0 ${100-dr.value}% 0 0)`);document.getElementById('detailLine').style.left=`${dr.value}%`};stage.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();
 const r=stage.getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;setScale(scale*(e.deltaY<0?1.12:1/1.12),{x:(stage.scrollLeft+cx)/scale,y:(stage.scrollTop+cy)/scale,
-clientX:cx,clientY:cy})},{passive:false});stage.oncontextmenu=e=>e.preventDefault();stage.onpointerdown=e=>{if(e.button===0&&!spaceDown&&surface.contains(e.target)){
-splitDragging=true;stage.setPointerCapture(e.pointerId);splitAt(e);e.preventDefault();return}if(e.button===1||e.button===2||(e.button===0&&spaceDown)){panning=true;
+clientX:cx,clientY:cy})},{passive:false});stage.oncontextmenu=e=>e.preventDefault();stage.onpointerdown=e=>{if(e.button===0&&!spaceDown&&!editing&&surface.contains(e.target)){
+splitDragging=true;stage.setPointerCapture(e.pointerId);splitAt(e);e.preventDefault();return}if(e.button===1||e.button===2||(e.button===0&&(spaceDown||editing))){panning=true;
 stage.classList.add('panning');panStart={x:e.clientX,y:e.clientY,left:stage.scrollLeft,top:stage.scrollTop};stage.setPointerCapture(e.pointerId);e.preventDefault()}};
 stage.onpointermove=e=>{if(splitDragging){splitAt(e);return}if(panning){stage.scrollLeft=panStart.left-(e.clientX-panStart.x);stage.scrollTop=panStart.top-(e.clientY-panStart.y)}};
-stage.onpointerup=stage.onpointercancel=()=>{splitDragging=false;panning=false;stage.classList.remove('panning')};window.onkeydown=e=>{if(e.code==='Space')spaceDown=true;
-if(e.key==='0')fit();if(e.key===']')adjacent(1);if(e.key==='[')adjacent(-1)};window.onkeyup=e=>{if(e.code==='Space')spaceDown=false};document.querySelector('.sheet.new').onload=()=>{fit();selectZone(0,false)};
+stage.onpointerup=stage.onpointercancel=()=>{splitDragging=false;panning=false;stage.classList.remove('panning')};window.onkeydown=e=>{if(e.target.closest&&e.target.closest('input,select,textarea'))return;if(e.code==='Space')spaceDown=true;
+if(e.key==='0')fit();if(e.key===']')adjacent(1);if(e.key==='[')adjacent(-1);shortcut(e)};window.onkeyup=e=>{if(e.code==='Space')spaceDown=false};document.querySelector('.sheet.new').onload=()=>{fit();selectZone(0,false)};
 document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter===activeFilter));
 const noiseButton=document.getElementById('noiseToggle');noiseButton.classList.toggle('active',showNoise);noiseButton.textContent=showNoise?`Скрыть шум (${report.counts.alignment_or_rendering_noise})`:`Показать оформление/шум (${report.counts.alignment_or_rendering_noise})`;
 setSplit(50);renderList();renderBoxes();ensureSelection();selectZone(selectedIndex,false);
-"""
+""" + _SHEET_TOOLS_SCRIPT
 
 
 _INDEX_UI_SCRIPT = r"""
@@ -258,12 +381,7 @@ def _zone_label(zone: dict[str, Any]) -> str:
     return (text[:colon] if 0 < colon < 115 else text).strip()
 
 
-def _highlights_html(zones: Sequence[dict[str, Any]]) -> str:
-    """What changed on the sheet: object names, edits first, then items to check.
-
-    Mirrors renderHighlights() in the page script, which redraws the list once the
-    reader's manual decisions are applied; this copy is what shows without them.
-    """
+def _highlight_items(zones: Sequence[dict[str, Any]]) -> list[tuple[str, str]]:
     seen: set[tuple[str, str]] = set()
     items: list[tuple[str, str]] = []
     for classification, css in (("real_change", "real"), ("uncertain", "uncertain")):
@@ -272,6 +390,16 @@ def _highlights_html(zones: Sequence[dict[str, Any]]) -> str:
             if zone.get("classification") == classification and label and (css, label) not in seen:
                 seen.add((css, label))
                 items.append((css, label))
+    return items
+
+
+def _highlights_html(zones: Sequence[dict[str, Any]]) -> str:
+    """What changed on the sheet: object names, edits first, then items to check.
+
+    Mirrors renderHighlights() in the page script, which redraws the list once the
+    reader's manual decisions are applied; this copy is what shows without them.
+    """
+    items = _highlight_items(zones)
     noise = sum(zone.get("classification") == "alignment_or_rendering_noise" for zone in zones)
     if not items:
         text = f"Только оформление / шум ({noise})" if noise else "Правок не найдено"
@@ -372,7 +500,8 @@ def vision_index_html(
         f"</tr></thead><tbody>{''.join(rows)}"
         "<tr id='emptySheets' hidden><td colspan='5' class='empty'>Нет листов в этом фильтре.</td></tr></tbody></table>"
         f"<p class='footnote'>{escape(method)}Контуры объектов приблизительны. Оранжевые наблюдения AI не подтвердил — "
-        "их нужно проверить. Ручная оценка («Ваша оценка» на листе) хранится в этом браузере и не меняет исходный вывод AI.</p></main>"
+        "их нужно проверить. Ваши решения по зонам и поправленные контуры («Ваше решение» и «Править контур» на листе) "
+        "хранятся в этом браузере и не меняют исходный вывод AI.</p></main>"
         f"<script id='reportData' type='application/json'>{payload}</script>"
         f"<script>{INDEX_REVIEW_SCRIPT}{_INDEX_UI_SCRIPT}</script></body></html>"
     )
@@ -399,11 +528,29 @@ def _pager(seq: int, sheet_numbers: Sequence[int]) -> str:
     )
 
 
+def _sheet_index(sheet_numbers: Sequence[int], sheets: Sequence[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """What the sheet switcher lists: every sheet, with AI counts and main objects when known."""
+    if not sheets:
+        return [{"seq": int(seq)} for seq in sheet_numbers]
+    return [
+        {
+            "seq": int(item["seq"]),
+            "counts": {
+                name: int((item.get("counts") or {}).get(name) or 0)
+                for name in ("real_change", "uncertain", "alignment_or_rendering_noise")
+            },
+            "labels": [label for _, label in _highlight_items(item.get("zones") or [])[:3]],
+        }
+        for item in sheets
+    ]
+
+
 def vision_sheet_html(
     sheet: dict[str, Any],
     sheet_numbers: Sequence[int],
     *,
     root_filename: str = "index.html",
+    sheets: Sequence[dict[str, Any]] | None = None,
 ) -> str:
     seq = int(sheet["seq"])
     source = sheet.get("source") or {}
@@ -416,11 +563,18 @@ def vision_sheet_html(
     payload = dict(sheet)
     payload["size_px"] = [width, height]
     report_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    index_json = json.dumps(_sheet_index(sheet_numbers, sheets), ensure_ascii=False).replace("</", "<\\/")
+    position = f"{list(sheet_numbers).index(seq) + 1} / {len(sheet_numbers)}" if seq in sheet_numbers else str(seq)
     return (
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' "
         f"content='width=device-width,initial-scale=1'><title>AI-сравнение · Лист {seq}</title><style>{_SHEET_CSS}</style></head>"
         "<body><div class='app'><header class='topbar'>"
-        f"<a class='btn' href='../../{escape(root_filename)}'>⌂ Обзор</a><div class='brand'><div class='brand-mark'>AI</div><div>"
+        f"<a class='btn' href='../../{escape(root_filename)}'>⌂ Обзор</a>"
+        "<div class='sheet-switcher' id='sheetSwitcher'><button class='btn' id='sheetNavBtn' aria-expanded='false' "
+        f"aria-controls='sheetNav' title='Все листы отчёта'>▦ Листы <span class='nav-pos'>{position}</span></button>"
+        "<div class='sheet-nav' id='sheetNav' hidden><div class='sheet-nav-list' id='sheetNavList'></div>"
+        "<div class='sheet-nav-preview' id='sheetNavPreview'></div></div></div>"
+        "<div class='brand'><div class='brand-mark'>AI</div><div>"
         f"<div class='title'>Лист {seq}{revisions}</div><div class='subtitle'>Содержательные правки · оранжевый: требуется проверка · контуры приблизительные</div></div></div>"
         f"<button class='btn noise-toggle active' id='noiseToggle'>Скрыть шум ({int(counts.get('alignment_or_rendering_noise') or 0)})</button>"
         "<button class='btn' id='copyMarkdown'>⧉ Копировать Markdown</button></header><main class='workspace'>"
@@ -433,28 +587,39 @@ def vision_sheet_html(
         "<button class='filter' data-filter='uncertain'>Проверить</button><button class='filter' data-filter='alignment_or_rendering_noise'>Шум</button>"
         "</div></div><div class='zone-list' id='zoneList'></div></aside><section class='panel viewer'><div class='toolbar'>"
         "<button class='btn' id='zoomOut'>−</button><span class='zoom-label' id='zoomLabel'>100%</span><button class='btn' id='zoomIn'>+</button>"
-        f"<button class='btn' id='fit'>Вписать</button><span class='slider-help'>ЛКМ по листу — граница OLD / NEW</span><span class='quality'>PNG · {width}×{height}</span>"
+        "<button class='btn' id='fit'>Вписать</button><span class='slider-help' id='sliderHelp'>ЛКМ по листу — граница OLD / NEW</span>"
+        "<span class='edit-hint' id='editHint' hidden>Правка контура: тяните контур или вершину · двойной щелчок по ребру — "
+        "новая вершина · Alt+щелчок — удалить вершину · Ctrl+Z — отменить · Esc — готово</span>"
+        f"<span class='quality'>PNG · {width}×{height}</span>"
         "</div><div class='stage' id='stage'><div class='surface' id='surface'><img class='sheet new' src='new.png' alt='Новая ревизия'>"
         "<img class='sheet old' src='old.png' alt='Старая ревизия'><div class='zones-layer' id='zonesLayer'></div><div class='split-line'></div>"
         f"<div class='split-knob' id='splitKnob'>50%</div><span class='corner-label old'>{old_corner}</span>"
         f"<span class='corner-label new'>{new_corner}</span></div><div class='hint'>ЛКМ — OLD/NEW · "
         "Ctrl+колесо — масштаб · ПКМ/СКМ или Space+drag — панорама · 0 — вписать</div></div></section>"
         "<aside class='panel inspector'><div class='zone-header'><div class='zone-heading'><span class='big-no real' id='bigNo'>1</span><div>"
-        "<h2 id='zoneTitle'>Зона 1</h2><span class='class-badge real' id='classBadge'>Реальное изменение</span></div></div></div>"
-        "<div class='panel-head'><label for='manualClass'>Ваша оценка</label> <select id='manualClass'><option value='auto'>Вывод AI</option>"
-        "<option value='real_change'>Правка</option><option value='alignment_or_rendering_noise'>Шум</option><option value='uncertain'>Проверить</option></select>"
-        "<p id='aiVerdict'></p><small id='reviewStatus'>Сохраняется в этом браузере</small></div>"
+        "<h2 id='zoneTitle'>Зона 1</h2><span class='class-badge real' id='classBadge'>Реальное изменение</span></div></div>"
+        "<div class='verdict'><div class='verdict-head'><span class='verdict-label'>Ваше решение</span>"
+        "<button class='link-btn' id='resetVerdict' hidden>↺ Вернуть вывод AI</button></div>"
+        "<div class='verdict-seg' role='group' aria-label='Ваше решение по зоне'>"
+        "<button data-verdict='real_change' class='v-real' title='Клавиша 1'><i></i>Правка</button>"
+        "<button data-verdict='uncertain' class='v-uncertain' title='Клавиша 2'><i></i>Проверить</button>"
+        "<button data-verdict='alignment_or_rendering_noise' class='v-noise' title='Клавиша 3'><i></i>Шум</button></div>"
+        "<p class='verdict-note'><span id='aiVerdict'></span> <small id='reviewStatus'>Сохраняется в этом браузере</small></p></div></div>"
         "<div class='structured'><h3 id='observationTitle'>Наблюдение</h3><p class='lead' id='observationLead'></p>"
         "<div class='delta' id='deltaBlock' hidden><div class='delta-row old'><span>OLD</span><p id='deltaOld'></p></div><div class='delta-row new'><span>NEW</span><p id='deltaNew'></p></div><div class='delta-impact' id='deltaImpact'><b>Последствие</b><p id='deltaImpactText'></p></div></div><div id='changesSection'><h3>Что изменилось</h3><ul id='observationFacts'></ul></div><h3>Проверка</h3><div class='facts'>"
         "<div class='fact'>Уверенность<b id='confidence'>—</b></div><div class='fact'>Область, px<b id='rect'>—</b></div></div></div>"
         "<div class='detail'><div class='detail-title'><b>Детальный OLD / NEW</b><span class='quality'>без JPEG</span></div>"
-        "<div class='detail-slider' id='detailSlider'><img id='detailNew' alt='NEW crop'><img class='detail-old' id='detailOld' alt='OLD crop'>"
+        "<div class='detail-slider' id='detailSlider'><img id='detailNew' alt='NEW crop'><canvas id='detailNewCanvas' hidden></canvas>"
+        "<img class='detail-old' id='detailOld' alt='OLD crop'><canvas class='detail-old' id='detailOldCanvas' hidden></canvas>"
         "<div class='detail-line' id='detailLine'></div></div><input class='detail-range' id='detailRange' type='range' min='0' max='100' value='50'>"
         "<div class='detail-empty' id='detailEmpty' hidden>Вывод относится ко всему листу; отдельная прямоугольная область не задана.</div></div>"
+        "<div class='shape-tools'><button class='btn' id='editShape' title='Клавиша E'>✎ Править контур</button>"
+        "<button class='link-btn' id='resetShape' hidden>↺ Вернуть контур AI</button></div>"
         "<div class='zone-nav'><button class='btn' id='prevZone'>←</button><button class='btn primary' id='focusZone'>Показать на листе</button>"
         "<button class='btn' id='nextZone'>→</button></div></aside></main><nav class='sheet-pager' aria-label='Навигация по листам'>"
         f"{_pager(seq, sheet_numbers)}</nav></div><div class='toast' id='toast'>Markdown скопирован</div>"
-        f"<script id='reportData' type='application/json'>{report_json}</script><script>{_SHEET_SCRIPT}</script></body></html>"
+        f"<script id='reportData' type='application/json'>{report_json}</script>"
+        f"<script id='sheetIndex' type='application/json'>{index_json}</script><script>{_SHEET_SCRIPT}</script></body></html>"
     )
 
 

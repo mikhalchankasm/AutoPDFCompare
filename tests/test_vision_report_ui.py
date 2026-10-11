@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from pdfcompare_core.vision_report_ui import _highlights_html, vision_index_html, vision_sheet_html
+from pdfcompare_core.vision_review_ui import REVIEW_SCRIPT
 
 
 def _sheet(seq: int, zones: list[dict], **source: str) -> dict:
@@ -68,6 +70,43 @@ class PageTests(unittest.TestCase):
         self.assertIn("С правками<b data-sheet-count='real'>1</b>", html)
         self.assertIn("Проверить<b data-sheet-count='uncertain'>1</b>", html)
         self.assertIn("Без правок<b data-sheet-count='none'>1</b>", html)
+
+
+def _sheet_index(html: str) -> list[dict]:
+    start = html.index("<script id='sheetIndex' type='application/json'>") + len("<script id='sheetIndex' type='application/json'>")
+    return json.loads(html[start:html.index("</script>", start)].replace("<\\/", "</"))
+
+
+class SheetToolsTests(unittest.TestCase):
+    def test_sheet_switcher_lists_every_sheet_with_counts_and_main_objects(self) -> None:
+        sheets = [
+            _sheet(3, [_zone(1, "real_change", "Узел 32/18: добавлен", object_ref="Узел 32/18"),
+                       _zone(2, "alignment_or_rendering_noise", "Штамп")]),
+            _sheet(7, [_zone(1, "uncertain", "Ссылка 21→25: не подтверждено")]),
+        ]
+        html = vision_sheet_html(sheets[1], [3, 7], sheets=sheets)
+        self.assertIn("▦ Листы <span class='nav-pos'>2 / 2</span>", html)
+        self.assertEqual(_sheet_index(html), [
+            {"seq": 3, "counts": {"real_change": 1, "uncertain": 0, "alignment_or_rendering_noise": 1}, "labels": ["Узел 32/18"]},
+            {"seq": 7, "counts": {"real_change": 0, "uncertain": 1, "alignment_or_rendering_noise": 0}, "labels": ["Ссылка 21→25"]},
+        ])
+
+    def test_sheet_switcher_without_sheet_data_still_lists_the_numbers(self) -> None:
+        self.assertEqual(_sheet_index(vision_sheet_html(_sheet(1, []), [1, 2])), [{"seq": 1}, {"seq": 2}])
+
+    def test_reader_decides_with_buttons_and_can_correct_the_outline(self) -> None:
+        html = vision_sheet_html(_sheet(1, [_zone(1, "real_change", "A: x", rect={"x": 1, "y": 2, "w": 3, "h": 4})]), [1])
+        for verdict in ("real_change", "uncertain", "alignment_or_rendering_noise"):
+            self.assertIn(f"data-verdict='{verdict}'", html)
+        for control in ("id='resetVerdict'", "id='editShape'", "id='resetShape'", "id='detailOldCanvas'", "Ctrl+Z — отменить"):
+            self.assertIn(control, html)
+        self.assertNotIn("manualClass", html)
+
+    def test_saved_decisions_stay_attached_after_an_outline_moves(self) -> None:
+        # The zone key hashes the AI rect; a corrected outline must not change it, or the reader's
+        # decisions saved before the edit would silently detach from their zones.
+        self.assertIn("z.description,z.ai_rect||z.rect]", REVIEW_SCRIPT)
+        self.assertIn("if(!('ai_rect' in z)){z.ai_rect=z.rect||null", REVIEW_SCRIPT)
 
 
 if __name__ == "__main__":
