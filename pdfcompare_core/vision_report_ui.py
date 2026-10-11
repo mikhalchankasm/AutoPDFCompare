@@ -366,6 +366,30 @@ refreshIndex();
 """
 
 
+# Decisions and corrected outlines travel as a file: browser storage and #review links stay on one machine.
+# Keys hash the sheet source, zone id, description and AI rect, not the folder the report was unpacked to,
+# so a colleague's file matches this report wherever it is opened.
+_INDEX_IO_SCRIPT = r"""
+function setReviewNote(text){const note=document.getElementById('reviewStatus');if(note)note.textContent=text}
+function knownReviewKeys(){const keys=new Set();reviewReport.sheets.forEach(s=>s.zones.forEach(z=>keys.add(reviewZoneKey(s,z))));return keys}
+document.getElementById('exportReview').onclick=()=>{const overrides=reviewState.overrides||{},shapes=reviewState.shapes||{};
+const decisions=Object.keys(overrides).length,outlines=Object.keys(shapes).length;
+if(!decisions&&!outlines){setReviewNote('Сохранять нечего: ручных решений и правок контуров пока нет.');return}
+const data={format:'pdfcompare-review',version:1,model:reviewReport.model,exported:new Date().toISOString(),onlyChanges:!!reviewState.onlyChanges,overrides,shapes};
+const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,1)],{type:'application/json'}));
+link.download=`pdfcompare-review-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(link);link.click();
+setTimeout(()=>{URL.revokeObjectURL(link.href);link.remove()},0);setReviewNote(`Сохранено в файл: решений ${decisions}, контуров ${outlines}.`)};
+document.getElementById('importReview').onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;let data=null;
+try{data=JSON.parse(await file.text())}catch(err){data=null}
+if(!data||data.format!=='pdfcompare-review'||typeof data.overrides!=='object'||!data.overrides){setReviewNote('Файл не загружен: это не файл решений PDFCompare.');return}
+const keys=knownReviewKeys();let taken=0,skipped=0;reviewState.overrides=reviewState.overrides||{};reviewState.shapes=reviewState.shapes||{};
+Object.entries(data.overrides).forEach(([key,value])=>{if(keys.has(key)&&reviewClasses.includes(value)){reviewState.overrides[key]=value;taken++}else skipped++});
+Object.entries(data.shapes||{}).forEach(([key,value])=>{if(keys.has(key)&&reviewShape(value)){reviewState.shapes[key]=value;taken++}else skipped++});
+updateReviewCounts(reviewReport.sheets);saveReview();refreshIndex();
+setReviewNote(taken?`Загружено ${taken}${skipped?`, пропущено ${skipped}: другой отчёт или зоны изменились`:''}.`:'Ничего не загружено: решения в файле относятся к другому отчёту.')};
+"""
+
+
 def _revision(source: dict[str, Any], key: str, default: str) -> str:
     """The revision label, or "" when the report only knows the role name."""
     value = str(source.get(key) or "").strip()
@@ -495,15 +519,19 @@ def vision_index_html(
         f"<button data-sheets='none'>Без правок<b data-sheet-count='none'>{clean}</b></button></div>"
         "<div class='defaults'><label><input type='checkbox' id='defaultOnlyChanges'> "
         "По умолчанию показывать только правки на всех листах</label>"
-        "<small id='reviewStatus'>Ручная оценка хранится в этом браузере.</small></div></section>"
+        "<small id='reviewStatus'>Ручная оценка хранится в этом браузере.</small>"
+        "<button class='btn' id='exportReview' type='button' title='Скачать решения и контуры, чтобы передать коллеге'>⤓ Сохранить решения</button>"
+        "<label class='btn' for='importReview' title='Загрузить решения и контуры из файла'>⤒ Загрузить решения</label>"
+        "<input type='file' id='importReview' accept='.json,application/json' hidden></div></section>"
         "<table class='matrix'><thead><tr><th>Лист</th><th>Найдено</th><th>Что изменилось</th><th>Превью</th><th></th>"
         f"</tr></thead><tbody>{''.join(rows)}"
         "<tr id='emptySheets' hidden><td colspan='5' class='empty'>Нет листов в этом фильтре.</td></tr></tbody></table>"
         f"<p class='footnote'>{escape(method)}Контуры объектов приблизительны. Оранжевые наблюдения AI не подтвердил — "
         "их нужно проверить. Ваши решения по зонам и поправленные контуры («Ваше решение» и «Править контур» на листе) "
-        "хранятся в этом браузере и не меняют исходный вывод AI.</p></main>"
+        "хранятся в этом браузере и не меняют исходный вывод AI. Чтобы передать их коллеге, сохраните решения в файл; "
+        "коллега загрузит его на этой странице своего экземпляра отчёта.</p></main>"
         f"<script id='reportData' type='application/json'>{payload}</script>"
-        f"<script>{INDEX_REVIEW_SCRIPT}{_INDEX_UI_SCRIPT}</script></body></html>"
+        f"<script>{INDEX_REVIEW_SCRIPT}{_INDEX_UI_SCRIPT}{_INDEX_IO_SCRIPT}</script></body></html>"
     )
 
 

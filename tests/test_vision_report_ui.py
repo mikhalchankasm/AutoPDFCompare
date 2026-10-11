@@ -102,6 +102,15 @@ class SheetToolsTests(unittest.TestCase):
             self.assertIn(control, html)
         self.assertNotIn("manualClass", html)
 
+    def test_overview_saves_and_loads_decisions_as_a_file(self) -> None:
+        html = vision_index_html("Gemini", "m", [_sheet(1, [_zone(1, "real_change", "A: x")])])
+        for control in ("id='exportReview'", "for='importReview'", "id='importReview' accept='.json,application/json'"):
+            self.assertIn(control, html)
+        # The file is checked for its format and only keys of zones in this report are taken.
+        self.assertIn("data.format!=='pdfcompare-review'", html)
+        self.assertIn("keys.has(key)&&reviewClasses.includes(value)", html)
+        self.assertIn("keys.has(key)&&reviewShape(value)", html)
+
     def test_saved_decisions_stay_attached_after_an_outline_moves(self) -> None:
         # The zone key hashes the AI rect; a corrected outline must not change it, or the reader's
         # decisions saved before the edit would silently detach from their zones.
